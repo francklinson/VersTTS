@@ -978,14 +978,12 @@ async def delete_speaker_api(speaker_id: str):
 async def tts_chattts(
     request: Request,
     text: str = Form(...),
-    speaker_emb: Optional[str] = Form(None),
-    speaker_id: Optional[str] = Form(None),  # 新增：通过ID选择已保存的说话人
     temperature: float = Form(0.3),
     top_P: float = Form(0.7),
     top_K: float = Form(20),
     output_format: str = Form("url")
 ):
-    """ChatTTS语音合成 - 支持通过speaker_id选择已保存的说话人"""
+    """ChatTTS语音合成 - 使用随机说话人"""
     start_time = time.time()
     client_ip = request.client.host if request.client else "unknown"
     
@@ -1002,103 +1000,56 @@ async def tts_chattts(
             "temperature": temperature,
             "top_P": top_P,
             "top_K": top_K,
-            "speaker_id": speaker_id
         }, client_ip)
-        
+
         system_logger.info(f"【ChatTTS】开始合成 | 文本: {text[:50]}... | 客户端: {client_ip}")
-        system_logger.info(f"【ChatTTS】接收参数 | speaker_id={speaker_id}, speaker_emb={'已设置' if speaker_emb else '未设置'}")
         chat = get_chattts_model()
 
-        # 准备说话人参数
-        spk_emb = None
-        spk_smp = None
-        txt_smp = None
-        speaker_name = None
-        
-        if speaker_id:
-            system_logger.info(f"【ChatTTS】尝试查找说话人: {speaker_id}")
-            # 通过ID从数据库获取说话人
-            db = load_speakers_db()
-            speaker_info = None
-            for s in db["speakers"]:
-                if s["id"] == speaker_id:
-                    speaker_info = s
-                    speaker_name = s["name"]
-                    break
-            
-            if speaker_info is None:
-                raise HTTPException(status_code=404, detail=f"说话人ID '{speaker_id}' 不存在")
-            
-            system_logger.info(f"【ChatTTS】使用已保存说话人: {speaker_name} (ID: {speaker_id})")
-            
-            # 从数据库读取 spk_smp（音色准确，但显存占用高）
-            embedding_b64 = speaker_info.get("embedding")
-            if not embedding_b64:
-                raise HTTPException(status_code=500, detail=f"说话人 '{speaker_name}' 没有保存 embedding")
-            
-            # Base64 解码获取 spk_smp
-            import base64
-            speaker_emb_bytes = base64.b64decode(embedding_b64)
-            spk_smp = speaker_emb_bytes.decode('utf-8')
-            
-            system_logger.info(f"【ChatTTS】加载 spk_smp 成功，长度: {len(spk_smp)}")
-            
-            # 使用 spk_smp 方式，需要设置 skip_refine_text=True
-            spk_emb = None  # 必须设为 None
-            txt_smp = None  # 设为 None 避免递归问题
-            
-        elif speaker_emb:
-            # 直接使用传入的embedding
-            spk_emb = speaker_emb
-            system_logger.info(f"【ChatTTS】使用自定义说话人embedding")
-        else:
-            # 随机生成说话人
-            spk_emb = chat.sample_random_speaker()
-            system_logger.info(f"【ChatTTS】使用随机说话人")
+        # 使用随机说话人
+        spk_emb = chat.sample_random_speaker()
+        system_logger.info(f"【ChatTTS】使用随机说话人")
 
         # 记录推理参数
-        system_logger.info(f"【ChatTTS】推理参数 - spk_emb={'None' if spk_emb is None else '已设置'}, spk_smp={'None' if spk_smp is None else '已设置'}, txt_smp={'None' if txt_smp is None else txt_smp}")
         system_logger.info(f"【ChatTTS】推理参数 - temperature={temperature}, top_P={top_P}, top_K={top_K}")
-        
+
         # 清理 GPU 缓存
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             gpu_mem_before = torch.cuda.memory_allocated() / 1024**3
             system_logger.info(f"【ChatTTS】GPU内存清理完成，当前使用: {gpu_mem_before:.2f}GB")
-        
+
         # 推理
         # 限制 temperature 最小值为 0.1（ChatTTS 不支持 temperature=0）
         safe_temperature = max(float(temperature), 0.1)
         if safe_temperature != float(temperature):
             system_logger.info(f"【ChatTTS】temperature 从 {temperature} 调整为 {safe_temperature}（最小值限制）")
-        
-        # 使用 spk_smp 时限制 max_new_token 以避免 OOM
-        max_new_token = 2048  # 默认值
-        if spk_smp is not None:
-            max_new_token = 1024  # 使用 spk_smp 时减少 token 数以节省显存
-            system_logger.info(f"【ChatTTS】使用 spk_smp，限制 max_new_token={max_new_token}")
-        
+
         params = chat.InferCodeParams(
             spk_emb=spk_emb,
-            spk_smp=spk_smp,
-            txt_smp=txt_smp,
             temperature=safe_temperature,
             top_P=float(top_P),
             top_K=int(top_K),
-            max_new_token=max_new_token,
         )
-        
+
         system_logger.info(f"【ChatTTS】开始推理...")
         infer_start = time.time()
         try:
-            # 使用 spk_smp 时需要设置 skip_refine_text=True
             wavs = chat.infer(
                 [text],
                 stream=False,
-                skip_refine_text=False,
-                split_text=False,
                 params_infer_code=params,
             )
+            system_logger.info(f"【ChatTTS】infer 返回成功")
+        except RecursionError as e:
+            system_logger.error(f"【ChatTTS】递归错误: {e}")
+            import traceback
+            system_logger.error(f"【ChatTTS】堆栈跟踪:\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"语音合成失败(递归错误): {str(e)[:100]}")
+        except ValueError as e:
+            if "need at least one array to concatenate" in str(e):
+                system_logger.error(f"【ChatTTS】生成结果为空: {e}")
+                raise HTTPException(status_code=500, detail="语音合成失败: 模型生成结果为空。请尝试：1. 提高temperature参数 2. 检查参考音频质量 3. 缩短文本长度")
+            raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)[:100]}")
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
                 system_logger.error(f"【ChatTTS】GPU内存不足: {e}")
@@ -1107,7 +1058,15 @@ async def tts_chattts(
                     torch.cuda.empty_cache()
                     system_logger.info(f"【ChatTTS】GPU内存已清理，请重试")
                 raise HTTPException(status_code=503, detail="GPU内存不足，请稍后重试")
-            raise
+            system_logger.error(f"【ChatTTS】RuntimeError: {e}")
+            import traceback
+            system_logger.error(f"【ChatTTS】堆栈跟踪:\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)[:100]}")
+        except Exception as e:
+            system_logger.error(f"【ChatTTS】未预期的错误: {type(e).__name__}: {e}")
+            import traceback
+            system_logger.error(f"【ChatTTS】堆栈跟踪:\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)[:100]}")
         infer_duration = time.time() - infer_start
         system_logger.info(f"【ChatTTS】推理完成，耗时: {infer_duration:.3f}s")
         
@@ -1125,7 +1084,7 @@ async def tts_chattts(
         
         if wav_length == 0:
             system_logger.error(f"【ChatTTS】合成音频长度为0")
-            raise HTTPException(status_code=500, detail="语音合成失败: 音频长度为0")
+            raise HTTPException(status_code=500, detail="语音合成失败: 音频长度为0。建议：1. 提高temperature至0.5-0.7 2. 检查参考音频是否包含有效语音 3. 使用更短的文本测试")
         
         # 检查音频是否全为静音
         wav_max = np.abs(wavs[0]).max()

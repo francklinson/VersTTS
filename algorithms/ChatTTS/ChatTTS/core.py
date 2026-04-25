@@ -265,6 +265,13 @@ class Chat:
             for wavs in res_gen:
                 for wav in wavs:
                     stripped_wavs.append(wav[np.abs(wav) > thr])
+            # 处理空结果情况
+            if len(stripped_wavs) == 0:
+                self.logger.warning("生成结果为空，返回空音频数组")
+                if split_text:
+                    return [np.array([], dtype=np.float32)]
+                else:
+                    return [np.array([], dtype=np.float32)]
             if split_text:
                 return [np.concatenate(stripped_wavs)]
             return stripped_wavs

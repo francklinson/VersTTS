@@ -702,6 +702,7 @@ async def get_speakers():
                 "name": speaker["name"],
                 "created_at": speaker["created_at"],
                 "model_type": speaker.get("model_type", "chattts"),
+                "audio_path": speaker.get("audio_path"),  # 返回音频路径
                 "has_embedding": bool(speaker.get("embedding")),
                 "has_reference_text": bool(speaker.get("reference_text")),
                 "reference_text": speaker.get("reference_text", "")[:100] if speaker.get("reference_text") else ""  # 只返回前100字
@@ -1316,7 +1317,7 @@ async def tts_f5tts(
 async def tts_qwen3tts(
     text: str = Form(...),
     model_size: str = Form("1.7B"),
-    mode: str = Form("base"),
+    mode: str = Form("voice_clone"),
     speaker: Optional[str] = Form(None),
     ref_wav: Optional[UploadFile] = File(None),
     ref_text: Optional[str] = Form(None),
@@ -1329,7 +1330,6 @@ async def tts_qwen3tts(
     """Qwen3-TTS语音合成
     
     支持模式：
-    - base: 基础合成（使用默认参考音频）
     - voice_clone: 音色克隆（需要参考音频）
     - custom_voice: 预设音色（需要选择 speaker）
     - voice_design: 音色设计（需要 voice_design_prompt）
@@ -1339,7 +1339,6 @@ async def tts_qwen3tts(
 
         # 根据模式选择模型类型
         model_type_map = {
-            "base": "Base",
             "voice_clone": "Base",
             "custom_voice": "CustomVoice",
             "voice_design": "VoiceDesign"
@@ -1461,19 +1460,7 @@ async def tts_qwen3tts(
                 )
                 wav = wavs[0] if isinstance(wavs, list) else wavs
         else:
-            # 基础模式：使用默认参考音频进行voice_clone
-            default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
-            default_ref_text = "甚至出现交易几乎停滞的情况。"
-            
-            logger.info(f"基础模式：使用默认参考音频")
-            wavs, sr = tts.generate_voice_clone(
-                text=text,
-                language="Auto",
-                ref_audio=default_ref_audio,
-                ref_text=default_ref_text,
-                x_vector_only_mode=True  # 只使用音色特征
-            )
-            wav = wavs[0] if isinstance(wavs, list) else wavs
+            raise HTTPException(status_code=400, detail=f"不支持的模式: {mode}")
 
         # 保存音频
         audio_path = save_temp_audio(wav, sr)

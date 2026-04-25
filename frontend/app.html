@@ -679,9 +679,10 @@
 
         .options-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 15px;
             margin-bottom: 25px;
+            align-items: end;
         }
 
         .option-group {
@@ -702,6 +703,8 @@
             border-radius: 8px;
             font-size: 0.95rem;
             transition: border-color 0.3s;
+            height: 44px;
+            box-sizing: border-box;
         }
 
         select:focus, input:focus {
@@ -1993,27 +1996,34 @@
 
             <!-- Qwen3-TTS 选项 -->
             <div id="qwen3tts-options" class="model-options" style="display:none">
-                <div class="options-grid">
-                    <div class="option-group">
-                        <label>模型大小</label>
-                        <select id="qwen3tts-size" onchange="updateQwen3ModeBySize()">
+                <!-- 第一行：模型大小、模式、参考人声/预设音色、克隆模式 -->
+                <div style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 15px;">
+                    <div style="flex: 0 0 120px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #555; font-size: 0.9rem; line-height: 1.2;">模型大小</label>
+                        <select id="qwen3tts-size" onchange="updateQwen3ModeBySize()" style="width: 100%; height: 40px; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;">
                             <option value="1.7B">1.7B (推荐)</option>
                             <option value="0.6B">0.6B (轻量)</option>
                         </select>
                     </div>
-                    <div class="option-group">
-                        <label>模式</label>
-                        <select id="qwen3tts-mode" onchange="updateQwen3Options()">
-                            <option value="base">基础合成</option>
+                    <div style="flex: 0 0 120px;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #555; font-size: 0.9rem; line-height: 1.2;">模式</label>
+                        <select id="qwen3tts-mode" onchange="updateQwen3Options()" style="width: 100%; height: 40px; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;">
                             <option value="voice_clone">声音克隆</option>
                             <option value="custom_voice">预设音色</option>
                             <option value="voice_design">音色设计</option>
                         </select>
                     </div>
+                    <!-- 声音克隆相关选项（voice_clone 模式） -->
+                    <div id="qwen3tts-ref-voice-group" style="flex: 0 0 150px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #555; font-size: 0.9rem; line-height: 1.2;">参考人声</label>
+                        <select id="qwen3tts-reference-voice" onchange="selectReferenceVoice('qwen3tts')" style="width: 100%; height: 40px; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;">
+                            <option value="">-- 选择参考人声 --</option>
+                        </select>
+                    </div>
                     <!-- 预设音色选择（custom_voice 模式） -->
-                    <div class="option-group" id="qwen3tts-speaker-group" style="display:none">
-                        <label>预设音色</label>
-                        <select id="qwen3tts-speaker">
+                    <div id="qwen3tts-speaker-group" style="flex: 0 0 200px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #555; font-size: 0.9rem; line-height: 1.2;">预设音色</label>
+                        <select id="qwen3tts-speaker" style="width: 100%; height: 40px; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;">
                             <option value="Vivian">Vivian - 明亮女声（中文）</option>
                             <option value="Serena">Serena - 温暖女声（中文）</option>
                             <option value="Uncle_Fu">Uncle_Fu - 低沉男声（中文）</option>
@@ -2025,45 +2035,28 @@
                             <option value="Sohee">Sohee - 温暖女声（韩文）</option>
                         </select>
                     </div>
-                    <!-- 音色设计描述（voice_design 模式） -->
-                    <div class="option-group" id="qwen3tts-design-prompt-group" style="display:none; grid-column: 1 / -1;">
-                        <label>音色描述</label>
-                        <textarea id="qwen3tts-design-prompt" rows="3" placeholder="描述你想要的音色，例如：体现撒娇稚嫩的萝莉女声，音调偏高且起伏明显，营造出黏人、做作又刻意卖萌的听觉效果。"></textarea>
-                        <small style="color: #666; margin-top: 5px; display: block;">通过自然语言描述来设计独特的音色</small>
-                    </div>
-                    <!-- 指令控制（custom_voice 和 voice_design 模式） -->
-                    <div class="option-group" id="qwen3tts-instruct-group" style="display:none; grid-column: 1 / -1;">
-                        <label>指令控制（可选）</label>
-                        <input type="text" id="qwen3tts-instruct" placeholder="例如：用特别愤怒的语气说 / 非常开心地 / 悲伤地">
-                        <small style="color: #666; margin-top: 5px; display: block;">通过自然语言指令控制语音的情感和风格</small>
-                    </div>
-                    <!-- 声音克隆相关选项（voice_clone 模式） -->
-                    <div class="option-group" id="qwen3tts-ref-voice-group" style="display:none">
-                        <label>参考人声</label>
-                        <select id="qwen3tts-reference-voice" onchange="selectReferenceVoice('qwen3tts')">
-                            <option value="">-- 选择参考人声 --</option>
+                    <!-- 高级选项：克隆模式 -->
+                    <div id="qwen3tts-advanced-group" style="flex: 0 0 180px; display: none;">
+                        <label style="display: block; margin-bottom: 6px; font-weight: 500; color: #555; font-size: 0.9rem; line-height: 1.2;">克隆模式</label>
+                        <select id="qwen3tts-xvector-mode" style="width: 100%; height: 40px; padding: 8px 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 0.9rem; box-sizing: border-box;">
+                            <option value="false">ICL 模式（推荐）</option>
+                            <option value="true">纯嵌入（更快）</option>
                         </select>
                     </div>
-                    <div class="option-group" id="qwen3tts-ref-group" style="display:none; grid-column: 1 / -1;">
-                        <label>参考音频</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="file" id="qwen3tts-ref" accept="audio/*" style="flex: 1;">
-                            <button type="button" class="btn-preview" id="qwen3tts-preview-btn" onclick="previewReferenceVoice('qwen3tts')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
-                        </div>
-                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择参考人声</small>
-                    </div>
-                    <div class="option-group" id="qwen3tts-prompt-group" style="display:none">
-                        <label>参考文本</label>
-                        <input type="text" id="qwen3tts-prompt" placeholder="参考音频对应的文本">
-                    </div>
-                    <!-- 高级选项 -->
-                    <div class="option-group" id="qwen3tts-advanced-group" style="display:none;">
-                        <label>克隆模式</label>
-                        <select id="qwen3tts-xvector-mode">
-                            <option value="false">ICL 模式（推荐，质量更高）</option>
-                            <option value="true">纯说话人嵌入（速度更快）</option>
-                        </select>
-                    </div>
+                </div>
+
+                <!-- 音色设计描述（voice_design 模式） -->
+                <div class="option-group" id="qwen3tts-design-prompt-group" style="display:none; margin-top: 15px;">
+                    <label>音色描述</label>
+                    <textarea id="qwen3tts-design-prompt" rows="3" placeholder="描述你想要的音色，例如：体现撒娇稚嫩的萝莉女声，音调偏高且起伏明显，营造出黏人、做作又刻意卖萌的听觉效果。"></textarea>
+                    <small style="color: #666; margin-top: 5px; display: block;">通过自然语言描述来设计独特的音色</small>
+                </div>
+
+                <!-- 指令控制（custom_voice 和 voice_design 模式） -->
+                <div class="option-group" id="qwen3tts-instruct-group" style="display:none; margin-top: 15px;">
+                    <label>指令控制（可选）</label>
+                    <input type="text" id="qwen3tts-instruct" placeholder="例如：用特别愤怒的语气说 / 非常开心地 / 悲伤地" style="width: 100%;">
+                    <small style="color: #666; margin-top: 5px; display: block;">通过自然语言指令控制语音的情感和风格</small>
                 </div>
             </div>
 
@@ -2284,7 +2277,7 @@
                         .filter(s => s.audio_path)  // 只保留有音频文件的
                         .map(s => ({
                             id: `speaker_${s.id}`,
-                            name: `[我的] ${s.name}`,
+                            name: s.name,
                             category: 'my_speakers',
                             gender: 'unknown',
                             duration: 0,
@@ -2358,36 +2351,58 @@
             const select = document.getElementById(`${model}-reference-voice`);
             const previewBtn = document.getElementById(`${model}-preview-btn`);
             const voiceId = select.value;
-            
+
+            // 获取参考音频输入框（如果存在）
+            const refAudioInput = document.getElementById(`${model}-ref`) ||
+                                 document.getElementById(`${model}-prompt-wav`);
+
             if (voiceId) {
                 const voice = referenceVoices.find(v => v.id === voiceId);
                 if (voice) {
                     selectedVoiceAudio[model] = voice.audio_url;
-                    
+
                     // 显示预览按钮
                     if (previewBtn) {
                         previewBtn.style.display = 'inline-block';
                     }
-                    
-                    // 如果该模型需要参考文本，自动填充
-                    const textInput = document.getElementById(`${model}-prompt-text`) || 
-                                     document.getElementById(`${model}-ref-text`) ||
-                                     document.getElementById(`${model}-prompt`);
-                    // 优先使用 reference_text，其次是 text
-                    const refText = voice.reference_text || voice.text || '';
-                    if (textInput && refText) {
-                        textInput.value = refText;
-                        
-                        // 如果是说话人，显示提示
-                        if (voice.is_speaker) {
-                            showStatus(`已选择"${voice.name.replace('[我的] ', '')}"作为参考人声，参考文本已自动填充`, false, 3000);
+
+                    // 禁用参考音频输入框
+                    if (refAudioInput) {
+                        refAudioInput.disabled = true;
+                        refAudioInput.style.opacity = '0.6';
+                        refAudioInput.style.cursor = 'not-allowed';
+                        refAudioInput.title = '已选择参考人声，如需上传音频请先取消人声选择';
+                    }
+
+                    // 如果该模型需要参考文本，自动填充（排除已删除控件的模型）
+                    if (model !== 'qwen3tts') {
+                        const textInput = document.getElementById(`${model}-prompt-text`) ||
+                                         document.getElementById(`${model}-ref-text`) ||
+                                         document.getElementById(`${model}-prompt`);
+                        // 优先使用 reference_text，其次是 text
+                        const refText = voice.reference_text || voice.text || '';
+                        if (textInput && refText) {
+                            textInput.value = refText;
                         }
+                    }
+
+                    // 如果是说话人，显示提示
+                    if (voice.is_speaker) {
+                        showStatus(`已选择"${voice.name}"作为参考人声`, false, 3000);
                     }
                 }
             } else {
                 selectedVoiceAudio[model] = null;
                 if (previewBtn) {
                     previewBtn.style.display = 'none';
+                }
+
+                // 启用参考音频输入框
+                if (refAudioInput) {
+                    refAudioInput.disabled = false;
+                    refAudioInput.style.opacity = '1';
+                    refAudioInput.style.cursor = 'pointer';
+                    refAudioInput.title = '';
                 }
             }
         }
@@ -2504,10 +2519,10 @@
             const isVoiceDesign = mode === 'voice_design';
             const is06B = modelSize === '0.6B';
 
-            // 声音克隆相关选项
+            // 第一行：模型大小、模式、参考人声、克隆模式
+            // 参考人声（声音克隆模式显示）
             document.getElementById('qwen3tts-ref-voice-group').style.display = isClone ? 'block' : 'none';
-            document.getElementById('qwen3tts-ref-group').style.display = isClone ? 'block' : 'none';
-            document.getElementById('qwen3tts-prompt-group').style.display = isClone ? 'block' : 'none';
+            // 克隆模式（声音克隆模式显示）
             document.getElementById('qwen3tts-advanced-group').style.display = isClone ? 'block' : 'none';
 
             // 预设音色选项
@@ -2543,12 +2558,6 @@
 
             // 清空选项
             modeSelect.innerHTML = '';
-
-            // 基础选项始终可用
-            const baseOption = document.createElement('option');
-            baseOption.value = 'base';
-            baseOption.textContent = '基础合成';
-            modeSelect.appendChild(baseOption);
 
             // 声音克隆选项始终可用
             const cloneOption = document.createElement('option');
@@ -2739,23 +2748,30 @@
                         formData.append('mode', qwenMode);
 
                         if (qwenMode === 'voice_clone') {
-                            const qwenRef = document.getElementById('qwen3tts-ref').files[0];
-                            if (qwenRef) {
-                                formData.append('ref_wav', qwenRef);
-                            } else if (selectedVoiceAudio['qwen3tts']) {
-                                // 使用内置人声
-                                try {
-                                    const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['qwen3tts']}`);
-                                    const voiceBlob = await voiceResponse.blob();
-                                    formData.append('ref_wav', voiceBlob, 'reference.wav');
-                                } catch (e) {
-                                    showStatus('加载内置人声失败', true);
-                                    btn.innerHTML = originalContent;
-                                    btn.disabled = false;
-                                    return;
-                                }
+                            // 必须使用参考人声
+                            if (!selectedVoiceAudio['qwen3tts']) {
+                                showStatus('请先选择参考人声', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
                             }
-                            formData.append('ref_text', document.getElementById('qwen3tts-prompt').value);
+                            // 使用选择的参考人声
+                            try {
+                                const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['qwen3tts']}`);
+                                const voiceBlob = await voiceResponse.blob();
+                                formData.append('ref_wav', voiceBlob, 'reference.wav');
+                            } catch (e) {
+                                showStatus('加载参考人声失败', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
+                            }
+                            // 获取参考文本（从选择的参考人声或输入框）
+                            const selectedVoice = referenceVoices.find(v => v.id === document.getElementById('qwen3tts-reference-voice').value);
+                            const refText = selectedVoice?.reference_text || selectedVoice?.text || '';
+                            if (refText) {
+                                formData.append('ref_text', refText);
+                            }
                             // 添加克隆模式选择
                             const xvectorMode = document.getElementById('qwen3tts-xvector-mode').value;
                             formData.append('x_vector_only_mode', xvectorMode === 'true');

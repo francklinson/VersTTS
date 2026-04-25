@@ -1,0 +1,83 @@
+# VersTTS - 统一语音合成平台依赖
+# Python 3.10+ required
+
+# ========== Web框架 ==========
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+pydantic>=2.0.0
+
+# ========== 深度学习框架 ==========
+torch>=2.0.0
+torchaudio>=2.0.0
+accelerate>=0.27.0
+transformers>=4.38.0
+diffusers>=0.26.0
+einops>=0.7.0
+
+# ========== 音频处理 ==========
+librosa>=0.10.0
+soundfile>=0.12.0
+ffmpeg-python>=0.2.0
+pydub>=0.25.0
+audioread>=3.0.0
+
+# ========== 数据处理 ==========
+numpy>=1.24.0
+scipy>=1.12.0
+pandas>=2.0.0
+datasets>=2.16.0
+
+# ========== 模型库 ==========
+huggingface-hub>=0.20.0
+safetensors>=0.4.0
+omegaconf>=2.3.0
+hydra-core>=1.3.0
+
+# ========== GPT-SoVITS相关 ==========
+pytorch-lightning>=2.2.0
+peft>=0.8.0
+funasr>=1.0.0
+onnxruntime-gpu>=1.17.0
+
+# ========== ChatTTS相关 ==========
+chattts>=0.0.0
+vocos>=0.1.0
+encodec>=0.1.1
+vector-quantize-pytorch>=1.14.0
+
+# ========== CosyVoice相关 ==========
+hyperpyyaml>=1.2.0
+matcha-tts>=0.0.0
+
+# ========== F5-TTS相关 ==========
+f5-tts>=1.0.0
+ema-pytorch>=0.5.0
+
+# ========== OpenVoice相关 ==========
+pyworld>=0.3.0
+praat-parselmouth>=0.4.0
+
+# ========== Qwen3-TTS相关 ==========
+flash-attn>=2.5.0
+auto-gptq>=0.7.0
+
+# ========== 工具库 ==========
+tqdm>=4.66.0
+pyyaml>=6.0.1
+requests>=2.31.0
+wget>=3.2
+jieba>=0.42.0
+pypinyin>=0.50.0
+opencc-python-reimplemented>=0.1.7
+cn2an>=0.5.22
+numba>=0.59.0
+
+# ========== 日志与监控 ==========
+loguru>=0.7.0
+psutil>=5.9.0
+
+# ========== 开发工具 (可选) ==========
+# pytest>=8.0.0
+# black>=24.0.0
+# ruff>=0.2.0

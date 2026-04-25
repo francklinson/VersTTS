@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VersTTS - 统一语音合成平台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .model-card {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .model-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+        }
+
+        .model-card.active {
+            border: 3px solid #667eea;
+        }
+
+        .model-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .model-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 15px;
+        }
+
+        .chattts { background: #e3f2fd; }
+        .cosyvoice { background: #f3e5f5; }
+        .f5tts { background: #e8f5e9; }
+        .qwen3tts { background: #fff3e0; }
+        .openvoice { background: #fce4ec; }
+        .gptsovits { background: #e0f7fa; }
+
+        .model-info h3 {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .model-info p {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .btn-select {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .btn-select {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-select:hover {
+            background: #5a67d8;
+        }
+
+        .main-interface {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .input-section {
+            margin-bottom: 25px;
+        }
+
+        .input-section label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 120px;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .option-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .option-group label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        select, input[type="file"], input[type="number"], input[type="text"] {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.3s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-generate {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .result-section h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .audio-player {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .btn-download {
+            padding: 12px 25px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-download:hover {
+            background: #38a169;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-message.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+
+        .status-message.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+
+        .model-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        .health-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .health-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .health-dot.online { background: #48bb78; }
+        .health-dot.offline { background: #f56565; }
+
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.8rem; }
+            .models-grid { grid-template-columns: 1fr; }
+            .options-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="health-status">
+        <span class="health-dot" id="healthDot"></span>
+        <span id="healthText">检查中...</span>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>🎙️ VersTTS</h1>
+            <p>统一语音合成平台 - 支持多种TTS模型</p>
+        </header>
+
+        <div class="models-grid">
+            <div class="model-card" data-model="chattts">
+                <div class="model-header">
+                    <div class="model-icon chattts">💬</div>
+                    <div class="model-info">
+                        <h3>ChatTTS</h3>
+                        <p>开源对话式TTS，支持情感表达</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('chattts')">选择</button>
+            </div>
+
+            <div class="model-card" data-model="cosyvoice">
+                <div class="model-header">
+                    <div class="model-icon cosyvoice">🎵</div>
+                    <div class="model-info">
+                        <h3>CosyVoice</h3>
+                        <p>阿里开源，支持多语言和声音克隆</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('cosyvoice')">选择</button>
+            </div>
+
+            <div class="model-card" data-model="f5tts">
+                <div class="model-header">
+                    <div class="model-icon f5tts">⚡</div>
+                    <div class="model-info">
+                        <h3>F5-TTS</h3>
+                        <p>高效流匹配TTS，快速推理</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('f5tts')">选择</button>
+            </div>
+
+            <div class="model-card" data-model="qwen3tts">
+                <div class="model-header">
+                    <div class="model-icon qwen3tts">🤖</div>
+                    <div class="model-info">
+                        <h3>Qwen3-TTS</h3>
+                        <p>通义千问TTS，强大的语音克隆</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('qwen3tts')">选择</button>
+            </div>
+
+            <div class="model-card" data-model="openvoice">
+                <div class="model-header">
+                    <div class="model-icon openvoice">🎤</div>
+                    <div class="model-info">
+                        <h3>OpenVoice</h3>
+                        <p>即时声音克隆，多语言支持</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('openvoice')">选择</button>
+            </div>
+
+            <div class="model-card" data-model="gptsovits">
+                <div class="model-header">
+                    <div class="model-icon gptsovits">🗣️</div>
+                    <div class="model-info">
+                        <h3>GPT-SoVITS</h3>
+                        <p>高质量声音克隆，少样本学习</p>
+                    </div>
+                </div>
+                <button class="btn-select" onclick="selectModel('gptsovits')">选择</button>
+            </div>
+        </div>
+
+        <div class="main-interface">
+            <div class="status-message" id="statusMessage"></div>
+
+            <div class="input-section">
+                <label for="textInput">输入文本</label>
+                <textarea id="textInput" placeholder="请输入要合成的文本...&#10;支持中英文，部分模型支持特殊情感标签如 [laughter] 等"></textarea>
+            </div>
+
+            <!-- ChatTTS 选项 -->
+            <div id="chattts-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>温度</label>
+                        <input type="number" id="chattts-temp" value="0.3" min="0" max="1" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>Top P</label>
+                        <input type="number" id="chattts-topp" value="0.7" min="0" max="1" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>Top K</label>
+                        <input type="number" id="chattts-topk" value="20" min="1" max="100">
+                    </div>
+                </div>
+            </div>
+
+            <!-- CosyVoice 选项 -->
+            <div id="cosyvoice-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>模式</label>
+                        <select id="cosyvoice-mode" onchange="updateCosyVoiceOptions()">
+                            <option value="sft">SFT (预训练音色)</option>
+                            <option value="zero_shot">Zero-shot (声音克隆)</option>
+                            <option value="cross_lingual">跨语言</option>
+                            <option value="instruct">指令控制</option>
+                        </select>
+                    </div>
+                    <div class="option-group" id="cosyvoice-speaker-group">
+                        <label>说话人</label>
+                        <select id="cosyvoice-speaker">
+                            <option value="中文女">中文女</option>
+                            <option value="中文男">中文男</option>
+                            <option value="英文女">英文女</option>
+                            <option value="英文男">英文男</option>
+                        </select>
+                    </div>
+                    <div class="option-group" id="cosyvoice-ref-voice-group" style="display:none">
+                        <label>内置参考人声</label>
+                        <select id="cosyvoice-reference-voice" onchange="selectReferenceVoice('cosyvoice')">
+                            <option value="">-- 选择内置人声 --</option>
+                        </select>
+                    </div>
+                    <div class="option-group" id="cosyvoice-ref-group" style="display:none; grid-column: 1 / -1;">
+                        <label>参考音频</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="file" id="cosyvoice-ref" accept="audio/*" style="flex: 1;">
+                            <button type="button" class="btn-preview" id="cosyvoice-preview-btn" onclick="previewReferenceVoice('cosyvoice')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                    </div>
+                    <div class="option-group" id="cosyvoice-prompt-group" style="display:none">
+                        <label>参考文本</label>
+                        <input type="text" id="cosyvoice-prompt" placeholder="参考音频对应的文本">
+                    </div>
+                    <div class="option-group" id="cosyvoice-instruct-group" style="display:none">
+                        <label>指令文本</label>
+                        <input type="text" id="cosyvoice-instruct" placeholder="如：用开心的语气说话">
+                    </div>
+                </div>
+            </div>
+
+            <!-- F5-TTS 选项 -->
+            <div id="f5tts-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>内置参考人声</label>
+                        <select id="f5tts-reference-voice" onchange="selectReferenceVoice('f5tts')">
+                            <option value="">-- 选择内置人声 --</option>
+                        </select>
+                    </div>
+                    <div class="option-group" style="grid-column: 1 / -1;">
+                        <label>参考音频 *</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="file" id="f5tts-ref" accept="audio/*" style="flex: 1;">
+                            <button type="button" class="btn-preview" id="f5tts-preview-btn" onclick="previewReferenceVoice('f5tts')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                    </div>
+                    <div class="option-group">
+                        <label>参考文本 *</label>
+                        <input type="text" id="f5tts-ref-text" placeholder="参考音频对应的文本" required>
+                    </div>
+                    <div class="option-group">
+                        <label>NFE步数</label>
+                        <input type="number" id="f5tts-nfe" value="32" min="1" max="100">
+                    </div>
+                    <div class="option-group">
+                        <label>CFG强度</label>
+                        <input type="number" id="f5tts-cfg" value="2" min="0" max="10" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>语速</label>
+                        <input type="number" id="f5tts-speed" value="1" min="0.5" max="2" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Qwen3-TTS 选项 -->
+            <div id="qwen3tts-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>模型大小</label>
+                        <select id="qwen3tts-size">
+                            <option value="1.7B">1.7B (推荐)</option>
+                            <option value="0.6B">0.6B (轻量)</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>模式</label>
+                        <select id="qwen3tts-mode" onchange="updateQwen3Options()">
+                            <option value="base">基础合成</option>
+                            <option value="voice_clone">声音克隆</option>
+                        </select>
+                    </div>
+                    <div class="option-group" id="qwen3tts-ref-voice-group" style="display:none">
+                        <label>内置参考人声</label>
+                        <select id="qwen3tts-reference-voice" onchange="selectReferenceVoice('qwen3tts')">
+                            <option value="">-- 选择内置人声 --</option>
+                        </select>
+                    </div>
+                    <div class="option-group" id="qwen3tts-ref-group" style="display:none; grid-column: 1 / -1;">
+                        <label>参考音频</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="file" id="qwen3tts-ref" accept="audio/*" style="flex: 1;">
+                            <button type="button" class="btn-preview" id="qwen3tts-preview-btn" onclick="previewReferenceVoice('qwen3tts')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                    </div>
+                    <div class="option-group" id="qwen3tts-prompt-group" style="display:none">
+                        <label>参考文本</label>
+                        <input type="text" id="qwen3tts-prompt" placeholder="参考音频对应的文本">
+                    </div>
+                </div>
+            </div>
+
+            <!-- OpenVoice 选项 -->
+            <div id="openvoice-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>语言</label>
+                        <select id="openvoice-lang">
+                            <option value="zh">中文</option>
+                            <option value="en">英文</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>风格</label>
+                        <select id="openvoice-style">
+                            <option value="default">默认</option>
+                            <option value="whispering">低语</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>语速</label>
+                        <input type="number" id="openvoice-speed" value="1" min="0.5" max="2" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>内置参考人声</label>
+                        <select id="openvoice-reference-voice" onchange="selectReferenceVoice('openvoice')">
+                            <option value="">-- 选择内置人声 --</option>
+                        </select>
+                    </div>
+                    <div class="option-group" style="grid-column: 1 / -1;">
+                        <label>参考音频 (可选)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="file" id="openvoice-ref" accept="audio/*" style="flex: 1;">
+                            <button type="button" class="btn-preview" id="openvoice-preview-btn" onclick="previewReferenceVoice('openvoice')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GPT-SoVITS 选项 -->
+            <div id="gptsovits-options" class="model-options" style="display:none">
+                <div class="options-grid">
+                    <div class="option-group">
+                        <label>文本语言 *</label>
+                        <select id="gptsovits-text-lang">
+                            <option value="zh">中文</option>
+                            <option value="en">英文</option>
+                            <option value="ja">日语</option>
+                            <option value="ko">韩语</option>
+                            <option value="yue">粤语</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>参考音频语言 *</label>
+                        <select id="gptsovits-prompt-lang">
+                            <option value="zh">中文</option>
+                            <option value="en">英文</option>
+                            <option value="ja">日语</option>
+                            <option value="ko">韩语</option>
+                            <option value="yue">粤语</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>模型版本</label>
+                        <select id="gptsovits-version">
+                            <option value="v2">V2 (推荐)</option>
+                            <option value="v1">V1</option>
+                            <option value="v3">V3</option>
+                            <option value="v4">V4</option>
+                            <option value="v2Pro">V2Pro</option>
+                            <option value="v2ProPlus">V2ProPlus</option>
+                        </select>
+                    </div>
+                    <div class="option-group">
+                        <label>内置参考人声</label>
+                        <select id="gptsovits-reference-voice" onchange="selectReferenceVoice('gptsovits')">
+                            <option value="">-- 选择内置人声 --</option>
+                        </select>
+                    </div>
+                    <div class="option-group" style="grid-column: 1 / -1;">
+                        <label>参考音频 *</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="file" id="gptsovits-prompt-wav" accept="audio/*" style="flex: 1;">
+                            <button type="button" class="btn-preview" id="gptsovits-preview-btn" onclick="previewReferenceVoice('gptsovits')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
+                        </div>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                    </div>
+                    <div class="option-group" style="grid-column: 1 / -1;">
+                        <label>参考音频文本 *</label>
+                        <input type="text" id="gptsovits-prompt-text" placeholder="请输入参考音频对应的文本内容" required>
+                    </div>
+                    <div class="option-group">
+                        <label>Top K</label>
+                        <input type="number" id="gptsovits-topk" value="15" min="1" max="100">
+                    </div>
+                    <div class="option-group">
+                        <label>Top P</label>
+                        <input type="number" id="gptsovits-topp" value="1" min="0" max="1" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>温度</label>
+                        <input type="number" id="gptsovits-temp" value="1" min="0" max="2" step="0.1">
+                    </div>
+                    <div class="option-group">
+                        <label>语速</label>
+                        <input type="number" id="gptsovits-speed" value="1" min="0.5" max="2" step="0.1">
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-generate" id="generateBtn" onclick="generateTTS()">
+                <span>🎙️ 生成语音</span>
+            </button>
+
+            <div class="result-section" id="resultSection" style="display:none">
+                <h3>🎵 合成结果</h3>
+                <span class="model-badge" id="modelBadge"></span>
+                <audio class="audio-player" id="audioPlayer" controls></audio>
+                <a class="btn-download" id="downloadBtn" download>📥 下载音频</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let currentModel = 'chattts';
+        let referenceVoices = []; // 存储参考人声列表
+        let selectedVoiceAudio = {}; // 存储选择的内置人声音频URL
+
+        // 加载参考人声列表
+        async function loadReferenceVoices() {
+            try {
+                const response = await fetch(`${API_BASE}/reference_voices`);
+                const data = await response.json();
+                if (data.success) {
+                    referenceVoices = data.voices;
+                    populateReferenceVoiceSelects();
+                }
+            } catch (e) {
+                console.error('加载参考人声失败:', e);
+            }
+        }
+
+        // 填充参考人声下拉框
+        function populateReferenceVoiceSelects() {
+            const models = ['cosyvoice', 'f5tts', 'qwen3tts', 'openvoice', 'gptsovits'];
+            
+            models.forEach(model => {
+                const select = document.getElementById(`${model}-reference-voice`);
+                if (select) {
+                    // 保留第一个选项
+                    const firstOption = select.options[0];
+                    select.innerHTML = '';
+                    select.appendChild(firstOption);
+                    
+                    // 添加参考人声选项
+                    referenceVoices.forEach(voice => {
+                        // 检查该人声是否兼容当前模型
+                        if (voice.compatible_models && voice.compatible_models[model]) {
+                            const option = document.createElement('option');
+                            option.value = voice.id;
+                            option.textContent = `${voice.name} (${voice.gender === 'male' ? '男' : '女'}, ${voice.duration}s)`;
+                            option.dataset.audioUrl = voice.audio_url;
+                            option.dataset.text = voice.text;
+                            select.appendChild(option);
+                        }
+                    });
+                }
+            });
+        }
+
+        // 选择参考人声
+        function selectReferenceVoice(model) {
+            const select = document.getElementById(`${model}-reference-voice`);
+            const previewBtn = document.getElementById(`${model}-preview-btn`);
+            const voiceId = select.value;
+            
+            if (voiceId) {
+                const voice = referenceVoices.find(v => v.id === voiceId);
+                if (voice) {
+                    selectedVoiceAudio[model] = voice.audio_url;
+                    
+                    // 显示预览按钮
+                    if (previewBtn) {
+                        previewBtn.style.display = 'inline-block';
+                    }
+                    
+                    // 如果该模型需要参考文本，自动填充
+                    const textInput = document.getElementById(`${model}-prompt-text`) || 
+                                     document.getElementById(`${model}-ref-text`) ||
+                                     document.getElementById(`${model}-prompt`);
+                    if (textInput && voice.text) {
+                        textInput.value = voice.text;
+                    }
+                }
+            } else {
+                selectedVoiceAudio[model] = null;
+                if (previewBtn) {
+                    previewBtn.style.display = 'none';
+                }
+            }
+        }
+
+        // 预览参考人声
+        function previewReferenceVoice(model) {
+            const audioUrl = selectedVoiceAudio[model];
+            if (audioUrl) {
+                const audio = new Audio(`${API_BASE}${audioUrl}`);
+                audio.play();
+            }
+        }
+
+        // 检查服务健康状态
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                const dot = document.getElementById('healthDot');
+                const text = document.getElementById('healthText');
+
+                if (data.status === 'healthy') {
+                    dot.className = 'health-dot online';
+                    text.textContent = '服务在线';
+                } else {
+                    dot.className = 'health-dot offline';
+                    text.textContent = '服务异常';
+                }
+            } catch (e) {
+                document.getElementById('healthDot').className = 'health-dot offline';
+                document.getElementById('healthText').textContent = '离线';
+            }
+        }
+
+        // 选择模型
+        function selectModel(model) {
+            currentModel = model;
+
+            // 更新卡片样式
+            document.querySelectorAll('.model-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            document.querySelector(`[data-model="${model}"]`).classList.add('active');
+
+            // 显示对应选项
+            document.querySelectorAll('.model-options').forEach(opt => {
+                opt.style.display = 'none';
+            });
+            document.getElementById(`${model}-options`).style.display = 'block';
+        }
+
+        // 更新CosyVoice选项显示
+        function updateCosyVoiceOptions() {
+            const mode = document.getElementById('cosyvoice-mode').value;
+            const isClone = mode === 'zero_shot' || mode === 'cross_lingual';
+            const isInstruct = mode === 'instruct';
+
+            document.getElementById('cosyvoice-speaker-group').style.display = isClone || isInstruct ? 'none' : 'block';
+            document.getElementById('cosyvoice-ref-voice-group').style.display = isClone ? 'block' : 'none';
+            document.getElementById('cosyvoice-ref-group').style.display = isClone ? 'block' : 'none';
+            document.getElementById('cosyvoice-prompt-group').style.display = mode === 'zero_shot' ? 'block' : 'none';
+            document.getElementById('cosyvoice-instruct-group').style.display = isInstruct ? 'block' : 'none';
+        }
+
+        // 更新Qwen3-TTS选项显示
+        function updateQwen3Options() {
+            const mode = document.getElementById('qwen3tts-mode').value;
+            const isClone = mode === 'voice_clone';
+
+            document.getElementById('qwen3tts-ref-voice-group').style.display = isClone ? 'block' : 'none';
+            document.getElementById('qwen3tts-ref-group').style.display = isClone ? 'block' : 'none';
+            document.getElementById('qwen3tts-prompt-group').style.display = isClone ? 'block' : 'none';
+        }
+
+        // 显示状态消息
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${isError ? 'error' : 'success'}`;
+            statusEl.style.display = 'block';
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // 生成语音
+        async function generateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            if (!text) {
+                showStatus('请输入要合成的文本', true);
+                return;
+            }
+
+            const btn = document.getElementById('generateBtn');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<div class="spinner"></div><span>合成中...</span>';
+            btn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('output_format', 'url');
+
+                // 根据模型添加特定参数
+                switch(currentModel) {
+                    case 'chattts':
+                        formData.append('temperature', document.getElementById('chattts-temp').value);
+                        formData.append('top_P', document.getElementById('chattts-topp').value);
+                        formData.append('top_K', document.getElementById('chattts-topk').value);
+                        break;
+
+                    case 'cosyvoice':
+                        const cvMode = document.getElementById('cosyvoice-mode').value;
+                        formData.append('mode', cvMode);
+                        formData.append('speaker', document.getElementById('cosyvoice-speaker').value);
+
+                        if (cvMode === 'zero_shot' || cvMode === 'cross_lingual') {
+                            const refFile = document.getElementById('cosyvoice-ref').files[0];
+                            if (refFile) {
+                                formData.append('prompt_wav', refFile);
+                            } else if (selectedVoiceAudio['cosyvoice']) {
+                                // 使用内置人声
+                                try {
+                                    const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['cosyvoice']}`);
+                                    const voiceBlob = await voiceResponse.blob();
+                                    formData.append('prompt_wav', voiceBlob, 'reference.wav');
+                                } catch (e) {
+                                    showStatus('加载内置人声失败', true);
+                                    btn.innerHTML = originalContent;
+                                    btn.disabled = false;
+                                    return;
+                                }
+                            }
+                            if (cvMode === 'zero_shot') {
+                                formData.append('prompt_text', document.getElementById('cosyvoice-prompt').value);
+                            }
+                        }
+                        if (cvMode === 'instruct') {
+                            formData.append('instruct_text', document.getElementById('cosyvoice-instruct').value);
+                        }
+                        break;
+
+                    case 'f5tts':
+                        formData.append('ref_text', document.getElementById('f5tts-ref-text').value);
+                        formData.append('nfe_step', document.getElementById('f5tts-nfe').value);
+                        formData.append('cfg_strength', document.getElementById('f5tts-cfg').value);
+                        formData.append('speed', document.getElementById('f5tts-speed').value);
+
+                        const f5Ref = document.getElementById('f5tts-ref').files[0];
+                        if (f5Ref) {
+                            formData.append('ref_wav', f5Ref);
+                        } else if (selectedVoiceAudio['f5tts']) {
+                            // 使用内置人声
+                            try {
+                                const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['f5tts']}`);
+                                const voiceBlob = await voiceResponse.blob();
+                                formData.append('ref_wav', voiceBlob, 'reference.wav');
+                            } catch (e) {
+                                showStatus('加载内置人声失败', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
+                            }
+                        }
+                        break;
+
+                    case 'qwen3tts':
+                        formData.append('model_size', document.getElementById('qwen3tts-size').value);
+                        formData.append('mode', document.getElementById('qwen3tts-mode').value);
+
+                        if (document.getElementById('qwen3tts-mode').value === 'voice_clone') {
+                            const qwenRef = document.getElementById('qwen3tts-ref').files[0];
+                            if (qwenRef) {
+                                formData.append('ref_wav', qwenRef);
+                            } else if (selectedVoiceAudio['qwen3tts']) {
+                                // 使用内置人声
+                                try {
+                                    const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['qwen3tts']}`);
+                                    const voiceBlob = await voiceResponse.blob();
+                                    formData.append('ref_wav', voiceBlob, 'reference.wav');
+                                } catch (e) {
+                                    showStatus('加载内置人声失败', true);
+                                    btn.innerHTML = originalContent;
+                                    btn.disabled = false;
+                                    return;
+                                }
+                            }
+                            formData.append('ref_text', document.getElementById('qwen3tts-prompt').value);
+                        }
+                        break;
+
+                    case 'openvoice':
+                        formData.append('language', document.getElementById('openvoice-lang').value);
+                        formData.append('style', document.getElementById('openvoice-style').value);
+                        formData.append('speed', document.getElementById('openvoice-speed').value);
+
+                        const ovRef = document.getElementById('openvoice-ref').files[0];
+                        if (ovRef) {
+                            formData.append('ref_wav', ovRef);
+                        } else if (selectedVoiceAudio['openvoice']) {
+                            // 使用内置人声
+                            try {
+                                const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['openvoice']}`);
+                                const voiceBlob = await voiceResponse.blob();
+                                formData.append('ref_wav', voiceBlob, 'reference.wav');
+                            } catch (e) {
+                                showStatus('加载内置人声失败', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
+                            }
+                        }
+                        break;
+
+                    case 'gptsovits':
+                        formData.append('text_lang', document.getElementById('gptsovits-text-lang').value);
+                        formData.append('prompt_lang', document.getElementById('gptsovits-prompt-lang').value);
+                        formData.append('prompt_text', document.getElementById('gptsovits-prompt-text').value);
+                        formData.append('version', document.getElementById('gptsovits-version').value);
+                        formData.append('top_k', document.getElementById('gptsovits-topk').value);
+                        formData.append('top_p', document.getElementById('gptsovits-topp').value);
+                        formData.append('temperature', document.getElementById('gptsovits-temp').value);
+                        formData.append('speed_factor', document.getElementById('gptsovits-speed').value);
+
+                        const gptsovitsRef = document.getElementById('gptsovits-prompt-wav').files[0];
+                        if (gptsovitsRef) {
+                            formData.append('prompt_wav', gptsovitsRef);
+                        } else if (selectedVoiceAudio['gptsovits']) {
+                            // 使用内置人声
+                            try {
+                                const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['gptsovits']}`);
+                                const voiceBlob = await voiceResponse.blob();
+                                formData.append('prompt_wav', voiceBlob, 'reference.wav');
+                            } catch (e) {
+                                showStatus('加载内置人声失败', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
+                            }
+                        } else {
+                            showStatus('GPT-SoVITS需要提供参考音频或选择内置人声', true);
+                            btn.innerHTML = originalContent;
+                            btn.disabled = false;
+                            return;
+                        }
+
+                        // 验证参考文本
+                        const promptText = document.getElementById('gptsovits-prompt-text').value.trim();
+                        if (!promptText) {
+                            showStatus('请输入参考音频对应的文本', true);
+                            btn.innerHTML = originalContent;
+                            btn.disabled = false;
+                            return;
+                        }
+                        break;
+                }
+
+                const response = await fetch(`${API_BASE}/tts/${currentModel}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const audioUrl = data.audio_url.startsWith('http') ? data.audio_url : `${API_BASE}${data.audio_url}`;
+                    document.getElementById('audioPlayer').src = audioUrl;
+                    document.getElementById('downloadBtn').href = audioUrl;
+
+                    const modelNames = {
+                        'chattts': 'ChatTTS',
+                        'cosyvoice': 'CosyVoice',
+                        'f5tts': 'F5-TTS',
+                        'qwen3tts': 'Qwen3-TTS',
+                        'openvoice': 'OpenVoice',
+                        'gptsovits': 'GPT-SoVITS'
+                    };
+                    document.getElementById('modelBadge').textContent = modelNames[currentModel];
+                    document.getElementById('resultSection').style.display = 'block';
+
+                    showStatus('语音合成成功！');
+                } else {
+                    showStatus(data.message || '合成失败', true);
+                }
+            } catch (error) {
+                console.error(error);
+                showStatus('请求失败: ' + error.message, true);
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            checkHealth();
+            setInterval(checkHealth, 30000); // 每30秒检查一次
+            selectModel('chattts'); // 默认选择ChatTTS
+            loadReferenceVoices(); // 加载参考人声列表
+        });
+    </script>
+</body>
+</html>

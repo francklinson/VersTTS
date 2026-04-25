@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model files (large files)
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.pt
+*.onnx
+
+# Audio outputs
+output/
+*.wav
+*.mp3
+*.ogg
+!reference_audio/**/*.wav
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Model cache
+.cache/
+models/
+pretrained_models/
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Data
+data/
+datasets/
+
+# Keep directory structure
+!.gitkeep

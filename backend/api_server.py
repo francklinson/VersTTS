@@ -461,10 +461,16 @@ def audio_to_base64(audio_path: str) -> str:
 
 @app.get("/")
 async def root(request: Request):
-    """根路径"""
+    """根路径 - 返回前端页面"""
     client_ip = request.client.host if request.client else "unknown"
     OperationLogger.log_api_request("/", "GET", {}, client_ip, 0)
     
+    # 返回前端页面
+    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "index.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    
+    # 如果前端文件不存在，返回API信息
     return {
         "name": "VersTTS API",
         "version": "1.2.0",
@@ -1345,19 +1351,9 @@ async def get_audio(filename: str):
     return FileResponse(file_path, media_type="audio/wav")
 
 # 挂载前端静态文件 - 使用frontend目录作为静态文件根目录
-# 并添加一个专门的前端路由
-@app.get("/app", response_class=FileResponse)
-async def serve_frontend():
-    """提供前端界面"""
-    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "index.html")
-    if os.path.exists(frontend_path):
-        return FileResponse(frontend_path)
-    raise HTTPException(status_code=404, detail="前端文件不存在")
-
-# 如果frontend/dist存在则挂载
-frontend_dist = os.path.join(PROJECT_ROOT, "frontend", "dist")
-if os.path.exists(frontend_dist):
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+frontend_dir = os.path.join(PROJECT_ROOT, "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 # ==================== 主函数 ====================
 

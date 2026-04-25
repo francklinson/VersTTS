@@ -1931,9 +1931,9 @@
                         </select>
                     </div>
                     <div class="option-group" id="cosyvoice-ref-voice-group" style="display:none">
-                        <label>内置参考人声</label>
+                        <label>参考人声</label>
                         <select id="cosyvoice-reference-voice" onchange="selectReferenceVoice('cosyvoice')">
-                            <option value="">-- 选择内置人声 --</option>
+                            <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
                     <div class="option-group" id="cosyvoice-ref-group" style="display:none; grid-column: 1 / -1;">
@@ -1959,9 +1959,9 @@
             <div id="f5tts-options" class="model-options" style="display:none">
                 <div class="options-grid">
                     <div class="option-group">
-                        <label>内置参考人声</label>
+                        <label>参考人声</label>
                         <select id="f5tts-reference-voice" onchange="selectReferenceVoice('f5tts')">
-                            <option value="">-- 选择内置人声 --</option>
+                            <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
                     <div class="option-group" style="grid-column: 1 / -1;">
@@ -1996,7 +1996,7 @@
                 <div class="options-grid">
                     <div class="option-group">
                         <label>模型大小</label>
-                        <select id="qwen3tts-size">
+                        <select id="qwen3tts-size" onchange="updateQwen3ModeBySize()">
                             <option value="1.7B">1.7B (推荐)</option>
                             <option value="0.6B">0.6B (轻量)</option>
                         </select>
@@ -2006,12 +2006,42 @@
                         <select id="qwen3tts-mode" onchange="updateQwen3Options()">
                             <option value="base">基础合成</option>
                             <option value="voice_clone">声音克隆</option>
+                            <option value="custom_voice">预设音色</option>
+                            <option value="voice_design">音色设计</option>
                         </select>
                     </div>
+                    <!-- 预设音色选择（custom_voice 模式） -->
+                    <div class="option-group" id="qwen3tts-speaker-group" style="display:none">
+                        <label>预设音色</label>
+                        <select id="qwen3tts-speaker">
+                            <option value="Vivian">Vivian - 明亮女声（中文）</option>
+                            <option value="Serena">Serena - 温暖女声（中文）</option>
+                            <option value="Uncle_Fu">Uncle_Fu - 低沉男声（中文）</option>
+                            <option value="Dylan">Dylan - 北京男声（中文方言）</option>
+                            <option value="Eric">Eric - 成都男声（四川方言）</option>
+                            <option value="Ryan">Ryan - 动态男声（英文）</option>
+                            <option value="Aiden">Aiden - 阳光男声（英文）</option>
+                            <option value="Ono_Anna">Ono_Anna - 俏皮女声（日文）</option>
+                            <option value="Sohee">Sohee - 温暖女声（韩文）</option>
+                        </select>
+                    </div>
+                    <!-- 音色设计描述（voice_design 模式） -->
+                    <div class="option-group" id="qwen3tts-design-prompt-group" style="display:none; grid-column: 1 / -1;">
+                        <label>音色描述</label>
+                        <textarea id="qwen3tts-design-prompt" rows="3" placeholder="描述你想要的音色，例如：体现撒娇稚嫩的萝莉女声，音调偏高且起伏明显，营造出黏人、做作又刻意卖萌的听觉效果。"></textarea>
+                        <small style="color: #666; margin-top: 5px; display: block;">通过自然语言描述来设计独特的音色</small>
+                    </div>
+                    <!-- 指令控制（custom_voice 和 voice_design 模式） -->
+                    <div class="option-group" id="qwen3tts-instruct-group" style="display:none; grid-column: 1 / -1;">
+                        <label>指令控制（可选）</label>
+                        <input type="text" id="qwen3tts-instruct" placeholder="例如：用特别愤怒的语气说 / 非常开心地 / 悲伤地">
+                        <small style="color: #666; margin-top: 5px; display: block;">通过自然语言指令控制语音的情感和风格</small>
+                    </div>
+                    <!-- 声音克隆相关选项（voice_clone 模式） -->
                     <div class="option-group" id="qwen3tts-ref-voice-group" style="display:none">
-                        <label>内置参考人声</label>
+                        <label>参考人声</label>
                         <select id="qwen3tts-reference-voice" onchange="selectReferenceVoice('qwen3tts')">
-                            <option value="">-- 选择内置人声 --</option>
+                            <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
                     <div class="option-group" id="qwen3tts-ref-group" style="display:none; grid-column: 1 / -1;">
@@ -2020,11 +2050,19 @@
                             <input type="file" id="qwen3tts-ref" accept="audio/*" style="flex: 1;">
                             <button type="button" class="btn-preview" id="qwen3tts-preview-btn" onclick="previewReferenceVoice('qwen3tts')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
                         </div>
-                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择参考人声</small>
                     </div>
                     <div class="option-group" id="qwen3tts-prompt-group" style="display:none">
                         <label>参考文本</label>
                         <input type="text" id="qwen3tts-prompt" placeholder="参考音频对应的文本">
+                    </div>
+                    <!-- 高级选项 -->
+                    <div class="option-group" id="qwen3tts-advanced-group" style="display:none;">
+                        <label>克隆模式</label>
+                        <select id="qwen3tts-xvector-mode">
+                            <option value="false">ICL 模式（推荐，质量更高）</option>
+                            <option value="true">纯说话人嵌入（速度更快）</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -2051,9 +2089,9 @@
                         <input type="number" id="openvoice-speed" value="1" min="0.5" max="2" step="0.1">
                     </div>
                     <div class="option-group">
-                        <label>内置参考人声</label>
+                        <label>参考人声</label>
                         <select id="openvoice-reference-voice" onchange="selectReferenceVoice('openvoice')">
-                            <option value="">-- 选择内置人声 --</option>
+                            <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
                     <div class="option-group" style="grid-column: 1 / -1;">
@@ -2062,7 +2100,7 @@
                             <input type="file" id="openvoice-ref" accept="audio/*" style="flex: 1;">
                             <button type="button" class="btn-preview" id="openvoice-preview-btn" onclick="previewReferenceVoice('openvoice')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
                         </div>
-                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择参考人声</small>
                     </div>
                 </div>
             </div>
@@ -2102,9 +2140,9 @@
                         </select>
                     </div>
                     <div class="option-group">
-                        <label>内置参考人声</label>
+                        <label>参考人声</label>
                         <select id="gptsovits-reference-voice" onchange="selectReferenceVoice('gptsovits')">
-                            <option value="">-- 选择内置人声 --</option>
+                            <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
                     <div class="option-group" style="grid-column: 1 / -1;">
@@ -2113,7 +2151,7 @@
                             <input type="file" id="gptsovits-prompt-wav" accept="audio/*" style="flex: 1;">
                             <button type="button" class="btn-preview" id="gptsovits-preview-btn" onclick="previewReferenceVoice('gptsovits')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
                         </div>
-                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
+                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择参考人声</small>
                     </div>
                     <div class="option-group" style="grid-column: 1 / -1;">
                         <label>参考音频文本 *</label>
@@ -2158,15 +2196,118 @@
         let referenceVoices = []; // 存储参考人声列表
         let selectedVoiceAudio = {}; // 存储选择的内置人声音频URL
 
+        // Qwen3-TTS 模型状态
+        let qwen3TTSStatus = {
+            base_available: false,
+            custom_voice_available: false,
+            voice_design_available: false,
+            model_sizes: [],
+            message: ''
+        };
+
+        // 检查 Qwen3-TTS 模型状态
+        async function checkQwen3TTSStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/tts/qwen3tts/status`);
+                if (response.ok) {
+                    const status = await response.json();
+                    qwen3TTSStatus = status;
+                    console.log('[Qwen3-TTS] 模型状态:', status);
+                    updateQwen3ModeBySize(); // 使用新的函数，根据模型大小和状态更新选项
+                    showQwen3TTSStatusMessage();
+                }
+            } catch (e) {
+                console.error('[Qwen3-TTS] 获取模型状态失败:', e);
+            }
+        }
+
+        // 显示 Qwen3-TTS 状态消息
+        function showQwen3TTSStatusMessage() {
+            // 移除旧的状态消息
+            const oldStatus = document.getElementById('qwen3tts-status-message');
+            if (oldStatus) {
+                oldStatus.remove();
+            }
+
+            // 如果有消息且模型不完整，显示提示
+            if (qwen3TTSStatus.message && 
+                (!qwen3TTSStatus.custom_voice_available || !qwen3TTSStatus.voice_design_available)) {
+                const optionsDiv = document.getElementById('qwen3tts-options');
+                if (optionsDiv) {
+                    const statusDiv = document.createElement('div');
+                    statusDiv.id = 'qwen3tts-status-message';
+                    statusDiv.style.cssText = 'grid-column: 1 / -1; padding: 10px; margin-bottom: 15px; border-radius: 8px; font-size: 0.9rem;';
+                    
+                    if (qwen3TTSStatus.base_available) {
+                        // 部分可用 - 警告样式
+                        statusDiv.style.background = '#fff3cd';
+                        statusDiv.style.color = '#856404';
+                        statusDiv.style.border = '1px solid #ffc107';
+                    } else {
+                        // 完全不可用 - 错误样式
+                        statusDiv.style.background = '#f8d7da';
+                        statusDiv.style.color = '#721c24';
+                        statusDiv.style.border = '1px solid #f5c6cb';
+                    }
+                    
+                    statusDiv.innerHTML = `
+                        <strong>⚠️ 模型状态提示</strong><br>
+                        ${qwen3TTSStatus.message}<br>
+                        <small>缺失的功能将使用默认音色生成</small>
+                    `;
+                    
+                    // 插入到选项网格的顶部
+                    const optionsGrid = optionsDiv.querySelector('.options-grid');
+                    if (optionsGrid) {
+                        optionsGrid.insertBefore(statusDiv, optionsGrid.firstChild);
+                    }
+                }
+            }
+        }
+
         // 加载参考人声列表
         async function loadReferenceVoices() {
             try {
-                const response = await fetch(`${API_BASE}/reference_voices`);
-                const data = await response.json();
-                if (data.success) {
-                    referenceVoices = data.voices;
-                    populateReferenceVoiceSelects();
+                // 加载系统参考人声
+                const refResponse = await fetch(`${API_BASE}/reference_voices`);
+                const refData = await refResponse.json();
+                if (refData.success) {
+                    referenceVoices = refData.voices;
                 }
+                
+                // 加载已保存的说话人（作为参考人声）
+                const speakersResponse = await fetch(`${API_BASE}/speakers`);
+                const speakersData = await speakersResponse.json();
+                if (speakersData.success) {
+                    // 将说话人转换为参考人声格式
+                    const speakerVoices = speakersData.speakers
+                        .filter(s => s.audio_path)  // 只保留有音频文件的
+                        .map(s => ({
+                            id: `speaker_${s.id}`,
+                            name: `[我的] ${s.name}`,
+                            category: 'my_speakers',
+                            gender: 'unknown',
+                            duration: 0,
+                            text: s.reference_text || '',
+                            audio_url: `/speakers/${s.id}/audio`,  // 需要后端提供此接口
+                            compatible_models: {
+                                chattts: true,
+                                cosyvoice: true,
+                                f5tts: true,
+                                qwen3tts: true,
+                                openvoice: true,
+                                gptsovits: true
+                            },
+                            is_speaker: true,  // 标记为说话人
+                            speaker_id: s.id,
+                            reference_text: s.reference_text
+                        }));
+                    
+                    // 合并参考人声列表
+                    referenceVoices = [...referenceVoices, ...speakerVoices];
+                }
+                
+                populateReferenceVoiceSelects();
             } catch (e) {
                 console.error('加载参考人声失败:', e);
             }
@@ -2190,9 +2331,21 @@
                         if (voice.compatible_models && voice.compatible_models[model]) {
                             const option = document.createElement('option');
                             option.value = voice.id;
-                            option.textContent = `${voice.name} (${voice.gender === 'male' ? '男' : '女'}, ${voice.duration}s)`;
+                            
+                            // 根据是否为说话人显示不同格式
+                            if (voice.is_speaker) {
+                                option.textContent = voice.name;
+                                option.style.color = '#0ea5e9';  // 蓝色标记我的说话人
+                            } else {
+                                option.textContent = `${voice.name} (${voice.gender === 'male' ? '男' : '女'}, ${voice.duration}s)`;
+                            }
+                            
                             option.dataset.audioUrl = voice.audio_url;
-                            option.dataset.text = voice.text;
+                            option.dataset.text = voice.text || voice.reference_text || '';
+                            option.dataset.isSpeaker = voice.is_speaker ? 'true' : 'false';
+                            if (voice.speaker_id) {
+                                option.dataset.speakerId = voice.speaker_id;
+                            }
                             select.appendChild(option);
                         }
                     });
@@ -2220,8 +2373,15 @@
                     const textInput = document.getElementById(`${model}-prompt-text`) || 
                                      document.getElementById(`${model}-ref-text`) ||
                                      document.getElementById(`${model}-prompt`);
-                    if (textInput && voice.text) {
-                        textInput.value = voice.text;
+                    // 优先使用 reference_text，其次是 text
+                    const refText = voice.reference_text || voice.text || '';
+                    if (textInput && refText) {
+                        textInput.value = refText;
+                        
+                        // 如果是说话人，显示提示
+                        if (voice.is_speaker) {
+                            showStatus(`已选择"${voice.name.replace('[我的] ', '')}"作为参考人声，参考文本已自动填充`, false, 3000);
+                        }
                     }
                 }
             } else {
@@ -2338,11 +2498,132 @@
         // 更新Qwen3-TTS选项显示
         function updateQwen3Options() {
             const mode = document.getElementById('qwen3tts-mode').value;
+            const modelSize = document.getElementById('qwen3tts-size').value;
             const isClone = mode === 'voice_clone';
+            const isCustomVoice = mode === 'custom_voice';
+            const isVoiceDesign = mode === 'voice_design';
+            const is06B = modelSize === '0.6B';
 
+            // 声音克隆相关选项
             document.getElementById('qwen3tts-ref-voice-group').style.display = isClone ? 'block' : 'none';
             document.getElementById('qwen3tts-ref-group').style.display = isClone ? 'block' : 'none';
             document.getElementById('qwen3tts-prompt-group').style.display = isClone ? 'block' : 'none';
+            document.getElementById('qwen3tts-advanced-group').style.display = isClone ? 'block' : 'none';
+
+            // 预设音色选项
+            document.getElementById('qwen3tts-speaker-group').style.display = isCustomVoice ? 'block' : 'none';
+
+            // 音色设计选项
+            document.getElementById('qwen3tts-design-prompt-group').style.display = isVoiceDesign ? 'block' : 'none';
+
+            // 指令控制选项（1.7B: custom_voice 和 voice_design 模式都支持；0.6B: 仅 voice_design 支持，但0.6B没有voice_design）
+            // 0.6B-CustomVoice 不支持指令控制
+            const showInstruct = isVoiceDesign || (isCustomVoice && !is06B);
+            document.getElementById('qwen3tts-instruct-group').style.display = showInstruct ? 'block' : 'none';
+
+            // 显示0.6B限制提示
+            const instructLabel = document.querySelector('#qwen3tts-instruct-group label');
+            if (instructLabel) {
+                if (is06B && isCustomVoice) {
+                    instructLabel.innerHTML = '指令控制 <span style="color: #e53e3e; font-size: 0.85em;">(0.6B模型不支持)</span>';
+                } else {
+                    instructLabel.textContent = '指令控制（可选）';
+                }
+            }
+        }
+
+        // 根据模型大小更新可用的模式选项
+        function updateQwen3ModeBySize() {
+            const modelSize = document.getElementById('qwen3tts-size').value;
+            const modeSelect = document.getElementById('qwen3tts-mode');
+            const currentValue = modeSelect.value;
+
+            // 保存当前所有选项
+            const allOptions = Array.from(modeSelect.options);
+
+            // 清空选项
+            modeSelect.innerHTML = '';
+
+            // 基础选项始终可用
+            const baseOption = document.createElement('option');
+            baseOption.value = 'base';
+            baseOption.textContent = '基础合成';
+            modeSelect.appendChild(baseOption);
+
+            // 声音克隆选项始终可用
+            const cloneOption = document.createElement('option');
+            cloneOption.value = 'voice_clone';
+            cloneOption.textContent = '声音克隆';
+            modeSelect.appendChild(cloneOption);
+
+            // 预设音色选项（需要 CustomVoice 模型）
+            if (qwen3TTSStatus.custom_voice_available) {
+                const customOption = document.createElement('option');
+                customOption.value = 'custom_voice';
+                customOption.textContent = '预设音色';
+                modeSelect.appendChild(customOption);
+            }
+
+            // 音色设计选项（仅 1.7B 支持，且需要 VoiceDesign 模型）
+            if (modelSize === '1.7B' && qwen3TTSStatus.voice_design_available) {
+                const designOption = document.createElement('option');
+                designOption.value = 'voice_design';
+                designOption.textContent = '音色设计';
+                modeSelect.appendChild(designOption);
+            }
+
+            // 恢复之前的选择（如果还可用）
+            if (currentValue && Array.from(modeSelect.options).some(opt => opt.value === currentValue)) {
+                modeSelect.value = currentValue;
+            } else {
+                // 如果之前的选择不可用，默认选择 base
+                modeSelect.value = 'base';
+            }
+
+            // 触发选项更新
+            updateQwen3Options();
+
+            // 显示模型大小限制提示
+            showQwen3SizeLimitMessage(modelSize);
+        }
+
+        // 显示模型大小限制提示
+        function showQwen3SizeLimitMessage(modelSize) {
+            // 移除旧的限制提示
+            const oldLimit = document.getElementById('qwen3tts-size-limit-message');
+            if (oldLimit) {
+                oldLimit.remove();
+            }
+
+            // 0.6B 模型有限制
+            if (modelSize === '0.6B') {
+                const optionsDiv = document.getElementById('qwen3tts-options');
+                if (optionsDiv) {
+                    const limitDiv = document.createElement('div');
+                    limitDiv.id = 'qwen3tts-size-limit-message';
+                    limitDiv.style.cssText = 'grid-column: 1 / -1; padding: 10px; margin-bottom: 15px; border-radius: 8px; font-size: 0.9rem; background: #e6fffa; color: #234e52; border: 1px solid #81e6d9;';
+
+                    let limitText = '<strong>ℹ️ 0.6B 模型功能限制</strong><br>';
+                    limitText += '• 预设音色: 可用，但不支持指令控制<br>';
+                    if (qwen3TTSStatus.voice_design_available) {
+                        limitText += '• 音色设计: 需切换至 1.7B 模型';
+                    }
+
+                    limitDiv.innerHTML = limitText;
+
+                    // 插入到选项网格的顶部
+                    const optionsGrid = optionsDiv.querySelector('.options-grid');
+                    if (optionsGrid) {
+                        // 插入到状态消息之后（如果有）
+                        const statusMsg = document.getElementById('qwen3tts-status-message');
+                        if (statusMsg && statusMsg.nextSibling) {
+                            optionsGrid.insertBefore(limitDiv, statusMsg.nextSibling);
+                        } else {
+                            optionsGrid.insertBefore(limitDiv, optionsGrid.firstChild);
+                        }
+                    }
+                }
+            }
         }
 
         // 显示状态消息
@@ -2453,10 +2734,11 @@
                         break;
 
                     case 'qwen3tts':
+                        const qwenMode = document.getElementById('qwen3tts-mode').value;
                         formData.append('model_size', document.getElementById('qwen3tts-size').value);
-                        formData.append('mode', document.getElementById('qwen3tts-mode').value);
+                        formData.append('mode', qwenMode);
 
-                        if (document.getElementById('qwen3tts-mode').value === 'voice_clone') {
+                        if (qwenMode === 'voice_clone') {
                             const qwenRef = document.getElementById('qwen3tts-ref').files[0];
                             if (qwenRef) {
                                 formData.append('ref_wav', qwenRef);
@@ -2474,6 +2756,32 @@
                                 }
                             }
                             formData.append('ref_text', document.getElementById('qwen3tts-prompt').value);
+                            // 添加克隆模式选择
+                            const xvectorMode = document.getElementById('qwen3tts-xvector-mode').value;
+                            formData.append('x_vector_only_mode', xvectorMode === 'true');
+                        } else if (qwenMode === 'custom_voice') {
+                            // 预设音色模式
+                            formData.append('speaker', document.getElementById('qwen3tts-speaker').value);
+                            // 添加指令控制（如果有）
+                            const instruct = document.getElementById('qwen3tts-instruct').value;
+                            if (instruct) {
+                                formData.append('instruct_text', instruct);
+                            }
+                        } else if (qwenMode === 'voice_design') {
+                            // 音色设计模式
+                            const designPrompt = document.getElementById('qwen3tts-design-prompt').value;
+                            if (!designPrompt) {
+                                showStatus('请输入音色描述', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
+                            }
+                            formData.append('voice_design_prompt', designPrompt);
+                            // 添加指令控制（如果有）
+                            const instruct = document.getElementById('qwen3tts-instruct').value;
+                            if (instruct) {
+                                formData.append('instruct_text', instruct);
+                            }
                         }
                         break;
 
@@ -2582,13 +2890,119 @@
         // ==================== 说话人管理功能 ====================
 
         let selectedAudioFile = null;
-        let extractedEmbedding = null;
         let savedSpeakers = [];
+        let currentScriptText = '';  // 当前选中的朗读文本
+        let currentScripts = [];     // 缓存的文本列表
+
+        // 加载朗读文本
+        async function loadRecordingScripts() {
+            const length = document.getElementById('scriptLength').value;
+            try {
+                const response = await fetch(`${API_BASE}/recording_scripts?length=${length}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        currentScripts = data.scripts;
+                        // 随机选择一条
+                        selectRandomScript();
+                    }
+                }
+            } catch (e) {
+                console.error('加载朗读文本失败:', e);
+                document.getElementById('scriptDisplay').textContent = '加载失败，请刷新重试';
+            }
+        }
+
+        // 随机选择一条文本
+        function selectRandomScript() {
+            if (currentScripts.length > 0) {
+                const script = currentScripts[Math.floor(Math.random() * currentScripts.length)];
+                currentScriptText = script.text;
+                document.getElementById('scriptDisplay').textContent = script.text;
+                document.getElementById('scriptType').textContent = script.type || '通用';
+                document.getElementById('scriptDuration').textContent = script.duration || '5-8秒';
+            }
+        }
+
+        // 刷新文本
+        function refreshScript() {
+            selectRandomScript();
+        }
+
+        // 当前激活的子页面
+        let currentSpeakerTab = 'record';
+
+        // 切换子页面
+        function switchSpeakerTab(tab) {
+            currentSpeakerTab = tab;
+
+            // 更新选项卡样式
+            const tabRecord = document.getElementById('tabRecord');
+            const tabUpload = document.getElementById('tabUpload');
+
+            if (tab === 'record') {
+                tabRecord.classList.add('active');
+                tabRecord.style.color = '#0ea5e9';
+                tabRecord.style.borderBottomColor = '#0ea5e9';
+                tabRecord.style.fontWeight = '600';
+
+                tabUpload.classList.remove('active');
+                tabUpload.style.color = '#64748b';
+                tabUpload.style.borderBottomColor = 'transparent';
+                tabUpload.style.fontWeight = 'normal';
+
+                document.getElementById('pageRecord').style.display = 'block';
+                document.getElementById('pageUpload').style.display = 'none';
+            } else {
+                tabUpload.classList.add('active');
+                tabUpload.style.color = '#0ea5e9';
+                tabUpload.style.borderBottomColor = '#0ea5e9';
+                tabUpload.style.fontWeight = '600';
+
+                tabRecord.classList.remove('active');
+                tabRecord.style.color = '#64748b';
+                tabRecord.style.borderBottomColor = 'transparent';
+                tabRecord.style.fontWeight = 'normal';
+
+                document.getElementById('pageRecord').style.display = 'none';
+                document.getElementById('pageUpload').style.display = 'block';
+            }
+
+            // 重置表单状态
+            updateSaveButton();
+        }
+
+        // 获取当前页面的名称输入元素ID
+        function getSpeakerNameInputId() {
+            return currentSpeakerTab === 'record' ? 'speakerNameRecord' : 'speakerNameUpload';
+        }
+
+        // 获取当前页面的名称状态元素ID
+        function getNameStatusId() {
+            return currentSpeakerTab === 'record' ? 'nameStatusRecord' : 'nameStatusUpload';
+        }
+
+        // 获取当前页面的保存按钮元素ID
+        function getSaveButtonId() {
+            return currentSpeakerTab === 'record' ? 'saveSpeakerBtnRecord' : 'saveSpeakerBtnUpload';
+        }
+
+        // 获取当前页面的进度条元素ID
+        function getProgressElementIds() {
+            if (currentSpeakerTab === 'record') {
+                return { fill: 'progressFillRecord', text: 'progressTextRecord', container: 'uploadProgressRecord' };
+            } else {
+                return { fill: 'progressFillUpload', text: 'progressTextUpload', container: 'uploadProgressUpload' };
+            }
+        }
 
         // 显示说话人管理模态框
         function showSpeakerManager() {
             document.getElementById('speakerModal').classList.add('active');
             loadSpeakersList();
+            loadRecordingScripts(); // 加载朗读文本
+            // 默认显示录音页面
+            switchSpeakerTab('record');
         }
 
         // 关闭说话人管理模态框
@@ -2627,7 +3041,6 @@
         // 移除选中的文件
         function removeSelectedFile() {
             selectedAudioFile = null;
-            extractedEmbedding = null;
             document.getElementById('audioFileInput').value = '';
             document.getElementById('selectedFile').classList.remove('show');
             document.getElementById('uploadArea').classList.remove('has-file');
@@ -2636,9 +3049,11 @@
 
         // 检查说话人名称
         async function checkSpeakerName() {
-            const nameInput = document.getElementById('speakerName');
+            const nameInputId = getSpeakerNameInputId();
+            const statusId = getNameStatusId();
+            const nameInput = document.getElementById(nameInputId);
             const name = nameInput.value.trim();
-            const statusEl = document.getElementById('nameStatus');
+            const statusEl = document.getElementById(statusId);
 
             if (!name) {
                 statusEl.textContent = '';
@@ -2684,11 +3099,26 @@
 
         // 更新保存按钮状态
         function updateSaveButton() {
-            const name = document.getElementById('speakerName').value.trim();
-            const btn = document.getElementById('saveSpeakerBtn');
-            const isNameValid = name.length >= 2 && name.length <= 20 && !document.getElementById('nameStatus').classList.contains('error');
+            const nameInputId = getSpeakerNameInputId();
+            const statusId = getNameStatusId();
+            const btnId = getSaveButtonId();
 
-            btn.disabled = !(selectedAudioFile && isNameValid);
+            const name = document.getElementById(nameInputId).value.trim();
+            const btn = document.getElementById(btnId);
+            const isNameValid = name.length >= 2 && name.length <= 20 && !document.getElementById(statusId).classList.contains('error');
+
+            // 上传模式需要检查文本框是否有内容
+            let hasContent = false;
+            if (currentSpeakerTab === 'record') {
+                // 录音模式：需要 selectedAudioFile（录音文件）
+                hasContent = selectedAudioFile !== null;
+            } else {
+                // 上传模式：需要 selectedAudioFile 和参考文本
+                const refText = document.getElementById('uploadReferenceText').value.trim();
+                hasContent = selectedAudioFile !== null;
+            }
+
+            btn.disabled = !(hasContent && isNameValid);
         }
 
         // 显示状态消息
@@ -2704,8 +3134,12 @@
 
         // 更新进度条
         function updateProgress(percent, text) {
-            document.getElementById('progressFill').style.width = percent + '%';
-            document.getElementById('progressText').textContent = text;
+            const ids = getProgressElementIds();
+            document.getElementById(ids.fill).style.width = percent + '%';
+            document.getElementById(ids.text).textContent = text;
+            if (percent > 0) {
+                document.getElementById(ids.container).classList.add('show');
+            }
         }
 
         // ==================== 录音功能 ====================
@@ -3140,46 +3574,64 @@
                 return;
             }
 
-            const name = document.getElementById('speakerName').value.trim();
+            const nameInputId = getSpeakerNameInputId();
+            const btnId = getSaveButtonId();
+
+            const name = document.getElementById(nameInputId).value.trim();
             if (!name) {
                 showSpeakerStatus('请输入说话人名称', 'error');
                 return;
             }
 
-            const btn = document.getElementById('saveSpeakerBtn');
+            const btn = document.getElementById(btnId);
             btn.disabled = true;
             btn.innerHTML = '⏳ 处理中...';
 
-            document.getElementById('uploadProgress').classList.add('show');
             updateProgress(10, '正在上传音频...');
 
             try {
-                // 第一步：上传音频并提取 embedding
+                // 第一步：上传音频（与模型解耦，不再提取 embedding）
                 const formData = new FormData();
                 formData.append('audio', selectedAudioFile);
                 formData.append('speaker_name', name);
 
-                updateProgress(30, '正在提取说话人特征...');
+                // 根据当前页面获取参考文本
+                let referenceText = '';
+                if (currentSpeakerTab === 'record') {
+                    // 录音模式：使用当前朗读文本
+                    referenceText = currentScriptText;
+                } else {
+                    // 上传模式：使用用户输入的参考文本
+                    referenceText = document.getElementById('uploadReferenceText').value.trim();
+                }
 
-                const extractResponse = await fetch(`${API_BASE}/speakers/extract`, {
+                if (referenceText) {
+                    formData.append('reference_text', referenceText);
+                }
+
+                updateProgress(40, '正在处理音频...');
+
+                const uploadResponse = await fetch(`${API_BASE}/speakers/upload`, {
                     method: 'POST',
                     body: formData
                 });
 
-                const extractData = await extractResponse.json();
+                const uploadData = await uploadResponse.json();
 
-                if (!extractData.success) {
-                    throw new Error(extractData.message || '提取说话人失败');
+                if (!uploadData.success) {
+                    throw new Error(uploadData.message || '上传音频失败');
                 }
 
                 updateProgress(70, '正在保存说话人信息...');
 
-                // 第二步：保存说话人信息
-                // embedding 已经是 base64 编码的，直接传输
+                // 第二步：保存说话人信息（与模型解耦，不再保存 embedding）
                 const saveFormData = new FormData();
                 saveFormData.append('name', name);
-                saveFormData.append('embedding', extractData.embedding);
-                saveFormData.append('audio_path', extractData.audio_path || '');
+                saveFormData.append('audio_path', uploadData.audio_path || '');
+                // 添加参考文本
+                if (referenceText) {
+                    saveFormData.append('reference_text', referenceText);
+                }
 
                 const saveResponse = await fetch(`${API_BASE}/speakers/save`, {
                     method: 'POST',
@@ -3195,8 +3647,8 @@
                     resetSpeakerForm();
                     await loadSpeakersList();
 
-                    // 更新 ChatTTS 的说话人选择下拉框
-                    updateChatTTSSpeakerSelect();
+                    // 刷新参考人声列表（用于所有 TTS 模型）
+                    await loadReferenceVoices();
                     console.log('列表刷新完成');
                 } else {
                     throw new Error(saveData.message || '保存说话人失败');
@@ -3209,7 +3661,6 @@
                 btn.disabled = false;
                 btn.innerHTML = '💾 保存说话人';
                 setTimeout(() => {
-                    document.getElementById('uploadProgress').classList.remove('show');
                     updateProgress(0, '准备上传...');
                 }, 2000);
             }
@@ -3219,12 +3670,25 @@
         function resetSpeakerForm() {
             removeSelectedFile();
             discardRecordedAudio(); // 重置录音
-            document.getElementById('speakerName').value = '';
-            document.getElementById('nameStatus').textContent = '';
-            document.getElementById('nameStatus').className = 'name-status';
-            document.getElementById('speakerName').classList.remove('error', 'success');
+
+            // 重置录音页面
+            document.getElementById('speakerNameRecord').value = '';
+            document.getElementById('nameStatusRecord').textContent = '';
+            document.getElementById('nameStatusRecord').className = 'name-status';
+            document.getElementById('speakerNameRecord').classList.remove('error', 'success');
+
+            // 重置上传页面
+            document.getElementById('speakerNameUpload').value = '';
+            document.getElementById('nameStatusUpload').textContent = '';
+            document.getElementById('nameStatusUpload').className = 'name-status';
+            document.getElementById('speakerNameUpload').classList.remove('error', 'success');
+            document.getElementById('uploadReferenceText').value = '';
+
             showSpeakerStatus('');
             updateSaveButton();
+
+            // 重置进度条
+            updateProgress(0, '准备上传...');
         }
 
         // 加载说话人列表
@@ -3286,12 +3750,20 @@
 
             console.log('[DEBUG] 开始渲染', savedSpeakers.length, '个说话人');
 
-            listEl.innerHTML = savedSpeakers.map(speaker => `
+            listEl.innerHTML = savedSpeakers.map(speaker => {
+                const hasRefText = speaker.has_reference_text;
+                const refTextPreview = hasRefText ? (speaker.reference_text || '').substring(0, 50) + '...' : '';
+                
+                return `
                 <div class="speaker-item" data-id="${speaker.id}">
                     <div class="speaker-icon">🎙️</div>
                     <div class="speaker-info">
                         <div class="speaker-name">${escapeHtml(speaker.name)}</div>
-                        <div class="speaker-meta">创建于 ${formatDate(speaker.created_at)}</div>
+                        <div class="speaker-meta">
+                            创建于 ${formatDate(speaker.created_at)}
+                            ${hasRefText ? '<span style="color: #0ea5e9; margin-left: 8px;">✓ 有参考文本</span>' : ''}
+                        </div>
+                        ${hasRefText ? `<div class="speaker-ref-text" style="font-size: 0.85rem; color: #64748b; margin-top: 4px; font-style: italic;">${escapeHtml(refTextPreview)}</div>` : ''}
                     </div>
                     <div class="speaker-actions">
                         <button class="btn-icon btn-use" onclick="useSpeaker('${speaker.id}')" title="使用此说话人">
@@ -3302,7 +3774,7 @@
                         </button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             console.log('说话人列表渲染完成');
         }
 
@@ -3474,6 +3946,7 @@
             selectModel('chattts'); // 默认选择ChatTTS
             loadReferenceVoices(); // 加载参考人声列表
             loadSpeakersList(); // 加载说话人列表
+            checkQwen3TTSStatus(); // 检查 Qwen3-TTS 模型状态
         });
 
         // 当前选中的说话人ID（用于TTS合成）
@@ -3508,7 +3981,7 @@
 
     <!-- ==================== 说话人管理模态框 ==================== -->
     <div id="speakerModal" class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
             <div class="modal-header">
                 <h2>👤 说话人管理</h2>
                 <button class="modal-close" onclick="closeSpeakerManager()">&times;</button>
@@ -3517,99 +3990,174 @@
                 <!-- 状态消息 -->
                 <div id="speakerStatusMessage" class="status-message-speaker"></div>
 
-                <!-- 录音区域 -->
-                <div class="record-section">
-                    <div class="record-title">
-                        🎙️ 录音创建说话人
-                    </div>
-                    <div class="record-controls">
-                        <button id="recordBtn" class="btn-record" onclick="toggleRecording()" title="开始/停止录音">
-                            🎤
-                        </button>
-                        <div class="record-status" id="recordStatus">点击按钮开始录音</div>
-                        <div class="record-timer" id="recordTimer" style="display: none;">00:00</div>
-                        <div class="record-waves" id="recordWaves">
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                            <div class="record-wave-bar"></div>
-                        </div>
-                        <div class="record-hint">
-                            建议录制 5-20 秒的清晰语音，用于提取声音特征
-                        </div>
-                    </div>
-                    <!-- 录音预览 -->
-                    <div id="audioPreview" class="audio-preview">
-                        <div style="margin-bottom: 10px; color: #374151; font-weight: 500;">
-                            🔊 录音预览（时长: <span id="recordDuration">0</span> 秒）
-                        </div>
-                        <audio id="recordedAudio" controls preload="none" src="" style="width: 100%; display: none;">
-                            您的浏览器不支持音频播放
-                        </audio>
-                        <div id="audioErrorMsg" style="display: none; color: #dc2626; margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
-                            音频格式不受支持，但数据仍可正常使用
-                        </div>
-                        <div class="audio-preview-actions">
-                            <button class="btn-use-record" onclick="useRecordedAudio()">
-                                ✓ 使用此录音
-                            </button>
-                            <button class="btn-discard-record" onclick="discardRecordedAudio()">
-                                ✕ 重新录制
-                            </button>
-                        </div>
-                    </div>
+                <!-- 子页面选项卡 -->
+                <div class="speaker-tabs" style="display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
+                    <button id="tabRecord" class="speaker-tab active" onclick="switchSpeakerTab('record')" style="flex: 1; padding: 12px 20px; background: none; border: none; font-size: 1rem; cursor: pointer; color: #0ea5e9; border-bottom: 2px solid #0ea5e9; font-weight: 600;">
+                        🎙️ 朗读录音
+                    </button>
+                    <button id="tabUpload" class="speaker-tab" onclick="switchSpeakerTab('upload')" style="flex: 1; padding: 12px 20px; background: none; border: none; font-size: 1rem; cursor: pointer; color: #64748b; border-bottom: 2px solid transparent;">
+                        📤 上传音频
+                    </button>
                 </div>
 
-                <!-- 分隔线 -->
-                <div class="section-divider">
-                    <span>或</span>
-                </div>
+                <!-- ========== 录音模式子页面 ========== -->
+                <div id="pageRecord" class="speaker-page">
+                    <!-- 朗读文本选择区域 -->
+                    <div class="script-section" style="margin-bottom: 20px; padding: 15px; background: #f0f9ff; border-radius: 12px; border: 1px solid #bae6fd;">
+                        <div style="font-weight: 600; color: #0369a1; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            📖 朗读文本
+                            <span style="font-size: 0.85em; font-weight: normal; color: #64748b;">（请朗读以下文本进行录音）</span>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <select id="scriptLength" onchange="loadRecordingScripts()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; margin-right: 10px;">
+                                <option value="short">短文本 (5-8秒)</option>
+                                <option value="medium">中等 (10-15秒)</option>
+                                <option value="long">长文本 (15-20秒)</option>
+                            </select>
+                            <button onclick="refreshScript()" style="padding: 8px 16px; background: #0ea5e9; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">
+                                🔄 换一段
+                            </button>
+                        </div>
+                        <div id="scriptDisplay" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 1.1rem; line-height: 1.8; color: #1e293b; min-height: 60px;">
+                            正在加载朗读文本...
+                        </div>
+                        <div id="scriptInfo" style="margin-top: 8px; font-size: 0.85rem; color: #64748b;">
+                            类型: <span id="scriptType">-</span> | 预计时长: <span id="scriptDuration">-</span>
+                        </div>
+                    </div>
 
-                <!-- 上传区域 -->
-                <div class="upload-section">
-                    <div id="uploadArea" class="upload-area" onclick="document.getElementById('audioFileInput').click()">
-                        <div class="upload-icon">🎵</div>
-                        <div class="upload-text">点击或拖拽上传音频文件</div>
-                        <div class="upload-hint">支持 MP3、WAV、FLAC、OGG、M4A 格式</div>
-                        <input type="file" id="audioFileInput" class="file-input" accept="audio/*" onchange="handleFileSelect(event)">
+                    <!-- 录音区域 -->
+                    <div class="record-section">
+                        <div class="record-title">
+                            🎙️ 录音
+                        </div>
+                        <div class="record-controls">
+                            <button id="recordBtn" class="btn-record" onclick="toggleRecording()" title="开始/停止录音">
+                                🎤
+                            </button>
+                            <div class="record-status" id="recordStatus">点击按钮开始录音</div>
+                            <div class="record-timer" id="recordTimer" style="display: none;">00:00</div>
+                            <div class="record-waves" id="recordWaves">
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                            </div>
+                            <div class="record-hint">
+                                建议录制 5-20 秒的清晰语音
+                            </div>
+                        </div>
+                        <!-- 录音预览 -->
+                        <div id="audioPreview" class="audio-preview">
+                            <div style="margin-bottom: 10px; color: #374151; font-weight: 500;">
+                                🔊 录音预览（时长: <span id="recordDuration">0</span> 秒）
+                            </div>
+                            <audio id="recordedAudio" controls preload="none" src="" style="width: 100%; display: none;">
+                                您的浏览器不支持音频播放
+                            </audio>
+                            <div id="audioErrorMsg" style="display: none; color: #dc2626; margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
+                                音频格式不受支持，但数据仍可正常使用
+                            </div>
+                            <div class="audio-preview-actions">
+                                <button class="btn-use-record" onclick="useRecordedAudio()">
+                                    ✓ 使用此录音
+                                </button>
+                                <button class="btn-discard-record" onclick="discardRecordedAudio()">
+                                    ✕ 重新录制
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div id="selectedFile" class="selected-file">
-                        <span class="file-name" id="fileName"></span>
-                        <button class="file-remove" onclick="removeSelectedFile()">移除</button>
+
+                    <!-- 命名区域 -->
+                    <div class="name-section" style="margin-top: 20px;">
+                        <label for="speakerNameRecord">说话人名称</label>
+                        <div class="name-input-wrapper">
+                            <input type="text" id="speakerNameRecord" class="name-input" placeholder="请输入说话人名称（如：小明、女声1等）" onblur="checkSpeakerName()">
+                        </div>
+                        <div id="nameStatusRecord" class="name-status"></div>
                     </div>
+
                     <!-- 进度条 -->
-                    <div id="uploadProgress" class="progress-container">
+                    <div id="uploadProgressRecord" class="progress-container" style="margin-top: 15px;">
                         <div class="progress-bar">
-                            <div class="progress-fill" id="progressFill"></div>
+                            <div class="progress-fill" id="progressFillRecord"></div>
                         </div>
-                        <div class="progress-text" id="progressText">准备上传...</div>
+                        <div class="progress-text" id="progressTextRecord">准备上传...</div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="action-buttons" style="margin-top: 20px;">
+                        <button id="saveSpeakerBtnRecord" class="btn-primary" onclick="saveSpeaker()" disabled>
+                            💾 保存说话人
+                        </button>
+                        <button class="btn-secondary" onclick="resetSpeakerForm()">
+                            重置
+                        </button>
                     </div>
                 </div>
 
-                <!-- 命名区域 -->
-                <div class="name-section">
-                    <label for="speakerName">说话人名称</label>
-                    <div class="name-input-wrapper">
-                        <input type="text" id="speakerName" class="name-input" placeholder="请输入说话人名称（如：小明、女声1等）" onblur="checkSpeakerName()">
+                <!-- ========== 上传模式子页面 ========== -->
+                <div id="pageUpload" class="speaker-page" style="display: none;">
+                    <!-- 上传区域 -->
+                    <div class="upload-section" style="margin-bottom: 20px;">
+                        <div id="uploadArea" class="upload-area" onclick="document.getElementById('audioFileInput').click()">
+                            <div class="upload-icon">🎵</div>
+                            <div class="upload-text">点击或拖拽上传音频文件</div>
+                            <div class="upload-hint">支持 MP3、WAV、FLAC、OGG、M4A、WEBM 格式</div>
+                            <input type="file" id="audioFileInput" class="file-input" accept="audio/*" onchange="handleFileSelect(event)">
+                        </div>
+                        <div id="selectedFile" class="selected-file">
+                            <span class="file-name" id="fileName"></span>
+                            <button class="file-remove" onclick="removeSelectedFile()">移除</button>
+                        </div>
                     </div>
-                    <div id="nameStatus" class="name-status"></div>
-                </div>
 
-                <!-- 操作按钮 -->
-                <div class="action-buttons">
-                    <button id="saveSpeakerBtn" class="btn-primary" onclick="saveSpeaker()" disabled>
-                        💾 保存说话人
-                    </button>
-                    <button class="btn-secondary" onclick="resetSpeakerForm()">
-                        重置
-                    </button>
+                    <!-- 参考文本输入区域 -->
+                    <div class="script-section" style="margin-bottom: 20px; padding: 15px; background: #f0fdf4; border-radius: 12px; border: 1px solid #86efac;">
+                        <div style="font-weight: 600; color: #15803d; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            📝 参考文本
+                            <span style="font-size: 0.85em; font-weight: normal; color: #64748b;">（输入音频对应的文本内容）</span>
+                        </div>
+                        <textarea id="uploadReferenceText" rows="4" placeholder="请输入音频文件中朗读的文本内容..." style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; line-height: 1.6; resize: vertical;"></textarea>
+                        <div style="margin-top: 8px; font-size: 0.85rem; color: #64748b;">
+                            💡 提示：准确的参考文本有助于提高声音克隆质量
+                        </div>
+                    </div>
+
+                    <!-- 命名区域 -->
+                    <div class="name-section">
+                        <label for="speakerNameUpload">说话人名称</label>
+                        <div class="name-input-wrapper">
+                            <input type="text" id="speakerNameUpload" class="name-input" placeholder="请输入说话人名称（如：小明、女声1等）" onblur="checkSpeakerName()">
+                        </div>
+                        <div id="nameStatusUpload" class="name-status"></div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div id="uploadProgressUpload" class="progress-container" style="margin-top: 15px;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFillUpload"></div>
+                        </div>
+                        <div class="progress-text" id="progressTextUpload">准备上传...</div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="action-buttons" style="margin-top: 20px;">
+                        <button id="saveSpeakerBtnUpload" class="btn-primary" onclick="saveSpeaker()" disabled>
+                            💾 保存说话人
+                        </button>
+                        <button class="btn-secondary" onclick="resetSpeakerForm()">
+                            重置
+                        </button>
+                    </div>
                 </div>
 
                 <!-- 已保存说话人列表 -->
-                <div class="speakers-list-section">
+                <div class="speakers-list-section" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
                     <h3>已保存的说话人 <span id="speakersCount" class="speakers-count">0</span></h3>
                     <div id="speakersList" class="speakers-list">
                         <!-- 动态填充 -->

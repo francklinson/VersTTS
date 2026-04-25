@@ -19,7 +19,7 @@ import torch
 import torchaudio
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -154,23 +154,31 @@ def check_speaker_name_exists(name: str) -> bool:
     """检查说话人名称是否已存在"""
     return get_speaker_by_name(name) is not None
 
-def add_speaker(name: str, embedding: str, audio_path: Optional[str] = None) -> Dict:
-    """添加新说话人"""
+def add_speaker(name: str, embedding: Optional[str] = None, audio_path: Optional[str] = None, reference_text: Optional[str] = None) -> Dict:
+    """添加新说话人（与模型解耦）
+    
+    Args:
+        name: 说话人名称
+        embedding: 说话人embedding (base64编码，可选，与模型解耦后可为None)
+        audio_path: 参考音频路径
+        reference_text: 参考音频对应的文本（可选）
+    """
     db = load_speakers_db()
     
     speaker = {
         "id": f"spk_{int(time.time() * 1000)}",
         "name": name,
-        "embedding": embedding,
+        "embedding": embedding,  # 可为None，与模型解耦
         "audio_path": audio_path,
+        "reference_text": reference_text,
         "created_at": datetime.now().isoformat(),
-        "model_type": "chattts"
+        "model_type": "universal"  # 改为通用类型，不再绑定特定模型
     }
     
     db["speakers"].append(speaker)
     
     if save_speakers_db(db):
-        system_logger.info(f"【说话人管理】添加说话人成功: {name}")
+        system_logger.info(f"【说话人管理】添加说话人成功: {name}, 文本: {reference_text[:30] if reference_text else '无'}")
         return speaker
     else:
         raise HTTPException(status_code=500, detail="保存说话人失败")
@@ -300,9 +308,14 @@ class F5TTSRequest(BaseTTSRequest):
 
 class Qwen3TTSRequest(BaseTTSRequest):
     model_size: str = Field(default="1.7B", description="模型大小: 0.6B, 1.7B")
-    mode: str = Field(default="base", description="模式: base, voice_clone")
+    mode: str = Field(default="base", description="模式: base, voice_clone, custom_voice, voice_design")
+    speaker: Optional[str] = Field(default=None, description="预设音色: Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee")
     ref_audio: Optional[str] = Field(default=None, description="参考音频URL/base64")
     ref_text: Optional[str] = Field(default=None, description="参考文本")
+    voice_design_prompt: Optional[str] = Field(default=None, description="音色设计描述（voice_design模式使用）")
+    instruct_text: Optional[str] = Field(default=None, description="指令控制文本，用于控制语音风格")
+    streaming: bool = Field(default=False, description="是否使用流式生成")
+    x_vector_only_mode: bool = Field(default=False, description="是否仅使用说话人嵌入模式（voice_clone）")
 
 class OpenVoiceRequest(BaseTTSRequest):
     style: str = Field(default="default", description="风格: default, whispering")
@@ -397,12 +410,17 @@ def get_f5tts_model():
     
     return models["f5tts"]
 
-def get_qwen3tts_model(model_size: str = "1.7B"):
-    """获取或加载Qwen3-TTS模型"""
-    key = f"qwen3tts_{model_size}"
+def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
+    """获取或加载Qwen3-TTS模型
+    
+    Args:
+        model_size: 模型大小 "0.6B" 或 "1.7B"
+        model_type: 模型类型 "Base", "CustomVoice", "VoiceDesign"
+    """
+    key = f"qwen3tts_{model_size}_{model_type}"
     if key not in models:
         start_time = time.time()
-        OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}", "开始加载")
+        OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}-{model_type}", "开始加载")
         
         from qwen_tts import Qwen3TTSModel
         size_map = {
@@ -410,7 +428,15 @@ def get_qwen3tts_model(model_size: str = "1.7B"):
             "1.7B": "1___7B"
         }
         size_str = size_map.get(model_size, model_size.replace('.', '___'))
-        model_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-Base")
+        model_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-{model_type}")
+        
+        # 如果指定类型模型不存在，尝试加载 Base 模型
+        if not os.path.exists(model_path):
+            if model_type != "Base":
+                system_logger.warning(f"【模型加载】{model_type} 模型不存在，尝试加载 Base 模型")
+                model_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-Base")
+            if not os.path.exists(model_path):
+                raise HTTPException(status_code=500, detail=f"Qwen3-TTS 模型不存在: {model_path}")
         
         system_logger.info(f"【模型加载】Qwen3-TTS 路径: {model_path}")
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -426,7 +452,7 @@ def get_qwen3tts_model(model_size: str = "1.7B"):
         
         duration = time.time() - start_time
         gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
-        OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
+        OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}-{model_type}", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
         OperationLogger.log_performance("Qwen3-TTS加载", duration, 0, gpu_mem)
     
     return models[key]
@@ -676,7 +702,9 @@ async def get_speakers():
                 "name": speaker["name"],
                 "created_at": speaker["created_at"],
                 "model_type": speaker.get("model_type", "chattts"),
-                "has_embedding": bool(speaker.get("embedding"))
+                "has_embedding": bool(speaker.get("embedding")),
+                "has_reference_text": bool(speaker.get("reference_text")),
+                "reference_text": speaker.get("reference_text", "")[:100] if speaker.get("reference_text") else ""  # 只返回前100字
             })
         return {
             "success": True,
@@ -704,6 +732,38 @@ async def get_speaker_detail(speaker_id: str):
             raise e
         raise HTTPException(status_code=500, detail=f"获取说话人详情失败: {str(e)}")
 
+
+@app.get("/speakers/{speaker_id}/audio")
+async def get_speaker_audio(speaker_id: str):
+    """获取指定说话人的参考音频文件"""
+    try:
+        db = load_speakers_db()
+        for speaker in db["speakers"]:
+            if speaker["id"] == speaker_id:
+                audio_path = speaker.get("audio_path")
+                if not audio_path or not os.path.exists(audio_path):
+                    raise HTTPException(status_code=404, detail="音频文件不存在")
+                
+                # 根据文件扩展名确定媒体类型
+                ext = os.path.splitext(audio_path)[1].lower()
+                media_type = {
+                    '.wav': 'audio/wav',
+                    '.mp3': 'audio/mpeg',
+                    '.ogg': 'audio/ogg',
+                    '.webm': 'audio/webm',
+                    '.m4a': 'audio/mp4'
+                }.get(ext, 'audio/wav')
+                
+                return FileResponse(audio_path, media_type=media_type)
+        
+        raise HTTPException(status_code=404, detail="说话人不存在")
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"获取说话人音频失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取说话人音频失败: {str(e)}")
+
+
 @app.post("/speakers/check-name")
 async def check_name(name: str = Form(...)):
     """检查说话人名称是否可用"""
@@ -715,16 +775,18 @@ async def check_name(name: str = Form(...)):
         "message": "名称已被使用" if exists else "名称可用"
     }
 
-@app.post("/speakers/extract")
-async def extract_speaker_from_audio(
+@app.post("/speakers/upload")
+async def upload_speaker_audio(
     audio: UploadFile = File(...),
-    speaker_name: str = Form(...)
+    speaker_name: str = Form(...),
+    reference_text: Optional[str] = Form(None)
 ):
     """
-    从上传的音频文件中提取说话人embedding
+    上传说话人音频文件（与模型解耦，只保存音频和文本）
     
-    - audio: 音频文件 (MP3, WAV等)
+    - audio: 音频文件 (MP3, WAV, WEBM等)
     - speaker_name: 说话人名称
+    - reference_text: 参考音频对应的文本
     """
     start_time = time.time()
     
@@ -735,7 +797,7 @@ async def extract_speaker_from_audio(
     if check_speaker_name_exists(speaker_name):
         raise HTTPException(status_code=400, detail=f"说话人名称 '{speaker_name}' 已存在")
     
-    # 验证文件格式（支持浏览器录音的 webm 格式）
+    # 验证文件格式
     allowed_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.webm'}
     file_ext = os.path.splitext(audio.filename)[1].lower()
     if file_ext not in allowed_extensions:
@@ -745,155 +807,84 @@ async def extract_speaker_from_audio(
         )
     
     try:
-        system_logger.info(f"【说话人管理】开始提取说话人: {speaker_name}, 文件: {audio.filename}")
+        system_logger.info(f"【说话人管理】开始上传: {speaker_name}, 文件: {audio.filename}")
         
         # 读取音频文件
         audio_bytes = await audio.read()
         
         # 保存上传的音频文件
         timestamp = int(time.time())
-        audio_filename = f"speaker_{timestamp}_{speaker_name}{file_ext}"
+        # 统一转换为 wav 格式以便兼容各种TTS模型
+        audio_filename = f"speaker_{timestamp}_{speaker_name}.wav"
         audio_path = os.path.join(SPEAKERS_DIR, audio_filename)
         
-        with open(audio_path, 'wb') as f:
-            f.write(audio_bytes)
-        
-        system_logger.info(f"【说话人管理】音频已保存: {audio_path}")
-        
-        # 加载音频并提取embedding
-        chat = get_chattts_model()
-        
-        # 对于 webm 格式，使用 ffmpeg 命令行工具转换
+        # 对于 webm/ogg 格式，使用 ffmpeg 转换为 wav
         if file_ext in ['.webm', '.ogg']:
             import subprocess
-            temp_wav_path = None
+            temp_path = os.path.join(SPEAKERS_DIR, f"temp_{timestamp}{file_ext}")
             try:
-                system_logger.info(f"【说话人管理】检测到 {file_ext} 格式，使用 ffmpeg 转换")
+                # 先保存原始文件
+                with open(temp_path, 'wb') as f:
+                    f.write(audio_bytes)
                 
-                # 创建临时 wav 文件路径
-                temp_wav_path = audio_path.replace(file_ext, '_temp.wav')
-                
-                # 使用 ffmpeg 命令行工具转换 webm/ogg 到 wav
-                # -y: 覆盖输出文件
-                # -ar 24000: 设置采样率为 24kHz
-                # -ac 1: 设置为单声道
-                # -acodec pcm_s16le: 使用 16-bit PCM 编码
+                # 使用 ffmpeg 转换
                 cmd = [
-                    'ffmpeg', '-y', '-i', audio_path,
+                    'ffmpeg', '-y', '-i', temp_path,
                     '-ar', '24000', '-ac', '1', '-acodec', 'pcm_s16le',
-                    temp_wav_path
+                    audio_path
                 ]
                 
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=30
-                )
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 
                 if result.returncode != 0:
-                    system_logger.error(f"【说话人管理】ffmpeg 转换失败: {result.stderr}")
                     raise Exception(f"ffmpeg 转换失败: {result.stderr}")
                 
-                system_logger.info(f"【说话人管理】ffmpeg 转换成功: {temp_wav_path}")
-                
-                # 使用 torchaudio 加载转换后的 wav 文件
-                wav, sr = torchaudio.load(temp_wav_path)
-                system_logger.info(f"【说话人管理】{file_ext} 转换成功，形状: {wav.shape}")
+                # 删除临时文件
+                os.remove(temp_path)
                 
             except Exception as e:
-                system_logger.error(f"【说话人管理】{file_ext} 转换失败: {e}")
-                raise HTTPException(status_code=400, detail=f"{file_ext.upper()} 音频转换失败，请确保系统已安装 ffmpeg: {e}")
-            finally:
-                # 清理临时 wav 文件
-                if temp_wav_path and os.path.exists(temp_wav_path):
-                    try:
-                        os.remove(temp_wav_path)
-                        system_logger.info(f"【说话人管理】清理临时文件: {temp_wav_path}")
-                    except Exception as e:
-                        system_logger.warning(f"【说话人管理】清理临时文件失败: {e}")
+                system_logger.error(f"【说话人管理】转换失败: {e}")
+                raise HTTPException(status_code=400, detail=f"音频转换失败: {e}")
         else:
-            # 尝试使用 torchaudio 加载音频
-            try:
-                audio_io = io.BytesIO(audio_bytes)
-                wav, sr = torchaudio.load(audio_io)
-            except Exception as e:
-                system_logger.warning(f"【说话人管理】torchaudio 加载失败，尝试使用 soundfile: {e}")
-                # 使用 soundfile 作为备选
-                try:
-                    import soundfile as sf
-                    audio_io = io.BytesIO(audio_bytes)
-                    wav_array, sr = sf.read(audio_io, dtype='float32')
-                    # soundfile 返回的是 numpy 数组，需要转换为 torch tensor
-                    if wav_array.ndim == 1:
-                        wav_array = wav_array.reshape(1, -1)
-                    else:
-                        wav_array = wav_array.T  # 转置为 (channels, samples)
-                    wav = torch.from_numpy(wav_array)
-                except Exception as e2:
-                    system_logger.error(f"【说话人管理】所有加载方式都失败: {e2}")
-                    raise HTTPException(status_code=400, detail=f"无法加载音频文件，格式可能不受支持: {e2}")
-            
-            # 重采样到 24kHz (ChatTTS 要求)
-            if sr != 24000:
-                resampler = torchaudio.transforms.Resample(sr, 24000)
-                wav = resampler(wav)
-            
-            # 转换为单声道
-            if wav.shape[0] > 1:
-                wav = wav.mean(dim=0, keepdim=True)
-        
-        system_logger.info(f"【说话人管理】音频加载成功，形状: {wav.shape}, 采样率: {sr}")
-        
-        # 提取说话人embedding - 使用 spk_smp 格式（音色准确）
-        # spk_smp 保留了完整的声学特征，支持准确的声音克隆
-        speaker_emb = chat.sample_audio_speaker(wav.squeeze().numpy())
-        system_logger.info(f"【说话人管理】提取 spk_smp 成功，长度: {len(speaker_emb)}")
-        
-        # 将 spk_smp 进行 base64 编码（为了安全传输）
-        import base64
-        speaker_emb_bytes = speaker_emb.encode('utf-8')
-        speaker_emb_b64 = base64.b64encode(speaker_emb_bytes).decode('ascii')
-        
-        # 调试日志：记录 embedding 信息
-        system_logger.info(f"【说话人管理】提取完成: {speaker_name}, spk_smp长度: {len(speaker_emb)}, base64长度: {len(speaker_emb_b64)}")
+            # 直接保存文件
+            with open(audio_path, 'wb') as f:
+                f.write(audio_bytes)
         
         duration = time.time() - start_time
-        system_logger.info(f"【说话人管理】提取完成: {speaker_name}, 耗时: {duration:.2f}s")
+        system_logger.info(f"【说话人管理】上传成功: {speaker_name}, 路径: {audio_path}, 耗时: {duration:.2f}s")
         
         return {
             "success": True,
-            "message": "说话人提取成功",
+            "message": "音频上传成功",
             "speaker_name": speaker_name,
-            "embedding": speaker_emb_b64,
             "audio_path": audio_path,
+            "reference_text": reference_text,
             "duration": duration
         }
         
     except Exception as e:
         # 清理已保存的音频文件
-        if os.path.exists(audio_path):
+        if 'audio_path' in locals() and os.path.exists(audio_path):
             os.remove(audio_path)
         
-        system_logger.error(f"【说话人管理】提取失败: {e}")
-        raise HTTPException(status_code=500, detail=f"提取说话人失败: {str(e)}")
+        system_logger.error(f"【说话人管理】上传失败: {e}")
+        raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
 
 @app.post("/speakers/save")
 async def save_speaker(
     name: str = Form(...),
-    embedding: str = Form(...),
-    audio_path: Optional[str] = Form(None)
+    audio_path: str = Form(...),
+    reference_text: Optional[str] = Form(None)
 ):
     """
-    保存说话人信息
+    保存说话人信息（与模型解耦，只保存音频和文本）
     
     - name: 说话人名称
-    - embedding: 说话人embedding字符串 (base64编码)
-    - audio_path: 参考音频路径（可选）
+    - audio_path: 参考音频路径
+    - reference_text: 参考音频对应的文本（可选）
     """
     try:
-        # 调试日志：记录接收到的 embedding 信息
-        system_logger.info(f"【说话人管理】接收到embedding (base64)，长度: {len(embedding)}")
+        system_logger.info(f"【说话人管理】开始保存: {name}, 音频: {audio_path}")
         
         # 验证名称
         if not name or len(name.strip()) == 0:
@@ -902,22 +893,17 @@ async def save_speaker(
         if check_speaker_name_exists(name):
             raise HTTPException(status_code=400, detail=f"说话人名称 '{name}' 已存在")
         
-        # 验证 embedding 是有效的 base64
-        try:
-            import base64
-            # 验证可以解码
-            embedding_bytes = base64.b64decode(embedding)
-            embedding_str = embedding_bytes.decode('utf-8')
-            system_logger.info(f"【说话人管理】embedding验证成功，解码后长度: {len(embedding_str)}")
-        except Exception as e:
-            system_logger.error(f"【说话人管理】embedding验证失败: {e}")
-            raise HTTPException(status_code=400, detail=f"embedding格式错误: {e}")
+        # 验证音频文件是否存在
+        if not audio_path or not os.path.exists(audio_path):
+            raise HTTPException(status_code=400, detail="音频文件不存在")
         
-        # 保存说话人 - 直接保存 base64 编码的字符串（不要解码）
-        speaker = add_speaker(name, embedding, audio_path)
+        # 保存说话人（embedding 设为 None，与模型解耦）
+        speaker = add_speaker(name, None, audio_path, reference_text)
         
         # 记录审计日志
         OperationLogger.log_speaker_operation("创建", speaker["name"], speaker["id"])
+        
+        system_logger.info(f"【说话人管理】保存成功: {name}, ID: {speaker['id']}")
         
         return {
             "success": True,
@@ -925,6 +911,8 @@ async def save_speaker(
             "speaker": {
                 "id": speaker["id"],
                 "name": speaker["name"],
+                "audio_path": speaker["audio_path"],
+                "reference_text": speaker.get("reference_text"),
                 "created_at": speaker["created_at"]
             }
         }
@@ -1329,34 +1317,151 @@ async def tts_qwen3tts(
     text: str = Form(...),
     model_size: str = Form("1.7B"),
     mode: str = Form("base"),
+    speaker: Optional[str] = Form(None),
     ref_wav: Optional[UploadFile] = File(None),
     ref_text: Optional[str] = Form(None),
+    voice_design_prompt: Optional[str] = Form(None),
+    instruct_text: Optional[str] = Form(None),
+    streaming: bool = Form(False),
+    x_vector_only_mode: bool = Form(False),
     output_format: str = Form("url")
 ):
-    """Qwen3-TTS语音合成"""
+    """Qwen3-TTS语音合成
+    
+    支持模式：
+    - base: 基础合成（使用默认参考音频）
+    - voice_clone: 音色克隆（需要参考音频）
+    - custom_voice: 预设音色（需要选择 speaker）
+    - voice_design: 音色设计（需要 voice_design_prompt）
+    """
     try:
-        logger.info(f"Qwen3-TTS请求: {text[:50]}... 模型: {model_size}")
+        logger.info(f"Qwen3-TTS请求: {text[:50]}... 模型: {model_size}, 模式: {mode}")
 
-        tts = get_qwen3tts_model(model_size)
+        # 根据模式选择模型类型
+        model_type_map = {
+            "base": "Base",
+            "voice_clone": "Base",
+            "custom_voice": "CustomVoice",
+            "voice_design": "VoiceDesign"
+        }
+        model_type = model_type_map.get(mode, "Base")
+        
+        tts = get_qwen3tts_model(model_size, model_type)
 
-        if mode == "voice_clone" and ref_wav:
-            # 保存参考音频
-            ref_path = f"uploads/ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
-            with open(ref_path, "wb") as f:
-                f.write(await ref_wav.read())
+        if mode == "voice_clone":
+            if ref_wav:
+                # 保存参考音频
+                ref_path = f"uploads/ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+                with open(ref_path, "wb") as f:
+                    f.write(await ref_wav.read())
 
-            wavs, sr = tts.generate_voice_clone(
-                text=text,
-                language="Auto",
-                ref_audio=ref_path,
-                ref_text=ref_text or "",
-                x_vector_only_mode=False
-            )
-            os.remove(ref_path)
-            wav = wavs[0] if isinstance(wavs, list) else wavs
+                wavs, sr = tts.generate_voice_clone(
+                    text=text,
+                    language="Auto",
+                    ref_audio=ref_path,
+                    ref_text=ref_text or "",
+                    x_vector_only_mode=x_vector_only_mode
+                )
+                os.remove(ref_path)
+                wav = wavs[0] if isinstance(wavs, list) else wavs
+            else:
+                # 使用默认参考音频
+                default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
+                default_ref_text = "甚至出现交易几乎停滞的情况。"
+                
+                logger.info(f"voice_clone模式：使用默认参考音频")
+                wavs, sr = tts.generate_voice_clone(
+                    text=text,
+                    language="Auto",
+                    ref_audio=default_ref_audio,
+                    ref_text=default_ref_text,
+                    x_vector_only_mode=True
+                )
+                wav = wavs[0] if isinstance(wavs, list) else wavs
+                
+        elif mode == "custom_voice":
+            # 预设音色模式
+            if not speaker:
+                # 默认使用 Vivian
+                speaker = "Vivian"
+            
+            logger.info(f"custom_voice模式：使用预设音色 {speaker}, 指令: {instruct_text or '无'}")
+            
+            # 尝试使用 generate_custom_voice，如果不支持则回退
+            custom_voice_success = False
+            try:
+                if hasattr(tts, 'generate_custom_voice'):
+                    wavs, sr = tts.generate_custom_voice(
+                        text=text,
+                        language="Auto",
+                        speaker=speaker,
+                        instruct=instruct_text or ""
+                    )
+                    wav = wavs[0] if isinstance(wavs, list) else wavs
+                    custom_voice_success = True
+                    logger.info("使用 CustomVoice 模型生成成功")
+            except ValueError as e:
+                if "does not support generate_custom_voice" in str(e):
+                    logger.warning(f"CustomVoice 模型不支持该方法: {e}")
+                else:
+                    raise
+            
+            if not custom_voice_success:
+                # 如果模型不支持，回退到 Base 模型的 voice_clone
+                logger.warning(f"当前模型不支持 generate_custom_voice，回退到 Base 模型使用默认音色")
+                tts_base = get_qwen3tts_model(model_size, "Base")
+                default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
+                default_ref_text = "甚至出现交易几乎停滞的情况。"
+                wavs, sr = tts_base.generate_voice_clone(
+                    text=text,
+                    language="Auto",
+                    ref_audio=default_ref_audio,
+                    ref_text=default_ref_text,
+                    x_vector_only_mode=True
+                )
+                wav = wavs[0] if isinstance(wavs, list) else wavs
+                
+        elif mode == "voice_design":
+            # 音色设计模式
+            if not voice_design_prompt:
+                raise HTTPException(status_code=400, detail="voice_design 模式需要提供 voice_design_prompt 参数")
+            
+            logger.info(f"voice_design模式：音色描述: {voice_design_prompt}")
+            
+            # 尝试使用 generate_voice_design，如果不支持则回退
+            voice_design_success = False
+            try:
+                if hasattr(tts, 'generate_voice_design'):
+                    wavs, sr = tts.generate_voice_design(
+                        text=text,
+                        language="Auto",
+                        instruct=voice_design_prompt
+                    )
+                    wav = wavs[0] if isinstance(wavs, list) else wavs
+                    voice_design_success = True
+                    logger.info("使用 VoiceDesign 模型生成成功")
+            except ValueError as e:
+                if "does not support generate_voice_design" in str(e):
+                    logger.warning(f"VoiceDesign 模型不支持该方法: {e}")
+                else:
+                    raise
+            
+            if not voice_design_success:
+                # 如果模型不支持，回退到 Base 模型的 voice_clone
+                logger.warning(f"当前模型不支持 generate_voice_design，回退到 Base 模型使用默认音色")
+                tts_base = get_qwen3tts_model(model_size, "Base")
+                default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
+                default_ref_text = "甚至出现交易几乎停滞的情况。"
+                wavs, sr = tts_base.generate_voice_clone(
+                    text=text,
+                    language="Auto",
+                    ref_audio=default_ref_audio,
+                    ref_text=default_ref_text,
+                    x_vector_only_mode=True
+                )
+                wav = wavs[0] if isinstance(wavs, list) else wavs
         else:
             # 基础模式：使用默认参考音频进行voice_clone
-            # 使用官方示例中的默认参考音频URL
             default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
             default_ref_text = "甚至出现交易几乎停滞的情况。"
             
@@ -1390,6 +1495,76 @@ async def tts_qwen3tts(
             )
     except Exception as e:
         logger.error(f"Qwen3-TTS错误: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+class Qwen3TTSModelStatus(BaseModel):
+    base_available: bool
+    custom_voice_available: bool
+    voice_design_available: bool
+    model_sizes: List[str]
+    message: str
+
+@app.get("/tts/qwen3tts/status")
+async def get_qwen3tts_status():
+    """获取 Qwen3-TTS 模型状态"""
+    try:
+        status = {
+            "base_available": False,
+            "custom_voice_available": False,
+            "voice_design_available": False,
+            "model_sizes": [],
+            "message": ""
+        }
+        
+        size_configs = ["0.6B", "1.7B"]
+        available_sizes = []
+        
+        for size in size_configs:
+            size_map = {"0.6B": "0___6B", "1.7B": "1___7B"}
+            size_str = size_map.get(size, size.replace('.', '___'))
+            
+            # 检查 Base 模型
+            base_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-Base")
+            if os.path.exists(base_path):
+                status["base_available"] = True
+                if size not in available_sizes:
+                    available_sizes.append(size)
+            
+            # 检查 CustomVoice 模型
+            custom_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-CustomVoice")
+            if os.path.exists(custom_path):
+                status["custom_voice_available"] = True
+                if size not in available_sizes:
+                    available_sizes.append(size)
+            
+            # 检查 VoiceDesign 模型
+            design_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-VoiceDesign")
+            if os.path.exists(design_path):
+                status["voice_design_available"] = True
+                if size not in available_sizes:
+                    available_sizes.append(size)
+        
+        status["model_sizes"] = available_sizes
+        
+        # 生成状态消息
+        if status["base_available"]:
+            if status["custom_voice_available"] and status["voice_design_available"]:
+                status["message"] = "所有模型已就绪"
+            elif status["custom_voice_available"]:
+                status["message"] = "Base 和 CustomVoice 模型可用，VoiceDesign 模型缺失"
+            elif status["voice_design_available"]:
+                status["message"] = "Base 和 VoiceDesign 模型可用，CustomVoice 模型缺失"
+            else:
+                status["message"] = "仅 Base 模型可用，CustomVoice 和 VoiceDesign 功能将使用默认音色"
+        else:
+            status["message"] = "Qwen3-TTS 模型未找到"
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"获取 Qwen3-TTS 状态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== OpenVoice API ====================
@@ -1863,6 +2038,135 @@ async def get_reference_audio(category: str, filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="音频文件不存在")
     return FileResponse(file_path, media_type="audio/wav")
+
+
+# ==================== 录音参考文本 API ====================
+
+# 预定义的朗读文本片段
+RECORDING_SCRIPTS = {
+    "short": [
+        {
+            "id": "script_001",
+            "text": "欢迎使用智能语音合成系统，这是一段用于声音克隆的参考文本。",
+            "type": "通用",
+            "duration": "5-8秒"
+        },
+        {
+            "id": "script_002",
+            "text": "春天来了，万物复苏，大地呈现出一片生机勃勃的景象。",
+            "type": "描述",
+            "duration": "5-8秒"
+        },
+        {
+            "id": "script_003",
+            "text": "科学技术是第一生产力，创新是引领发展的第一动力。",
+            "type": "新闻",
+            "duration": "5-8秒"
+        },
+        {
+            "id": "script_004",
+            "text": "你好，很高兴为您服务，请问有什么可以帮助您的吗？",
+            "type": "对话",
+            "duration": "5-8秒"
+        },
+        {
+            "id": "script_005",
+            "text": "在这座繁华的城市里，每个人都在为了自己的梦想而努力奋斗。",
+            "type": "叙述",
+            "duration": "6-9秒"
+        }
+    ],
+    "medium": [
+        {
+            "id": "script_101",
+            "text": "人工智能正在深刻改变着我们的生活方式。从智能手机到自动驾驶，从语音助手到智能医疗，AI技术无处不在。今天，我们将探讨AI在语音合成领域的最新进展。",
+            "type": "科普",
+            "duration": "10-15秒"
+        },
+        {
+            "id": "script_102",
+            "text": "尊敬的各位来宾，大家好！非常荣幸能够在这里与大家交流。今天我要分享的主题是：如何通过声音克隆技术，让每个人都能拥有个性化的数字声音助手。",
+            "type": "演讲",
+            "duration": "10-15秒"
+        },
+        {
+            "id": "script_103",
+            "text": "在一个宁静的小镇上，住着一位慈祥的老人。他每天清晨都会坐在院子里，给围坐在身边的孩子们讲述那些奇妙的故事。",
+            "type": "故事",
+            "duration": "10-15秒"
+        }
+    ],
+    "long": [
+        {
+            "id": "script_201",
+            "text": "语音合成技术已经走过了近百年的发展历程。从最初的机械式语音合成器，到今天的深度神经网络模型，这项技术经历了翻天覆地的变化。现代语音合成系统不仅能够生成自然流畅的语音，还能精确控制音色、情感和语速，甚至可以克隆特定人的声音特征。这使得语音合成在智能客服、有声读物、虚拟主播等领域得到了广泛应用。",
+            "type": "科普长文",
+            "duration": "15-20秒"
+        }
+    ]
+}
+
+@app.get("/recording_scripts")
+async def get_recording_scripts(
+    length: str = Query("short", description="文本长度: short/medium/long"),
+    type_filter: Optional[str] = Query(None, description="文本类型过滤")
+):
+    """
+    获取供用户朗读录音的参考文本片段
+    
+    参数:
+    - length: 文本长度 (short-短文本5-8秒, medium-中等10-15秒, long-长文本15-20秒)
+    - type_filter: 文本类型过滤 (通用/描述/新闻/对话/叙述/科普/演讲/故事)
+    """
+    try:
+        scripts = RECORDING_SCRIPTS.get(length, RECORDING_SCRIPTS["short"])
+        
+        # 应用类型过滤
+        if type_filter:
+            scripts = [s for s in scripts if s.get("type") == type_filter]
+        
+        return {
+            "success": True,
+            "length": length,
+            "count": len(scripts),
+            "scripts": scripts
+        }
+    except Exception as e:
+        system_logger.error(f"获取录音文本失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取录音文本失败: {str(e)}")
+
+
+@app.get("/recording_scripts/types")
+async def get_recording_script_types():
+    """获取所有可用的录音文本类型"""
+    types = set()
+    for scripts in RECORDING_SCRIPTS.values():
+        for script in scripts:
+            types.add(script.get("type", "通用"))
+    
+    return {
+        "success": True,
+        "types": sorted(list(types))
+    }
+
+
+@app.get("/recording_scripts/random")
+async def get_random_recording_script(
+    length: str = Query("short", description="文本长度: short/medium/long")
+):
+    """随机获取一条录音文本"""
+    import random
+    
+    scripts = RECORDING_SCRIPTS.get(length, RECORDING_SCRIPTS["short"])
+    if scripts:
+        script = random.choice(scripts)
+        return {
+            "success": True,
+            "script": script
+        }
+    else:
+        raise HTTPException(status_code=404, detail="没有找到合适的录音文本")
+
 
 # ==================== 静态文件服务 ====================
 

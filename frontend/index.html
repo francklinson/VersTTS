@@ -18,6 +18,104 @@
             padding: 20px;
         }
 
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .login-box {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+
+        .login-box h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .login-box p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .login-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .login-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .login-error {
+            color: #e53e3e;
+            font-size: 0.9rem;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+
+        .app-container {
+            display: none;
+        }
+
+        .user-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            z-index: 100;
+        }
+
+        .user-info:hover {
+            background: #f7fafc;
+        }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -317,18 +415,37 @@
     </style>
 </head>
 <body>
-    <div class="health-status">
-        <span class="health-dot" id="healthDot"></span>
-        <span id="healthText">检查中...</span>
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <div class="login-icon">🔐</div>
+            <h2>VersTTS 登录</h2>
+            <p>统一语音合成平台</p>
+            <input type="text" id="loginUsername" class="login-input" placeholder="用户名" value="admin">
+            <input type="password" id="loginPassword" class="login-input" placeholder="密码">
+            <button class="btn-login" onclick="doLogin()">登录</button>
+            <div class="login-error" id="loginError"></div>
+        </div>
     </div>
 
-    <div class="container">
-        <header>
-            <h1>🎙️ VersTTS</h1>
-            <p>统一语音合成平台 - 支持多种TTS模型</p>
-        </header>
+    <div id="appContainer" class="app-container">
+        <div class="user-info" onclick="doLogout()">
+            <span>👤</span>
+            <span id="currentUser">admin</span>
+            <span style="color:#999;font-size:0.8rem;">(点击退出)</span>
+        </div>
 
-        <div class="models-grid">
+        <div class="health-status">
+            <span class="health-dot" id="healthDot"></span>
+            <span id="healthText">检查中...</span>
+        </div>
+
+        <div class="container">
+            <header>
+                <h1>🎙️ VersTTS</h1>
+                <p>统一语音合成平台 - 支持多种TTS模型</p>
+            </header>
+
+            <div class="models-grid">
             <div class="model-card" data-model="chattts">
                 <div class="model-header">
                     <div class="model-icon chattts">💬</div>
@@ -662,6 +779,7 @@
                 <a class="btn-download" id="downloadBtn" download>📥 下载音频</a>
             </div>
         </div>
+    </div>
     </div>
 
     <script>
@@ -1033,8 +1151,69 @@
             }
         }
 
+        // 登录相关函数
+        const DEFAULT_USERNAME = 'admin';
+        const DEFAULT_PASSWORD = 'tp123456';
+        const AUTH_KEY = 'versTTS_auth';
+
+        function checkAuth() {
+            const auth = localStorage.getItem(AUTH_KEY);
+            if (auth === '1') {
+                showApp();
+            } else {
+                showLogin();
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('loginPage').style.display = 'flex';
+            document.getElementById('appContainer').style.display = 'none';
+        }
+
+        function showApp() {
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'block';
+            const username = localStorage.getItem('versTTS_username') || DEFAULT_USERNAME;
+            document.getElementById('currentUser').textContent = username;
+        }
+
+        function doLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            const errorEl = document.getElementById('loginError');
+
+            if (!username || !password) {
+                errorEl.textContent = '请输入用户名和密码';
+                return;
+            }
+
+            if (username === DEFAULT_USERNAME && password === DEFAULT_PASSWORD) {
+                localStorage.setItem(AUTH_KEY, '1');
+                localStorage.setItem('versTTS_username', username);
+                errorEl.textContent = '';
+                showApp();
+            } else {
+                errorEl.textContent = '用户名或密码错误';
+            }
+        }
+
+        function doLogout() {
+            localStorage.removeItem(AUTH_KEY);
+            localStorage.removeItem('versTTS_username');
+            document.getElementById('loginPassword').value = '';
+            showLogin();
+        }
+
+        // 监听回车键登录
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.getElementById('loginPage').style.display !== 'none') {
+                doLogin();
+            }
+        });
+
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
             checkHealth();
             setInterval(checkHealth, 30000); // 每30秒检查一次
             selectModel('chattts'); // 默认选择ChatTTS

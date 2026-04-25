@@ -45,14 +45,14 @@ OperationLogger.log_init_start()
 models = {}
 
 # 添加项目路径
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'ChatTTS'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'CosyVoice'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'CosyVoice', 'third_party', 'Matcha-TTS'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'F5-TTS'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'OpenVoice'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'Qwen3-TTS'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'GPT-SoVITS'))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'GPT-SoVITS', 'GPT_SoVITS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'ChatTTS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'CosyVoice'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'CosyVoice', 'third_party', 'Matcha-TTS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'F5-TTS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'OpenVoice'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'Qwen3-TTS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'GPT-SoVITS'))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'GPT-SoVITS', 'GPT_SoVITS'))
 
 # ==================== 生命周期管理 ====================
 
@@ -196,7 +196,7 @@ def get_chattts_model():
         
         import ChatTTS
         chat = ChatTTS.Chat()
-        model_path = os.path.join(PROJECT_ROOT, "ChatTTS", "models")
+        model_path = os.path.join(PROJECT_ROOT, "algorithms", "ChatTTS", "models")
         system_logger.info(f"【模型加载】ChatTTS 从路径: {model_path}")
         
         if not chat.load(source="custom", custom_path=model_path):
@@ -221,7 +221,7 @@ def get_cosyvoice_model(model_dir: str = "CosyVoice-300M-SFT"):
         OperationLogger.log_model_load(f"CosyVoice-{model_dir}", "开始加载")
         
         from cosyvoice.cli.cosyvoice import AutoModel
-        model_path = os.path.join(PROJECT_ROOT, "CosyVoice", "models", "iic", model_dir)
+        model_path = os.path.join(PROJECT_ROOT, "algorithms", "CosyVoice", "models", "iic", model_dir)
         if not os.path.exists(model_path):
             model_path = model_path.replace("-", "___")
         
@@ -242,7 +242,7 @@ def get_f5tts_model():
         OperationLogger.log_model_load("F5-TTS", "开始加载")
         
         from f5_tts.api import F5TTS
-        ckpt_path = os.path.join(PROJECT_ROOT, "F5-TTS", "models", "model_1200000.pt")
+        ckpt_path = os.path.join(PROJECT_ROOT, "algorithms", "F5-TTS", "models", "model_1200000.pt")
         system_logger.info(f"【模型加载】F5-TTS 检查点: {ckpt_path}")
         
         models["f5tts"] = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path)
@@ -267,7 +267,7 @@ def get_qwen3tts_model(model_size: str = "1.7B"):
             "1.7B": "1___7B"
         }
         size_str = size_map.get(model_size, model_size.replace('.', '___'))
-        model_path = os.path.join(PROJECT_ROOT, "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-Base")
+        model_path = os.path.join(PROJECT_ROOT, "algorithms", "Qwen3-TTS", "models", "Qwen", f"Qwen3-TTS-12Hz-{size_str}-Base")
         
         system_logger.info(f"【模型加载】Qwen3-TTS 路径: {model_path}")
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -298,15 +298,15 @@ def get_openvoice_models():
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
         
         # V1版本路径
-        ckpt_base_en = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v1", "checkpoints", "base_speakers", "EN")
-        ckpt_base_zh = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v1", "checkpoints", "base_speakers", "ZH")
-        ckpt_converter = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v1", "checkpoints", "converter")
+        ckpt_base_en = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v1", "checkpoints", "base_speakers", "EN")
+        ckpt_base_zh = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v1", "checkpoints", "base_speakers", "ZH")
+        ckpt_converter = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v1", "checkpoints", "converter")
         
         # 如果V1不存在,尝试V2
         if not os.path.exists(ckpt_base_en):
-            ckpt_base_en = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v2", "checkpoints_v2", "base_speakers")
-            ckpt_base_zh = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v2", "checkpoints_v2", "base_speakers")
-            ckpt_converter = os.path.join(PROJECT_ROOT, "OpenVoice", "checkpoints_v2", "checkpoints_v2", "converter")
+            ckpt_base_en = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v2", "checkpoints_v2", "base_speakers")
+            ckpt_base_zh = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v2", "checkpoints_v2", "base_speakers")
+            ckpt_converter = os.path.join(PROJECT_ROOT, "algorithms", "OpenVoice", "checkpoints_v2", "checkpoints_v2", "converter")
             system_logger.info(f"【模型加载】OpenVoice 使用V2版本")
         else:
             system_logger.info(f"【模型加载】OpenVoice 使用V1版本")
@@ -344,7 +344,7 @@ def get_openvoice_models():
 
 def _setup_gpt_sovits_path():
     """设置GPT-SoVITS所需的系统路径"""
-    gpt_sovits_root = os.path.join(PROJECT_ROOT, "GPT-SoVITS")
+    gpt_sovits_root = os.path.join(PROJECT_ROOT, "algorithms", "GPT-SoVITS")
     gpt_sovits_module = os.path.join(gpt_sovits_root, "GPT_SoVITS")
     
     if gpt_sovits_root not in sys.path:
@@ -384,7 +384,7 @@ def get_gpt_sovits_model(version: str = "v2"):
             from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
             
             # 加载配置文件
-            config_path = os.path.join(PROJECT_ROOT, "GPT-SoVITS", "GPT_SoVITS", "configs", "tts_infer.yaml")
+            config_path = os.path.join(PROJECT_ROOT, "algorithms", "GPT-SoVITS", "GPT_SoVITS", "configs", "tts_infer.yaml")
             tts_config = TTS_Config(config_path)
             
             # 根据版本选择配置
@@ -715,8 +715,8 @@ async def cosyvoice_speakers():
 # ==================== F5-TTS API ====================
 
 # 默认参考音频路径
-DEFAULT_F5TTS_REF_ZH = os.path.join(PROJECT_ROOT, "F5-TTS", "src", "f5_tts", "infer", "examples", "basic", "basic_ref_zh.wav")
-DEFAULT_F5TTS_REF_EN = os.path.join(PROJECT_ROOT, "F5-TTS", "src", "f5_tts", "infer", "examples", "basic", "basic_ref_en.wav")
+DEFAULT_F5TTS_REF_ZH = os.path.join(PROJECT_ROOT, "algorithms", "F5-TTS", "src", "f5_tts", "infer", "examples", "basic", "basic_ref_zh.wav")
+DEFAULT_F5TTS_REF_EN = os.path.join(PROJECT_ROOT, "algorithms", "F5-TTS", "src", "f5_tts", "infer", "examples", "basic", "basic_ref_en.wav")
 DEFAULT_F5TTS_TEXT_ZH = "在一无所知中，梦里的一天结束了，一个新的轮回便会开始。"
 DEFAULT_F5TTS_TEXT_EN = "Some call me nature, others call me mother nature."
 

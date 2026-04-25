@@ -2,6 +2,7 @@
 """
 VersTTS 日志配置模块
 提供详细的操作审计、性能监控和用户行为日志
+优化版：减少日志文件数量，添加自动清理
 """
 
 import os
@@ -9,19 +10,27 @@ import sys
 import logging
 import json
 import time
-from datetime import datetime
+import glob
+from datetime import datetime, timedelta
 from functools import wraps
 from typing import Optional, Dict, Any
+from logging.handlers import RotatingFileHandler
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# 日志文件路径
-SYSTEM_LOG = os.path.join(LOG_DIR, f'system_{datetime.now().strftime("%Y%m%d")}.log')
-OPERATION_LOG = os.path.join(LOG_DIR, f'operation_{datetime.now().strftime("%Y%m%d")}.log')
-AUDIT_LOG = os.path.join(LOG_DIR, f'audit_{datetime.now().strftime("%Y%m%d")}.log')
-PERFORMANCE_LOG = os.path.join(LOG_DIR, f'performance_{datetime.now().strftime("%Y%m%d")}.log')
+# 日志保留天数
+LOG_RETENTION_DAYS = 7
+# 单个日志文件最大大小 (10MB)
+MAX_LOG_SIZE = 10 * 1024 * 1024
+# 备份文件数量
+BACKUP_COUNT = 3
+
+# 日志文件路径 - 简化为3个核心日志
+SYSTEM_LOG = os.path.join(LOG_DIR, 'system.log')
+OPERATION_LOG = os.path.join(LOG_DIR, 'operation.log')
+AUDIT_LOG = os.path.join(LOG_DIR, 'audit.log')
 
 # 日志格式
 DETAILED_FORMATTER = logging.Formatter(
@@ -29,13 +38,37 @@ DETAILED_FORMATTER = logging.Formatter(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-JSON_FORMATTER = logging.Formatter(
-    '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": %(message)s}'
+SIMPLE_FORMATTER = logging.Formatter(
+    '%(asctime)s | %(message)s',
+    datefmt='%H:%M:%S'
 )
 
 
-def setup_logger(name: str, log_file: str, level=logging.INFO, formatter=None) -> logging.Logger:
-    """设置日志记录器"""
+def cleanup_old_logs():
+    """清理超过保留天数的旧日志文件"""
+    try:
+        cutoff_time = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+        log_files = glob.glob(os.path.join(LOG_DIR, '*.log*'))
+        
+        removed_count = 0
+        for file_path in log_files:
+            try:
+                # 获取文件修改时间
+                file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
+                if file_mtime < cutoff_time:
+                    os.remove(file_path)
+                    removed_count += 1
+            except Exception as e:
+                print(f"清理日志文件失败 {file_path}: {e}")
+        
+        if removed_count > 0:
+            print(f"已清理 {removed_count} 个过期日志文件")
+    except Exception as e:
+        print(f"日志清理过程出错: {e}")
+
+
+def setup_logger(name: str, log_file: str, level=logging.INFO, formatter=None, max_bytes=None, backup_count=None) -> logging.Logger:
+    """设置日志记录器 - 使用RotatingFileHandler实现自动轮转"""
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
@@ -43,26 +76,36 @@ def setup_logger(name: str, log_file: str, level=logging.INFO, formatter=None) -
     if logger.handlers:
         return logger
     
-    # 文件处理器
-    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    # 使用RotatingFileHandler实现日志轮转
+    max_bytes = max_bytes or MAX_LOG_SIZE
+    backup_count = backup_count or BACKUP_COUNT
+    
+    file_handler = RotatingFileHandler(
+        log_file, 
+        maxBytes=max_bytes, 
+        backupCount=backup_count,
+        encoding='utf-8'
+    )
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter or DETAILED_FORMATTER)
     logger.addHandler(file_handler)
     
-    # 控制台处理器
+    # 控制台处理器 - 只输出INFO及以上级别
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter or DETAILED_FORMATTER)
     logger.addHandler(console_handler)
     
     return logger
 
 
-# 各类日志记录器
+# 执行日志清理
+cleanup_old_logs()
+
+# 各类日志记录器 - 简化为3个核心日志
 system_logger = setup_logger('versTTS.system', SYSTEM_LOG)
 operation_logger = setup_logger('versTTS.operation', OPERATION_LOG)
 audit_logger = setup_logger('versTTS.audit', AUDIT_LOG)
-performance_logger = setup_logger('versTTS.performance', PERFORMANCE_LOG)
 
 
 class OperationLogger:
@@ -104,16 +147,31 @@ class OperationLogger:
     
     @staticmethod
     def log_config_change(config_name: str, old_value: Any, new_value: Any, user_info: str = "anonymous"):
-        """记录配置变更"""
-        audit_logger.info(
-            f"【配置变更】{config_name} | 用户: {user_info} | "
-            f"旧值: {old_value} | 新值: {new_value}"
-        )
+        """记录配置变更 - 同时记录到audit日志"""
+        msg = f"【配置变更】{config_name} | 用户: {user_info} | 旧值: {old_value} | 新值: {new_value}"
+        audit_logger.info(msg)
+        system_logger.info(msg)
+    
+    @staticmethod
+    def log_speaker_operation(operation: str, speaker_name: str, speaker_id: str = "", user_info: str = "anonymous"):
+        """记录说话人相关操作 - 重要操作记录到audit"""
+        msg = f"【说话人操作】{operation} | 名称: {speaker_name} | ID: {speaker_id} | 用户: {user_info}"
+        audit_logger.info(msg)
+        operation_logger.info(msg)
     
     @staticmethod
     def log_api_request(endpoint: str, method: str, params: Dict = None, client_ip: str = "", duration: float = 0):
-        """记录API请求"""
-        params_str = json.dumps(params, ensure_ascii=False) if params else "{}"
+        """记录API请求 - 只记录到operation日志，减少重复"""
+        # 简化参数，避免日志过大
+        simplified_params = {}
+        if params:
+            for key, value in params.items():
+                if isinstance(value, str) and len(value) > 100:
+                    simplified_params[key] = value[:100] + "..."
+                else:
+                    simplified_params[key] = value
+        
+        params_str = json.dumps(simplified_params, ensure_ascii=False) if simplified_params else "{}"
         operation_logger.info(
             f"【API请求】{method} {endpoint} | 客户端: {client_ip} | "
             f"耗时: {duration:.3f}s | 参数: {params_str}"
@@ -123,7 +181,16 @@ class OperationLogger:
     def log_tts_request(model: str, text: str, params: Dict = None, duration: float = 0, status: str = "成功"):
         """记录TTS请求"""
         text_preview = text[:50] + "..." if len(text) > 50 else text
-        params_str = json.dumps(params, ensure_ascii=False) if params else "{}"
+        # 简化参数
+        simplified_params = {}
+        if params:
+            for key, value in params.items():
+                if isinstance(value, str) and len(value) > 50:
+                    simplified_params[key] = value[:50] + "..."
+                else:
+                    simplified_params[key] = value
+        
+        params_str = json.dumps(simplified_params, ensure_ascii=False) if simplified_params else "{}"
         operation_logger.info(
             f"【TTS合成】模型: {model} | 文本: {text_preview} | "
             f"耗时: {duration:.3f}s | 状态: {status} | 参数: {params_str}"
@@ -131,18 +198,21 @@ class OperationLogger:
     
     @staticmethod
     def log_error(error_type: str, message: str, stack_trace: str = ""):
-        """记录错误"""
+        """记录错误 - 错误同时记录到system和audit"""
         system_logger.error(f"【错误】{error_type} | {message}")
+        audit_logger.error(f"【错误】{error_type} | {message}")
         if stack_trace:
             system_logger.error(f"堆栈: {stack_trace}")
     
     @staticmethod
     def log_performance(operation: str, duration: float, memory_usage: float = 0, gpu_usage: float = 0):
-        """记录性能指标"""
-        performance_logger.info(
-            f"【性能】{operation} | 耗时: {duration:.3f}s | "
-            f"内存: {memory_usage:.2f}MB | GPU: {gpu_usage:.2f}%"
-        )
+        """记录性能指标 - 只记录超过阈值的操作"""
+        # 只记录耗时超过1秒或有资源使用的情况
+        if duration > 1 or memory_usage > 0 or gpu_usage > 0:
+            operation_logger.info(
+                f"【性能】{operation} | 耗时: {duration:.3f}s | "
+                f"内存: {memory_usage:.2f}MB | GPU: {gpu_usage:.2f}%"
+            )
     
     @staticmethod
     def log_file_operation(operation: str, file_path: str, size: int = 0, status: str = "成功"):
@@ -155,10 +225,12 @@ class OperationLogger:
     
     @staticmethod
     def log_system_status(cpu_percent: float, memory_percent: float, gpu_info: str = ""):
-        """记录系统状态"""
-        system_logger.info(
-            f"【系统状态】CPU: {cpu_percent:.1f}% | 内存: {memory_percent:.1f}% | GPU: {gpu_info}"
-        )
+        """记录系统状态 - 只在异常时记录"""
+        # 只在资源使用较高时记录
+        if cpu_percent > 80 or memory_percent > 80:
+            system_logger.warning(
+                f"【系统状态】CPU: {cpu_percent:.1f}% | 内存: {memory_percent:.1f}% | GPU: {gpu_info}"
+            )
 
 
 def log_operation(operation_name: str):
@@ -190,22 +262,21 @@ def log_api_call(endpoint: str):
             start_time = time.time()
             client_ip = kwargs.get('request', {}).get('client', [{}])[0].get('host', 'unknown') if 'request' in kwargs else 'unknown'
             
-            # 提取参数
+            # 简化参数
             params = {}
             for key, value in kwargs.items():
                 if key not in ['request', 'background_tasks']:
-                    params[key] = str(value)[:100]  # 限制长度
-            
-            operation_logger.info(f"【API调用开始】{endpoint} | 客户端: {client_ip}")
+                    val_str = str(value)
+                    params[key] = val_str[:100] + "..." if len(val_str) > 100 else val_str
             
             try:
                 result = await func(*args, **kwargs)
                 duration = time.time() - start_time
-                operation_logger.info(f"【API调用完成】{endpoint} | 耗时: {duration:.3f}s | 状态: 成功")
+                operation_logger.info(f"【API调用】{endpoint} | 客户端: {client_ip} | 耗时: {duration:.3f}s | 状态: 成功")
                 return result
             except Exception as e:
                 duration = time.time() - start_time
-                operation_logger.error(f"【API调用失败】{endpoint} | 耗时: {duration:.3f}s | 错误: {str(e)}")
+                operation_logger.error(f"【API调用】{endpoint} | 客户端: {client_ip} | 耗时: {duration:.3f}s | 错误: {str(e)}")
                 raise
         return wrapper
     return decorator
@@ -222,5 +293,7 @@ __all__ = [
     'operation_logger',
     'audit_logger',
     'performance_logger',
-    'logger'
+    'logger',
+    'cleanup_old_logs',
+    'LOG_RETENTION_DAYS'
 ]

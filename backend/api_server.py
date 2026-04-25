@@ -26,11 +26,80 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
 
+# 文本预处理函数 - 用于 ChatTTS
+def preprocess_text_for_chattts(text: str) -> str:
+    """
+    预处理文本以适应 ChatTTS 模型
+    - 转换全角字符为半角
+    - 移除用户手动添加的控制标签（避免与系统自动添加的冲突）
+    - 移除或替换不支持的字符
+    """
+    import re
+    
+    # 第一步：移除用户手动添加的 ChatTTS 控制标签
+    # 这些标签会通过 API 参数自动添加，手动添加会导致冲突和 CUDA 错误
+    control_tags = [
+        r'\[oral_\d+\]',      # [oral_0] 到 [oral_9]
+        r'\[laugh_\d+\]',     # [laugh_0] 到 [laugh_2]
+        r'\[break_\d+\]',     # [break_0] 到 [break_7]
+        r'\[speed_\d+\]',     # [speed_0] 到 [speed_9]
+        r'\[laugh\]',         # [laugh]
+        r'\[uv_break\]',      # [uv_break]
+        r'\[v_break\]',       # [v_break]
+        r'\[break\]',         # [break]
+    ]
+    
+    for tag_pattern in control_tags:
+        text = re.sub(tag_pattern, '', text)
+    
+    # 全角到半角映射
+    fullwidth_to_halfwidth = {
+        '（': '(', '）': ')', '【': '[', '】': ']',
+        '｛': '{', '｝': '}', '「': '"', '」': '"',
+        '『': '"', '』': '"', '［': '[', '］': ']',
+        '。': '.', '，': ',', '！': '!', '？': '?',
+        '；': ';', '：': ':', '"': '"', '"': '"',
+        ''': "'", ''': "'", '、': ',', '·': '.',
+        '～': '~', '＠': '@', '＃': '#', '＄': '$',
+        '％': '%', '＆': '&', '＊': '*', '＋': '+',
+        '－': '-', '／': '/', '＜': '<', '＝': '=',
+        '＞': '>', '？': '?', '＾': '^', '＿': '_',
+        '｀': '`', '｜': '|', '～': '~',
+        '０': '0', '１': '1', '２': '2', '３': '3', '４': '4',
+        '５': '5', '６': '6', '７': '7', '８': '8', '９': '9',
+        'Ａ': 'A', 'Ｂ': 'B', 'Ｃ': 'C', 'Ｄ': 'D', 'Ｅ': 'E',
+        'Ｆ': 'F', 'Ｇ': 'G', 'Ｈ': 'H', 'Ｉ': 'I', 'Ｊ': 'J',
+        'Ｋ': 'K', 'Ｌ': 'L', 'Ｍ': 'M', 'Ｎ': 'N', 'Ｏ': 'O',
+        'Ｐ': 'P', 'Ｑ': 'Q', 'Ｒ': 'R', 'Ｓ': 'S', 'Ｔ': 'T',
+        'Ｕ': 'U', 'Ｖ': 'V', 'Ｗ': 'W', 'Ｘ': 'X', 'Ｙ': 'Y',
+        'Ｚ': 'Z',
+        'ａ': 'a', 'ｂ': 'b', 'ｃ': 'c', 'ｄ': 'd', 'ｅ': 'e',
+        'ｆ': 'f', 'ｇ': 'g', 'ｈ': 'h', 'ｉ': 'i', 'ｊ': 'j',
+        'ｋ': 'k', 'ｌ': 'l', 'ｍ': 'm', 'ｎ': 'n', 'ｏ': 'o',
+        'ｐ': 'p', 'ｑ': 'q', 'ｒ': 'r', 'ｓ': 's', 'ｔ': 't',
+        'ｕ': 'u', 'ｖ': 'v', 'ｗ': 'w', 'ｘ': 'x', 'ｙ': 'y',
+        'ｚ': 'z',
+    }
+    
+    # 转换全角到半角
+    for fw, hw in fullwidth_to_halfwidth.items():
+        text = text.replace(fw, hw)
+    
+    # 移除其他可能不支持的字符（保留中英文、数字、常用标点）
+    # 注意：不再保留方括号 []，因为控制标签已经被移除
+    allowed_pattern = r'[^\u4e00-\u9fa5a-zA-Z0-9\s\(\)\{\}\<\>\,\.\!\?\;\:\'\"\-\_\~\@\#\$\%\&\*\+\=\|\/\\\n]'
+    text = re.sub(allowed_pattern, '', text)
+    
+    # 清理多余空格
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+
 # 导入自定义日志配置
 from backend.logger_config import (
     OperationLogger, log_operation, log_api_call,
-    system_logger, operation_logger, audit_logger, 
-    performance_logger, logger
+    system_logger, operation_logger, audit_logger, logger
 )
 
 # 导入批量处理模块
@@ -43,6 +112,80 @@ OperationLogger.log_init_start()
 
 # 全局模型缓存
 models = {}
+
+# ==================== 说话人管理 ====================
+
+# 说话人数据存储路径
+SPEAKERS_DIR = os.path.join(PROJECT_ROOT, "speakers")
+SPEAKERS_DB_FILE = os.path.join(SPEAKERS_DIR, "speakers_db.json")
+
+# 确保说话人目录存在
+os.makedirs(SPEAKERS_DIR, exist_ok=True)
+
+def load_speakers_db() -> Dict:
+    """加载说话人数据库"""
+    if os.path.exists(SPEAKERS_DB_FILE):
+        try:
+            with open(SPEAKERS_DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            system_logger.error(f"【说话人管理】加载数据库失败: {e}")
+    return {"speakers": [], "version": "1.0"}
+
+def save_speakers_db(db: Dict):
+    """保存说话人数据库"""
+    try:
+        with open(SPEAKERS_DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(db, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        system_logger.error(f"【说话人管理】保存数据库失败: {e}")
+        return False
+
+def get_speaker_by_name(name: str) -> Optional[Dict]:
+    """根据名称获取说话人"""
+    db = load_speakers_db()
+    for speaker in db["speakers"]:
+        if speaker["name"] == name:
+            return speaker
+    return None
+
+def check_speaker_name_exists(name: str) -> bool:
+    """检查说话人名称是否已存在"""
+    return get_speaker_by_name(name) is not None
+
+def add_speaker(name: str, embedding: str, audio_path: Optional[str] = None) -> Dict:
+    """添加新说话人"""
+    db = load_speakers_db()
+    
+    speaker = {
+        "id": f"spk_{int(time.time() * 1000)}",
+        "name": name,
+        "embedding": embedding,
+        "audio_path": audio_path,
+        "created_at": datetime.now().isoformat(),
+        "model_type": "chattts"
+    }
+    
+    db["speakers"].append(speaker)
+    
+    if save_speakers_db(db):
+        system_logger.info(f"【说话人管理】添加说话人成功: {name}")
+        return speaker
+    else:
+        raise HTTPException(status_code=500, detail="保存说话人失败")
+
+def delete_speaker(speaker_id: str) -> bool:
+    """删除说话人"""
+    db = load_speakers_db()
+    original_count = len(db["speakers"])
+    db["speakers"] = [s for s in db["speakers"] if s["id"] != speaker_id]
+    
+    if len(db["speakers"]) < original_count:
+        save_speakers_db(db)
+        system_logger.info(f"【说话人管理】删除说话人: {speaker_id}")
+        return True
+    return False
 
 # 添加项目路径
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'algorithms', 'ChatTTS'))
@@ -518,6 +661,317 @@ async def health(request: Request):
         }
     }
 
+# ==================== 说话人管理 API ====================
+
+@app.get("/speakers")
+async def get_speakers():
+    """获取所有已保存的说话人列表"""
+    try:
+        db = load_speakers_db()
+        # 返回时不包含完整的 embedding 字符串（太长），只返回基本信息
+        speakers_list = []
+        for speaker in db["speakers"]:
+            speakers_list.append({
+                "id": speaker["id"],
+                "name": speaker["name"],
+                "created_at": speaker["created_at"],
+                "model_type": speaker.get("model_type", "chattts"),
+                "has_embedding": bool(speaker.get("embedding"))
+            })
+        return {
+            "success": True,
+            "speakers": speakers_list,
+            "total": len(speakers_list)
+        }
+    except Exception as e:
+        system_logger.error(f"【说话人管理】获取列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取说话人列表失败: {str(e)}")
+
+@app.get("/speakers/{speaker_id}")
+async def get_speaker_detail(speaker_id: str):
+    """获取指定说话人的详细信息（包含embedding）"""
+    try:
+        db = load_speakers_db()
+        for speaker in db["speakers"]:
+            if speaker["id"] == speaker_id:
+                return {
+                    "success": True,
+                    "speaker": speaker
+                }
+        raise HTTPException(status_code=404, detail="说话人不存在")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"获取说话人详情失败: {str(e)}")
+
+@app.post("/speakers/check-name")
+async def check_name(name: str = Form(...)):
+    """检查说话人名称是否可用"""
+    exists = check_speaker_name_exists(name)
+    return {
+        "success": True,
+        "available": not exists,
+        "exists": exists,
+        "message": "名称已被使用" if exists else "名称可用"
+    }
+
+@app.post("/speakers/extract")
+async def extract_speaker_from_audio(
+    audio: UploadFile = File(...),
+    speaker_name: str = Form(...)
+):
+    """
+    从上传的音频文件中提取说话人embedding
+    
+    - audio: 音频文件 (MP3, WAV等)
+    - speaker_name: 说话人名称
+    """
+    start_time = time.time()
+    
+    # 验证名称
+    if not speaker_name or len(speaker_name.strip()) == 0:
+        raise HTTPException(status_code=400, detail="说话人名称不能为空")
+    
+    if check_speaker_name_exists(speaker_name):
+        raise HTTPException(status_code=400, detail=f"说话人名称 '{speaker_name}' 已存在")
+    
+    # 验证文件格式（支持浏览器录音的 webm 格式）
+    allowed_extensions = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.webm'}
+    file_ext = os.path.splitext(audio.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"不支持的音频格式: {file_ext}。支持的格式: {', '.join(allowed_extensions)}"
+        )
+    
+    try:
+        system_logger.info(f"【说话人管理】开始提取说话人: {speaker_name}, 文件: {audio.filename}")
+        
+        # 读取音频文件
+        audio_bytes = await audio.read()
+        
+        # 保存上传的音频文件
+        timestamp = int(time.time())
+        audio_filename = f"speaker_{timestamp}_{speaker_name}{file_ext}"
+        audio_path = os.path.join(SPEAKERS_DIR, audio_filename)
+        
+        with open(audio_path, 'wb') as f:
+            f.write(audio_bytes)
+        
+        system_logger.info(f"【说话人管理】音频已保存: {audio_path}")
+        
+        # 加载音频并提取embedding
+        chat = get_chattts_model()
+        
+        # 对于 webm 格式，使用 ffmpeg 命令行工具转换
+        if file_ext in ['.webm', '.ogg']:
+            import subprocess
+            temp_wav_path = None
+            try:
+                system_logger.info(f"【说话人管理】检测到 {file_ext} 格式，使用 ffmpeg 转换")
+                
+                # 创建临时 wav 文件路径
+                temp_wav_path = audio_path.replace(file_ext, '_temp.wav')
+                
+                # 使用 ffmpeg 命令行工具转换 webm/ogg 到 wav
+                # -y: 覆盖输出文件
+                # -ar 24000: 设置采样率为 24kHz
+                # -ac 1: 设置为单声道
+                # -acodec pcm_s16le: 使用 16-bit PCM 编码
+                cmd = [
+                    'ffmpeg', '-y', '-i', audio_path,
+                    '-ar', '24000', '-ac', '1', '-acodec', 'pcm_s16le',
+                    temp_wav_path
+                ]
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    system_logger.error(f"【说话人管理】ffmpeg 转换失败: {result.stderr}")
+                    raise Exception(f"ffmpeg 转换失败: {result.stderr}")
+                
+                system_logger.info(f"【说话人管理】ffmpeg 转换成功: {temp_wav_path}")
+                
+                # 使用 torchaudio 加载转换后的 wav 文件
+                wav, sr = torchaudio.load(temp_wav_path)
+                system_logger.info(f"【说话人管理】{file_ext} 转换成功，形状: {wav.shape}")
+                
+            except Exception as e:
+                system_logger.error(f"【说话人管理】{file_ext} 转换失败: {e}")
+                raise HTTPException(status_code=400, detail=f"{file_ext.upper()} 音频转换失败，请确保系统已安装 ffmpeg: {e}")
+            finally:
+                # 清理临时 wav 文件
+                if temp_wav_path and os.path.exists(temp_wav_path):
+                    try:
+                        os.remove(temp_wav_path)
+                        system_logger.info(f"【说话人管理】清理临时文件: {temp_wav_path}")
+                    except Exception as e:
+                        system_logger.warning(f"【说话人管理】清理临时文件失败: {e}")
+        else:
+            # 尝试使用 torchaudio 加载音频
+            try:
+                audio_io = io.BytesIO(audio_bytes)
+                wav, sr = torchaudio.load(audio_io)
+            except Exception as e:
+                system_logger.warning(f"【说话人管理】torchaudio 加载失败，尝试使用 soundfile: {e}")
+                # 使用 soundfile 作为备选
+                try:
+                    import soundfile as sf
+                    audio_io = io.BytesIO(audio_bytes)
+                    wav_array, sr = sf.read(audio_io, dtype='float32')
+                    # soundfile 返回的是 numpy 数组，需要转换为 torch tensor
+                    if wav_array.ndim == 1:
+                        wav_array = wav_array.reshape(1, -1)
+                    else:
+                        wav_array = wav_array.T  # 转置为 (channels, samples)
+                    wav = torch.from_numpy(wav_array)
+                except Exception as e2:
+                    system_logger.error(f"【说话人管理】所有加载方式都失败: {e2}")
+                    raise HTTPException(status_code=400, detail=f"无法加载音频文件，格式可能不受支持: {e2}")
+            
+            # 重采样到 24kHz (ChatTTS 要求)
+            if sr != 24000:
+                resampler = torchaudio.transforms.Resample(sr, 24000)
+                wav = resampler(wav)
+            
+            # 转换为单声道
+            if wav.shape[0] > 1:
+                wav = wav.mean(dim=0, keepdim=True)
+        
+        system_logger.info(f"【说话人管理】音频加载成功，形状: {wav.shape}, 采样率: {sr}")
+        
+        # 提取说话人embedding - 使用 spk_smp 格式（音色准确）
+        # spk_smp 保留了完整的声学特征，支持准确的声音克隆
+        speaker_emb = chat.sample_audio_speaker(wav.squeeze().numpy())
+        system_logger.info(f"【说话人管理】提取 spk_smp 成功，长度: {len(speaker_emb)}")
+        
+        # 将 spk_smp 进行 base64 编码（为了安全传输）
+        import base64
+        speaker_emb_bytes = speaker_emb.encode('utf-8')
+        speaker_emb_b64 = base64.b64encode(speaker_emb_bytes).decode('ascii')
+        
+        # 调试日志：记录 embedding 信息
+        system_logger.info(f"【说话人管理】提取完成: {speaker_name}, spk_smp长度: {len(speaker_emb)}, base64长度: {len(speaker_emb_b64)}")
+        
+        duration = time.time() - start_time
+        system_logger.info(f"【说话人管理】提取完成: {speaker_name}, 耗时: {duration:.2f}s")
+        
+        return {
+            "success": True,
+            "message": "说话人提取成功",
+            "speaker_name": speaker_name,
+            "embedding": speaker_emb_b64,
+            "audio_path": audio_path,
+            "duration": duration
+        }
+        
+    except Exception as e:
+        # 清理已保存的音频文件
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        
+        system_logger.error(f"【说话人管理】提取失败: {e}")
+        raise HTTPException(status_code=500, detail=f"提取说话人失败: {str(e)}")
+
+@app.post("/speakers/save")
+async def save_speaker(
+    name: str = Form(...),
+    embedding: str = Form(...),
+    audio_path: Optional[str] = Form(None)
+):
+    """
+    保存说话人信息
+    
+    - name: 说话人名称
+    - embedding: 说话人embedding字符串 (base64编码)
+    - audio_path: 参考音频路径（可选）
+    """
+    try:
+        # 调试日志：记录接收到的 embedding 信息
+        system_logger.info(f"【说话人管理】接收到embedding (base64)，长度: {len(embedding)}")
+        
+        # 验证名称
+        if not name or len(name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="说话人名称不能为空")
+        
+        if check_speaker_name_exists(name):
+            raise HTTPException(status_code=400, detail=f"说话人名称 '{name}' 已存在")
+        
+        # 验证 embedding 是有效的 base64
+        try:
+            import base64
+            # 验证可以解码
+            embedding_bytes = base64.b64decode(embedding)
+            embedding_str = embedding_bytes.decode('utf-8')
+            system_logger.info(f"【说话人管理】embedding验证成功，解码后长度: {len(embedding_str)}")
+        except Exception as e:
+            system_logger.error(f"【说话人管理】embedding验证失败: {e}")
+            raise HTTPException(status_code=400, detail=f"embedding格式错误: {e}")
+        
+        # 保存说话人 - 直接保存 base64 编码的字符串（不要解码）
+        speaker = add_speaker(name, embedding, audio_path)
+        
+        # 记录审计日志
+        OperationLogger.log_speaker_operation("创建", speaker["name"], speaker["id"])
+        
+        return {
+            "success": True,
+            "message": "说话人保存成功",
+            "speaker": {
+                "id": speaker["id"],
+                "name": speaker["name"],
+                "created_at": speaker["created_at"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"【说话人管理】保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"保存说话人失败: {str(e)}")
+
+@app.delete("/speakers/{speaker_id}")
+async def delete_speaker_api(speaker_id: str):
+    """删除指定的说话人"""
+    try:
+        # 获取说话人信息以删除关联的音频文件
+        db = load_speakers_db()
+        speaker = None
+        for s in db["speakers"]:
+            if s["id"] == speaker_id:
+                speaker = s
+                break
+        
+        if not speaker:
+            raise HTTPException(status_code=404, detail="说话人不存在")
+        
+        # 删除关联的音频文件
+        if speaker.get("audio_path") and os.path.exists(speaker["audio_path"]):
+            os.remove(speaker["audio_path"])
+        
+        # 删除数据库记录
+        if delete_speaker(speaker_id):
+            # 记录审计日志
+            OperationLogger.log_speaker_operation("删除", speaker.get("name", "unknown"), speaker_id)
+            
+            return {
+                "success": True,
+                "message": "说话人删除成功"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="删除说话人失败")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"【说话人管理】删除失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除说话人失败: {str(e)}")
+
 # ==================== ChatTTS API ====================
 
 @app.post("/tts/chattts")
@@ -525,50 +979,161 @@ async def tts_chattts(
     request: Request,
     text: str = Form(...),
     speaker_emb: Optional[str] = Form(None),
+    speaker_id: Optional[str] = Form(None),  # 新增：通过ID选择已保存的说话人
     temperature: float = Form(0.3),
     top_P: float = Form(0.7),
     top_K: float = Form(20),
     output_format: str = Form("url")
 ):
-    """ChatTTS语音合成"""
+    """ChatTTS语音合成 - 支持通过speaker_id选择已保存的说话人"""
     start_time = time.time()
     client_ip = request.client.host if request.client else "unknown"
     
     try:
+        # 预处理文本 - 移除控制标签和转换全角字符
+        original_text = text
+        text = preprocess_text_for_chattts(text)
+        if text != original_text:
+            system_logger.info(f"【ChatTTS】文本预处理 | 原始: {original_text[:50]}... | 处理后: {text[:50]}...")
+        
         # 记录API请求
         OperationLogger.log_api_request("/tts/chattts", "POST", {
             "text_preview": text[:50],
             "temperature": temperature,
             "top_P": top_P,
-            "top_K": top_K
+            "top_K": top_K,
+            "speaker_id": speaker_id
         }, client_ip)
         
         system_logger.info(f"【ChatTTS】开始合成 | 文本: {text[:50]}... | 客户端: {client_ip}")
+        system_logger.info(f"【ChatTTS】接收参数 | speaker_id={speaker_id}, speaker_emb={'已设置' if speaker_emb else '未设置'}")
         chat = get_chattts_model()
 
-        # 准备说话人embedding
-        if speaker_emb:
-            spk = speaker_emb
+        # 准备说话人参数
+        spk_emb = None
+        spk_smp = None
+        txt_smp = None
+        speaker_name = None
+        
+        if speaker_id:
+            system_logger.info(f"【ChatTTS】尝试查找说话人: {speaker_id}")
+            # 通过ID从数据库获取说话人
+            db = load_speakers_db()
+            speaker_info = None
+            for s in db["speakers"]:
+                if s["id"] == speaker_id:
+                    speaker_info = s
+                    speaker_name = s["name"]
+                    break
+            
+            if speaker_info is None:
+                raise HTTPException(status_code=404, detail=f"说话人ID '{speaker_id}' 不存在")
+            
+            system_logger.info(f"【ChatTTS】使用已保存说话人: {speaker_name} (ID: {speaker_id})")
+            
+            # 从数据库读取 spk_smp（音色准确，但显存占用高）
+            embedding_b64 = speaker_info.get("embedding")
+            if not embedding_b64:
+                raise HTTPException(status_code=500, detail=f"说话人 '{speaker_name}' 没有保存 embedding")
+            
+            # Base64 解码获取 spk_smp
+            import base64
+            speaker_emb_bytes = base64.b64decode(embedding_b64)
+            spk_smp = speaker_emb_bytes.decode('utf-8')
+            
+            system_logger.info(f"【ChatTTS】加载 spk_smp 成功，长度: {len(spk_smp)}")
+            
+            # 使用 spk_smp 方式，需要设置 skip_refine_text=True
+            spk_emb = None  # 必须设为 None
+            txt_smp = None  # 设为 None 避免递归问题
+            
+        elif speaker_emb:
+            # 直接使用传入的embedding
+            spk_emb = speaker_emb
             system_logger.info(f"【ChatTTS】使用自定义说话人embedding")
         else:
-            spk = chat.sample_random_speaker()
+            # 随机生成说话人
+            spk_emb = chat.sample_random_speaker()
             system_logger.info(f"【ChatTTS】使用随机说话人")
 
+        # 记录推理参数
+        system_logger.info(f"【ChatTTS】推理参数 - spk_emb={'None' if spk_emb is None else '已设置'}, spk_smp={'None' if spk_smp is None else '已设置'}, txt_smp={'None' if txt_smp is None else txt_smp}")
+        system_logger.info(f"【ChatTTS】推理参数 - temperature={temperature}, top_P={top_P}, top_K={top_K}")
+        
+        # 清理 GPU 缓存
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            gpu_mem_before = torch.cuda.memory_allocated() / 1024**3
+            system_logger.info(f"【ChatTTS】GPU内存清理完成，当前使用: {gpu_mem_before:.2f}GB")
+        
         # 推理
+        # 限制 temperature 最小值为 0.1（ChatTTS 不支持 temperature=0）
+        safe_temperature = max(float(temperature), 0.1)
+        if safe_temperature != float(temperature):
+            system_logger.info(f"【ChatTTS】temperature 从 {temperature} 调整为 {safe_temperature}（最小值限制）")
+        
+        # 使用 spk_smp 时限制 max_new_token 以避免 OOM
+        max_new_token = 2048  # 默认值
+        if spk_smp is not None:
+            max_new_token = 1024  # 使用 spk_smp 时减少 token 数以节省显存
+            system_logger.info(f"【ChatTTS】使用 spk_smp，限制 max_new_token={max_new_token}")
+        
         params = chat.InferCodeParams(
-            spk_emb=spk,
-            temperature=float(temperature),
+            spk_emb=spk_emb,
+            spk_smp=spk_smp,
+            txt_smp=txt_smp,
+            temperature=safe_temperature,
             top_P=float(top_P),
             top_K=int(top_K),
+            max_new_token=max_new_token,
         )
         
+        system_logger.info(f"【ChatTTS】开始推理...")
         infer_start = time.time()
-        wavs = chat.infer(
-            [text],
-            stream=False,
-            params_infer_code=params,
-        )
+        try:
+            # 使用 spk_smp 时需要设置 skip_refine_text=True
+            wavs = chat.infer(
+                [text],
+                stream=False,
+                skip_refine_text=False,
+                split_text=False,
+                params_infer_code=params,
+            )
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                system_logger.error(f"【ChatTTS】GPU内存不足: {e}")
+                # 尝试清理GPU内存
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    system_logger.info(f"【ChatTTS】GPU内存已清理，请重试")
+                raise HTTPException(status_code=503, detail="GPU内存不足，请稍后重试")
+            raise
         infer_duration = time.time() - infer_start
+        system_logger.info(f"【ChatTTS】推理完成，耗时: {infer_duration:.3f}s")
+        
+        # 检查合成结果
+        if not wavs or len(wavs) == 0:
+            system_logger.error(f"【ChatTTS】合成结果为空列表")
+            raise HTTPException(status_code=500, detail="语音合成失败: 返回结果为空")
+        
+        if wavs[0] is None:
+            system_logger.error(f"【ChatTTS】合成结果第一个元素为None")
+            raise HTTPException(status_code=500, detail="语音合成失败: 音频数据为None")
+        
+        wav_length = len(wavs[0])
+        system_logger.info(f"【ChatTTS】合成音频长度: {wav_length} 样本")
+        
+        if wav_length == 0:
+            system_logger.error(f"【ChatTTS】合成音频长度为0")
+            raise HTTPException(status_code=500, detail="语音合成失败: 音频长度为0")
+        
+        # 检查音频是否全为静音
+        wav_max = np.abs(wavs[0]).max()
+        system_logger.info(f"【ChatTTS】合成音频最大振幅: {wav_max:.6f}")
+        
+        if wav_max < 1e-5:
+            system_logger.error(f"【ChatTTS】合成音频几乎全为静音")
+            raise HTTPException(status_code=500, detail="语音合成失败: 音频几乎全为静音")
 
         # 保存音频
         audio_path = save_temp_audio(wavs[0], 24000)

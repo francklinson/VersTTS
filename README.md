@@ -21,6 +21,7 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 - [使用指南](#-使用指南)
 - [API文档](#-api文档)
 - [算法分析](#-算法分析)
+- [前端功能](#-前端功能)
 - [开发记录](#-开发记录)
 - [常见问题](#-常见问题)
 
@@ -330,6 +331,10 @@ response = requests.post(url, files=files, data=data)
 |------|----------|----------|
 | **ChatTTS** | [algorithms/ChatTTS/readme.md](algorithms/ChatTTS/readme.md) | 扩散+GPT架构，对话优化 |
 | **Qwen3-TTS** | [algorithms/Qwen3-TTS/readme.md](algorithms/Qwen3-TTS/readme.md) | 离散多码本LM，97ms流式延迟 |
+| **CosyVoice** | [algorithms/CosyVoice/readme.md](algorithms/CosyVoice/readme.md) | 流匹配+LLM，多语言多方言支持 |
+| **F5-TTS** | [algorithms/F5-TTS/readme.md](algorithms/F5-TTS/readme.md) | 流匹配+DiT，高效快速 |
+| **OpenVoice** | [algorithms/OpenVoice/readme.md](algorithms/OpenVoice/readme.md) | VAE+VITS，音色风格解耦 |
+| **GPT-SoVITS** | [algorithms/GPT-SoVITS/readme.md](algorithms/GPT-SoVITS/readme.md) | VQ+GPT+VITS，最佳克隆效果 |
 
 ### 算法对比总结
 
@@ -348,6 +353,46 @@ response = requests.post(url, files=files, data=data)
 
 ---
 
+## 🖥️ 前端功能
+
+### 各算法前端功能实现状态
+
+| 算法 | 功能 | 实现状态 | 完整度 |
+|------|------|----------|--------|
+| **CosyVoice** | SFT模式(预训练音色) | ✅ 已实现 | 95% |
+| | Zero-shot克隆 | ✅ 已实现 | |
+| | Cross-lingual跨语言 | ✅ 已实现 | |
+| | Instruct指令控制 | ✅ 已实现 | |
+| | 流式生成开关 | ⚠️ 后端支持，待添加 | |
+| | 方言选择(18+种) | ⚠️ 后端支持，待添加 | |
+| **F5-TTS** | 参考音频克隆 | ✅ 已实现 | 100% |
+| | NFE步数调节 | ✅ 已实现 | |
+| | CFG强度调节 | ✅ 已实现 | |
+| | 语速控制 | ✅ 已实现 | |
+| **OpenVoice** | 音色克隆 | ✅ 已实现 | 100% |
+| | 语速控制 | ✅ 已实现 | |
+| | 风格选择 | ✅ 已实现 | |
+| | 多语言支持 | ✅ 已实现 | |
+| **GPT-SoVITS** | 零样本克隆 | ✅ 已实现 | 90% |
+| | 多语言支持(5种) | ✅ 已实现 | |
+| | 版本选择(v1-v4/Pro) | ✅ 已实现 | |
+| | 采样参数调节 | ✅ 已实现 | |
+| | 语速控制 | ✅ 已实现 | |
+| | 文本切分方法 | ⚠️ 待添加 | |
+| | 批处理大小 | ⚠️ 待添加 | |
+
+### 通用功能
+
+- ✅ 算法选择卡片界面
+- ✅ 文本输入与预览
+- ✅ 参考人声选择与管理
+- ✅ 参考音频上传与试听
+- ✅ 生成结果播放与下载
+- ✅ 批量文本处理
+- ✅ 录音功能(ChatTTS)
+
+---
+
 ## 📝 开发记录
 
 所有工作记录已按时间戳整理在 `records/` 目录：
@@ -357,6 +402,7 @@ response = requests.post(url, files=files, data=data)
 - API开发记录
 - 前端开发记录
 - 问题排查记录
+- 功能验证记录
 
 查看记录文件：
 ```bash

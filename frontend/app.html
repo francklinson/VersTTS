@@ -697,6 +697,22 @@
             font-size: 0.9rem;
         }
 
+        /* CosyVoice模式选择器水平对齐 */
+        .cosyvoice-mode-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        /* CosyVoice指令控制模式：指令文本和方言水平对齐 */
+        .cosyvoice-instruct-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
         select, input[type="file"], input[type="number"], input[type="text"] {
             padding: 10px;
             border: 2px solid #e0e0e0;
@@ -1914,46 +1930,68 @@
 
             <!-- CosyVoice 选项 -->
             <div id="cosyvoice-options" class="model-options" style="display:none">
-                <div class="options-grid">
+                <!-- 模式选择 + 说话人/参考人声 水平对齐 -->
+                <div class="cosyvoice-mode-row">
+                    <!-- 左侧：模式选择 -->
                     <div class="option-group">
                         <label>模式</label>
                         <select id="cosyvoice-mode" onchange="updateCosyVoiceOptions()">
                             <option value="sft">SFT (预训练音色)</option>
                             <option value="zero_shot">Zero-shot (声音克隆)</option>
-                            <option value="cross_lingual">跨语言</option>
                             <option value="instruct">指令控制</option>
                         </select>
                     </div>
-                    <div class="option-group" id="cosyvoice-speaker-group">
-                        <label>说话人</label>
+                    <!-- 右侧：说话人 / 参考人声（互斥显示） -->
+                    <div class="option-group" id="cosyvoice-right-control">
+                        <label id="cosyvoice-right-label">说话人</label>
                         <select id="cosyvoice-speaker">
                             <option value="中文女">中文女</option>
                             <option value="中文男">中文男</option>
+                            <option value="粤语女">粤语女</option>
                             <option value="英文女">英文女</option>
                             <option value="英文男">英文男</option>
+                            <option value="日语男">日语男</option>
+                            <option value="韩语女">韩语女</option>
                         </select>
-                    </div>
-                    <div class="option-group" id="cosyvoice-ref-voice-group" style="display:none">
-                        <label>参考人声</label>
-                        <select id="cosyvoice-reference-voice" onchange="selectReferenceVoice('cosyvoice')">
+                        <select id="cosyvoice-reference-voice" onchange="selectReferenceVoice('cosyvoice')" style="display:none">
                             <option value="">-- 选择参考人声 --</option>
                         </select>
                     </div>
-                    <div class="option-group" id="cosyvoice-ref-group" style="display:none; grid-column: 1 / -1;">
-                        <label>参考音频</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="file" id="cosyvoice-ref" accept="audio/*" style="flex: 1;">
-                            <button type="button" class="btn-preview" id="cosyvoice-preview-btn" onclick="previewReferenceVoice('cosyvoice')" style="display:none; padding: 8px 15px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer;">▶️ 试听</button>
-                        </div>
-                        <small style="color: #666; margin-top: 5px; display: block;">上传音频或选择内置人声</small>
-                    </div>
-                    <div class="option-group" id="cosyvoice-prompt-group" style="display:none">
-                        <label>参考文本</label>
-                        <input type="text" id="cosyvoice-prompt" placeholder="参考音频对应的文本">
-                    </div>
-                    <div class="option-group" id="cosyvoice-instruct-group" style="display:none">
+                </div>
+                <div class="option-group" id="cosyvoice-speaker-hint" style="margin-bottom: 15px;">
+                    <small style="color: #666; display: block;">提示：不同音色会有细微差别，建议使用零样本克隆获得更独特的音色</small>
+                </div>
+                <!-- 指令控制模式：指令文本和方言水平对齐 -->
+                <div class="cosyvoice-instruct-row" id="cosyvoice-instruct-container" style="display:none">
+                    <div class="option-group" id="cosyvoice-instruct-group">
                         <label>指令文本</label>
                         <input type="text" id="cosyvoice-instruct" placeholder="如：用开心的语气说话">
+                    </div>
+                    <div class="option-group" id="cosyvoice-dialect-group">
+                        <label>方言选择</label>
+                        <select id="cosyvoice-dialect">
+                            <option value="">-- 不使用方言 --</option>
+                            <option value="用粤语说">粤语</option>
+                            <option value="用四川话说">四川话</option>
+                            <option value="用东北话说">东北话</option>
+                            <option value="用陕西话说">陕西话</option>
+                            <option value="用上海话说">上海话</option>
+                            <option value="用天津话说">天津话</option>
+                            <option value="用山东话说">山东话</option>
+                            <option value="用闽南语说">闽南语</option>
+                            <option value="用河南话说">河南话</option>
+                            <option value="用湖南话说">湖南话</option>
+                            <option value="用湖北话说">湖北话</option>
+                            <option value="用重庆话说">重庆话</option>
+                            <option value="用云南话说">云南话</option>
+                            <option value="用贵州话说">贵州话</option>
+                            <option value="用甘肃话说">甘肃话</option>
+                            <option value="用新疆话说">新疆话</option>
+                            <option value="用台湾话说">台湾话</option>
+                            <option value="用河北话说">河北话</option>
+                            <option value="用山西话说">山西话</option>
+                        </select>
+                        <small style="color: #666; margin-top: 5px; display: block;">选择方言后将自动添加到指令中</small>
                     </div>
                 </div>
             </div>
@@ -2300,9 +2338,38 @@
                     referenceVoices = [...referenceVoices, ...speakerVoices];
                 }
                 
+                // 加载CosyVoice预设音色
+                await loadCosyVoiceSpeakers();
+                
                 populateReferenceVoiceSelects();
             } catch (e) {
                 console.error('加载参考人声失败:', e);
+            }
+        }
+        
+        // 加载CosyVoice预设音色到SFT模式选择框
+        async function loadCosyVoiceSpeakers() {
+            try {
+                const response = await fetch(`${API_BASE}/tts/cosyvoice/speakers`);
+                const data = await response.json();
+                if (data.speakers && data.speakers.length > 0) {
+                    const select = document.getElementById('cosyvoice-speaker');
+                    if (select) {
+                        // 清空现有选项
+                        select.innerHTML = '';
+                        // 添加从API获取的音色
+                        data.speakers.forEach(speaker => {
+                            const option = document.createElement('option');
+                            option.value = speaker;
+                            option.textContent = speaker;
+                            select.appendChild(option);
+                        });
+                        console.log('[CosyVoice] 已加载音色:', data.speakers);
+                    }
+                }
+            } catch (e) {
+                console.error('加载CosyVoice音色失败:', e);
+                // 失败时使用默认选项
             }
         }
 
@@ -2359,7 +2426,12 @@
             if (voiceId) {
                 const voice = referenceVoices.find(v => v.id === voiceId);
                 if (voice) {
-                    selectedVoiceAudio[model] = voice.audio_url;
+                    // 对于CosyVoice，如果是说话人，存储speaker_id；否则存储音频URL
+                    if (model === 'cosyvoice' && voice.is_speaker && voice.speaker_id) {
+                        selectedVoiceAudio[model] = voice.speaker_id;  // 存储说话人ID
+                    } else {
+                        selectedVoiceAudio[model] = voice.audio_url;   // 存储音频URL
+                    }
 
                     // 显示预览按钮
                     if (previewBtn) {
@@ -2500,14 +2572,42 @@
         // 更新CosyVoice选项显示
         function updateCosyVoiceOptions() {
             const mode = document.getElementById('cosyvoice-mode').value;
-            const isClone = mode === 'zero_shot' || mode === 'cross_lingual';
+            const isClone = mode === 'zero_shot';
             const isInstruct = mode === 'instruct';
+            const isSft = mode === 'sft';
 
-            document.getElementById('cosyvoice-speaker-group').style.display = isClone || isInstruct ? 'none' : 'block';
-            document.getElementById('cosyvoice-ref-voice-group').style.display = isClone ? 'block' : 'none';
-            document.getElementById('cosyvoice-ref-group').style.display = isClone ? 'block' : 'none';
-            document.getElementById('cosyvoice-prompt-group').style.display = mode === 'zero_shot' ? 'block' : 'none';
-            document.getElementById('cosyvoice-instruct-group').style.display = isInstruct ? 'block' : 'none';
+            // 右侧控件：说话人 / 参考人声 互斥显示
+            const rightLabel = document.getElementById('cosyvoice-right-label');
+            const speakerSelect = document.getElementById('cosyvoice-speaker');
+            const refVoiceSelect = document.getElementById('cosyvoice-reference-voice');
+            
+            if (isSft) {
+                // SFT模式：显示说话人
+                rightLabel.textContent = '说话人';
+                speakerSelect.style.display = 'block';
+                refVoiceSelect.style.display = 'none';
+            } else if (isClone) {
+                // Zero-shot模式：显示参考人声
+                rightLabel.textContent = '参考人声';
+                speakerSelect.style.display = 'none';
+                refVoiceSelect.style.display = 'block';
+            } else {
+                // Instruct模式：隐藏右侧控件
+                rightLabel.textContent = '';
+                speakerSelect.style.display = 'none';
+                refVoiceSelect.style.display = 'none';
+            }
+            
+            // 提示文本显示控制
+            const hintEl = document.getElementById('cosyvoice-speaker-hint');
+            if (hintEl) {
+                hintEl.style.display = isClone || isInstruct ? 'none' : 'block';
+            }
+            // 指令控制容器显示控制
+            const instructContainer = document.getElementById('cosyvoice-instruct-container');
+            if (instructContainer) {
+                instructContainer.style.display = isInstruct ? 'grid' : 'none';
+            }
         }
 
         // 更新Qwen3-TTS选项显示
@@ -2690,31 +2790,35 @@
                     case 'cosyvoice':
                         const cvMode = document.getElementById('cosyvoice-mode').value;
                         formData.append('mode', cvMode);
-                        formData.append('speaker', document.getElementById('cosyvoice-speaker').value);
+                        formData.append('speaker_id', document.getElementById('cosyvoice-speaker').value);
 
-                        if (cvMode === 'zero_shot' || cvMode === 'cross_lingual') {
-                            const refFile = document.getElementById('cosyvoice-ref').files[0];
-                            if (refFile) {
-                                formData.append('prompt_wav', refFile);
-                            } else if (selectedVoiceAudio['cosyvoice']) {
-                                // 使用内置人声
-                                try {
-                                    const voiceResponse = await fetch(`${API_BASE}${selectedVoiceAudio['cosyvoice']}`);
-                                    const voiceBlob = await voiceResponse.blob();
-                                    formData.append('prompt_wav', voiceBlob, 'reference.wav');
-                                } catch (e) {
-                                    showStatus('加载内置人声失败', true);
-                                    btn.innerHTML = originalContent;
-                                    btn.disabled = false;
-                                    return;
-                                }
+                        if (cvMode === 'zero_shot') {
+                            // 使用说话人ID直接读取本地音频（与Qwen3-TTS一致）
+                            const speakerId = selectedVoiceAudio['cosyvoice'];
+                            
+                            if (!speakerId) {
+                                showStatus('请选择参考人声', true);
+                                btn.innerHTML = originalContent;
+                                btn.disabled = false;
+                                return;
                             }
-                            if (cvMode === 'zero_shot') {
-                                formData.append('prompt_text', document.getElementById('cosyvoice-prompt').value);
-                            }
+                            
+                            // 传递说话人ID，后端直接读取本地音频文件
+                            formData.append('clone_speaker_id', speakerId);
+                            console.log('[CosyVoice] 使用说话人ID:', speakerId);
                         }
                         if (cvMode === 'instruct') {
-                            formData.append('instruct_text', document.getElementById('cosyvoice-instruct').value);
+                            let instructText = document.getElementById('cosyvoice-instruct').value;
+                            const dialect = document.getElementById('cosyvoice-dialect').value;
+                            // 如果选择了方言，将方言指令添加到instruct文本中
+                            if (dialect) {
+                                if (instructText) {
+                                    instructText = instructText + '，' + dialect;
+                                } else {
+                                    instructText = dialect;
+                                }
+                            }
+                            formData.append('instruct_text', instructText);
                         }
                         break;
 

@@ -614,10 +614,58 @@ def init_gpt_sovits_pipeline(model_info, ref_audio_path: str = None):
 
 # ==================== 工具函数 ====================
 
-def save_temp_audio(audio_data: np.ndarray, sample_rate: int, suffix: str = ".wav") -> str:
-    """保存临时音频文件"""
+def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> np.ndarray:
+    """
+    归一化音频音量到目标dB级别
+    
+    Args:
+        audio_data: 输入音频数组
+        target_db: 目标dB级别，默认-0.5 dB（接近最大音量）
+    
+    Returns:
+        归一化后的音频数组
+    """
+    # 确保音频是float32类型
+    if audio_data.dtype != np.float32:
+        audio_data = audio_data.astype(np.float32)
+    
+    # 计算当前峰值
+    current_peak = np.max(np.abs(audio_data))
+    
+    if current_peak == 0:
+        return audio_data  # 避免除零
+    
+    # 计算目标峰值（从dB转换为线性比例）
+    target_peak = 10 ** (target_db / 20.0)
+    
+    # 计算增益因子
+    gain = target_peak / current_peak
+    
+    # 应用增益
+    normalized_audio = audio_data * gain
+    
+    # 确保不会溢出（硬限幅）
+    normalized_audio = np.clip(normalized_audio, -1.0, 1.0)
+    
+    return normalized_audio
+
+def save_temp_audio(audio_data: np.ndarray, sample_rate: int, suffix: str = ".wav", normalize: bool = True) -> str:
+    """
+    保存临时音频文件
+    
+    Args:
+        audio_data: 音频数据数组
+        sample_rate: 采样率
+        suffix: 文件后缀
+        normalize: 是否进行音量归一化，默认True
+    """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     temp_path = f"output/tts_{timestamp}{suffix}"
+    
+    # 音量归一化处理
+    if normalize:
+        audio_data = normalize_audio_volume(audio_data)
+    
     sf.write(temp_path, audio_data, sample_rate)
     return temp_path
 
@@ -744,7 +792,7 @@ async def get_speaker_audio(speaker_id: str):
                 audio_path = speaker.get("audio_path")
                 if not audio_path or not os.path.exists(audio_path):
                     raise HTTPException(status_code=404, detail="音频文件不存在")
-                
+
                 # 根据文件扩展名确定媒体类型
                 ext = os.path.splitext(audio_path)[1].lower()
                 media_type = {
@@ -754,9 +802,10 @@ async def get_speaker_audio(speaker_id: str):
                     '.webm': 'audio/webm',
                     '.m4a': 'audio/mp4'
                 }.get(ext, 'audio/wav')
-                
-                return FileResponse(audio_path, media_type=media_type)
-        
+
+                filename = os.path.basename(audio_path)
+                return FileResponse(audio_path, media_type=media_type, filename=filename)
+
         raise HTTPException(status_code=404, detail="说话人不存在")
     except HTTPException:
         raise
@@ -1143,9 +1192,14 @@ async def tts_cosyvoice(
     prompt_text: Optional[str] = Form(None),
     instruct_text: Optional[str] = Form(None),
     prompt_wav: Optional[UploadFile] = File(None),
+    clone_speaker_id: Optional[str] = Form(None),  # 用于声音克隆的说话人ID
     output_format: str = Form("url")
 ):
-    """CosyVoice语音合成"""
+    """CosyVoice语音合成
+    
+    参数:
+    - clone_speaker_id: 说话人管理中的说话人ID，用于zero_shot模式直接读取本地音频
+    """
     try:
         logger.info(f"CosyVoice请求: {text[:50]}... 模式: {mode}")
 
@@ -1163,17 +1217,64 @@ async def tts_cosyvoice(
         if mode == "sft":
             model_output = cosyvoice.inference_sft(text, speaker_id)
         elif mode == "zero_shot":
-            if not prompt_wav:
-                raise HTTPException(status_code=400, detail="zero_shot模式需要提供参考音频")
             from cosyvoice.utils.file_utils import load_wav
-            prompt_speech = load_wav(prompt_wav.file, 16000)
-            model_output = cosyvoice.inference_zero_shot(text, prompt_text or "", prompt_speech)
+            
+            # 方式1: 通过clone_speaker_id使用本地说话人音频
+            if clone_speaker_id:
+                db = load_speakers_db()
+                speaker = None
+                for s in db.get("speakers", []):
+                    if s["id"] == clone_speaker_id:
+                        speaker = s
+                        break
+                
+                if not speaker:
+                    raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+                
+                audio_path = speaker.get("audio_path")
+                if not audio_path or not os.path.exists(audio_path):
+                    raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {audio_path}")
+                
+                logger.info(f"zero_shot模式: 使用说话人 {speaker['name']} 的音频: {audio_path}")
+                
+                # 使用说话人的参考文本
+                ref_text = prompt_text or speaker.get("reference_text", "")
+                # 直接传递音频文件路径，inference_zero_shot 内部会调用 load_wav
+                model_output = cosyvoice.inference_zero_shot(text, ref_text, audio_path)
+            
+            # 方式2: 通过上传的音频文件
+            elif prompt_wav:
+                import tempfile
+                file_content = prompt_wav.file.read()
+                logger.info(f"zero_shot模式: 上传音频大小 {len(file_content)} bytes")
+                if len(file_content) == 0:
+                    raise HTTPException(status_code=400, detail="参考音频文件为空")
+                
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_file.write(file_content)
+                    tmp_path = tmp_file.name
+                try:
+                    # 直接传递临时文件路径，inference_zero_shot 内部会调用 load_wav
+                    model_output = cosyvoice.inference_zero_shot(text, prompt_text or "", tmp_path)
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+            else:
+                raise HTTPException(status_code=400, detail="zero_shot模式需要提供clone_speaker_id或上传参考音频")
         elif mode == "cross_lingual":
             if not prompt_wav:
                 raise HTTPException(status_code=400, detail="cross_lingual模式需要提供参考音频")
-            from cosyvoice.utils.file_utils import load_wav
-            prompt_speech = load_wav(prompt_wav.file, 16000)
-            model_output = cosyvoice.inference_cross_lingual(text, prompt_speech)
+            import tempfile
+            file_content = prompt_wav.file.read()
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                tmp_file.write(file_content)
+                tmp_path = tmp_file.name
+            try:
+                # 直接传递临时文件路径
+                model_output = cosyvoice.inference_cross_lingual(text, tmp_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
         elif mode == "instruct":
             if not instruct_text:
                 raise HTTPException(status_code=400, detail="instruct模式需要提供指令文本")
@@ -1195,6 +1296,9 @@ async def tts_cosyvoice(
                 audio_np = audio_np.squeeze()
             if audio_np.ndim == 1:
                 audio_np = audio_np.reshape(1, -1)
+
+            # 音量归一化
+            audio_np = normalize_audio_volume(audio_np)
 
             # 使用torchaudio保存
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -1606,10 +1710,11 @@ async def tts_openvoice(
         # 清理临时文件
         os.remove(temp_path)
 
-        # 获取采样率
-        from openvoice import utils
-        hps = utils.get_hparams_from_file(f'{ov["ckpt_base_en"]}/config.json')
-        sample_rate = hps.data.sampling_rate
+        # 读取生成的音频并进行音量归一化
+        import soundfile as sf
+        audio_data, sample_rate = sf.read(audio_path)
+        audio_data = normalize_audio_volume(audio_data)
+        sf.write(audio_path, audio_data, sample_rate)
 
         if output_format == "base64":
             audio_b64 = audio_to_base64(audio_path)
@@ -1699,6 +1804,9 @@ async def tts_gptsovits(
         tts_generator = pipeline.run(req)
         sr, audio_data = next(tts_generator)
         infer_duration = time.time() - infer_start
+        
+        # 音量归一化
+        audio_data = normalize_audio_volume(audio_data)
         
         # 保存音频
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")

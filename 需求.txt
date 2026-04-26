@@ -37,7 +37,19 @@ https://github.com/myshell-ai/OpenVoice
 [16]优化日志系统:减少日志文件数量,添加自动清理,修复audit日志为空
 [17]验证了chattts对于使用参考音频进行合成的效果比较差, 只保留随机生成方式
 [18]对qwen3-tts 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/Qwen3-TTS/readme.md 中
-
+[19]对cosy-vioce 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/CosyVoice/readme.md 中
+[20]对F5-TTS 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/F5-TTS/readme.md 中
+[21]对openvoice 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/OpenVoice/readme.md 中
+[22]对gpt-sovits 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/GPT-SoVITS/readme.md 中
 
 待完成:
-根据algorithms/Qwen3-TTS/readme.md , qwen3-tts 支持的功能现在在前端页面上是否都开放给用户了
+
+更新根目录下的README.md文件
+根据algorithms/CosyVoice/readme.md ,cosy-vioce支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
+根据algorithms/F5-TTS/readme.md,F5-TTS支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
+根据algorithms/OpenVoice/readme.md,openvoice 支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
+根据algorithms/GPT-SoVITS/readme.md,gpt-sovits支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
+
+
+
+

@@ -1936,7 +1936,6 @@
                     <div class="option-group">
                         <label>模式</label>
                         <select id="cosyvoice-mode" onchange="updateCosyVoiceOptions()">
-                            <option value="sft">SFT (预训练音色)</option>
                             <option value="zero_shot">Zero-shot (声音克隆)</option>
                             <option value="instruct">指令控制</option>
                         </select>
@@ -1958,8 +1957,8 @@
                         </select>
                     </div>
                 </div>
-                <div class="option-group" id="cosyvoice-speaker-hint" style="margin-bottom: 15px;">
-                    <small style="color: #666; display: block;">提示：不同音色会有细微差别，建议使用零样本克隆获得更独特的音色</small>
+                <div class="option-group" id="cosyvoice-mode-hint" style="margin-bottom: 15px;">
+                    <small style="color: #666; display: block;">CosyVoice 3.0 只支持声音克隆和指令控制模式，需选择参考人声</small>
                 </div>
                 <!-- 指令控制模式：指令文本和方言水平对齐 -->
                 <div class="cosyvoice-instruct-row" id="cosyvoice-instruct-container" style="display:none">
@@ -2574,35 +2573,22 @@
             const mode = document.getElementById('cosyvoice-mode').value;
             const isClone = mode === 'zero_shot';
             const isInstruct = mode === 'instruct';
-            const isSft = mode === 'sft';
 
-            // 右侧控件：说话人 / 参考人声 互斥显示
+            // 右侧控件：始终显示参考人声（CosyVoice 3.0 两种模式都需要参考人声）
             const rightLabel = document.getElementById('cosyvoice-right-label');
             const speakerSelect = document.getElementById('cosyvoice-speaker');
             const refVoiceSelect = document.getElementById('cosyvoice-reference-voice');
             
-            if (isSft) {
-                // SFT模式：显示说话人
-                rightLabel.textContent = '说话人';
-                speakerSelect.style.display = 'block';
-                refVoiceSelect.style.display = 'none';
-            } else if (isClone) {
-                // Zero-shot模式：显示参考人声
-                rightLabel.textContent = '参考人声';
-                speakerSelect.style.display = 'none';
-                refVoiceSelect.style.display = 'block';
-            } else {
-                // Instruct模式：隐藏右侧控件
-                rightLabel.textContent = '';
-                speakerSelect.style.display = 'none';
-                refVoiceSelect.style.display = 'none';
+            rightLabel.textContent = '参考人声';
+            speakerSelect.style.display = 'none';
+            refVoiceSelect.style.display = 'block';
+            
+            // 提示文本显示控制（CosyVoice 3.0 总是显示提示）
+            const hintEl = document.getElementById('cosyvoice-mode-hint');
+            if (hintEl) {
+                hintEl.style.display = 'block';
             }
             
-            // 提示文本显示控制
-            const hintEl = document.getElementById('cosyvoice-speaker-hint');
-            if (hintEl) {
-                hintEl.style.display = isClone || isInstruct ? 'none' : 'block';
-            }
             // 指令控制容器显示控制
             const instructContainer = document.getElementById('cosyvoice-instruct-container');
             if (instructContainer) {
@@ -2790,23 +2776,21 @@
                     case 'cosyvoice':
                         const cvMode = document.getElementById('cosyvoice-mode').value;
                         formData.append('mode', cvMode);
-                        formData.append('speaker_id', document.getElementById('cosyvoice-speaker').value);
 
-                        if (cvMode === 'zero_shot') {
-                            // 使用说话人ID直接读取本地音频（与Qwen3-TTS一致）
-                            const speakerId = selectedVoiceAudio['cosyvoice'];
-                            
-                            if (!speakerId) {
-                                showStatus('请选择参考人声', true);
-                                btn.innerHTML = originalContent;
-                                btn.disabled = false;
-                                return;
-                            }
-                            
-                            // 传递说话人ID，后端直接读取本地音频文件
-                            formData.append('clone_speaker_id', speakerId);
-                            console.log('[CosyVoice] 使用说话人ID:', speakerId);
+                        // CosyVoice 3.0 所有模式都需要参考人声
+                        const speakerId = selectedVoiceAudio['cosyvoice'];
+                        
+                        if (!speakerId) {
+                            showStatus('请选择参考人声', true);
+                            btn.innerHTML = originalContent;
+                            btn.disabled = false;
+                            return;
                         }
+                        
+                        // 传递说话人ID，后端直接读取本地音频文件
+                        formData.append('clone_speaker_id', speakerId);
+                        console.log('[CosyVoice] 使用说话人ID:', speakerId);
+
                         if (cvMode === 'instruct') {
                             let instructText = document.getElementById('cosyvoice-instruct').value;
                             const dialect = document.getElementById('cosyvoice-dialect').value;

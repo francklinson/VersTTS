@@ -44,12 +44,7 @@ https://github.com/myshell-ai/OpenVoice
 
 待完成:
 
-更新根目录下的README.md文件
-根据algorithms/CosyVoice/readme.md ,cosy-vioce支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
-根据algorithms/F5-TTS/readme.md,F5-TTS支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
-根据algorithms/OpenVoice/readme.md,openvoice 支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
-根据algorithms/GPT-SoVITS/readme.md,gpt-sovits支持的功能现在在前端页面上是否都开放给用户了,如果没有,进行实现
-
-
+已完成:
+...[23]使用了cosy-voice3.0的模型,但是生成的语音完全是混乱的,无论克隆模式还是instruct模式 - 已修复，原因是缺少 matcha 模块路径配置
 
 

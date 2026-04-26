@@ -369,7 +369,7 @@ def get_chattts_model():
     
     return models["chattts"]
 
-def get_cosyvoice_model(model_dir: str = "CosyVoice-300M-SFT"):
+def get_cosyvoice_model(model_dir: str = "Fun-CosyVoice3-0.5B"):
     """获取或加载CosyVoice模型"""
     key = f"cosyvoice_{model_dir}"
     if key not in models:
@@ -1203,19 +1203,21 @@ async def tts_cosyvoice(
     try:
         logger.info(f"CosyVoice请求: {text[:50]}... 模式: {mode}")
 
-        # 根据模式选择模型
+        # 根据模式选择模型 - 使用 CosyVoice 3.0
         model_map = {
-            "sft": "CosyVoice-300M-SFT",
-            "zero_shot": "CosyVoice-300M",
-            "cross_lingual": "CosyVoice-300M",
-            "instruct": "CosyVoice-300M-Instruct",
+            "sft": "Fun-CosyVoice3-0.5B",
+            "zero_shot": "Fun-CosyVoice3-0.5B",
+            "cross_lingual": "Fun-CosyVoice3-0.5B",
+            "instruct": "Fun-CosyVoice3-0.5B",
         }
-        model_dir = model_map.get(mode, "CosyVoice-300M-SFT")
+        model_dir = model_map.get(mode, "Fun-CosyVoice3-0.5B")
+        logger.info(f"使用 CosyVoice 3.0 模型: {model_dir}")
         cosyvoice = get_cosyvoice_model(model_dir)
 
         # 根据模式推理
         if mode == "sft":
-            model_output = cosyvoice.inference_sft(text, speaker_id)
+            # CosyVoice 3.0 没有预设音色，返回错误提示
+            raise HTTPException(status_code=400, detail="CosyVoice 3.0 不支持SFT预训练音色模式，请使用Zero-shot克隆模式")
         elif mode == "zero_shot":
             from cosyvoice.utils.file_utils import load_wav
             
@@ -1235,12 +1237,19 @@ async def tts_cosyvoice(
                 if not audio_path or not os.path.exists(audio_path):
                     raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {audio_path}")
                 
-                logger.info(f"zero_shot模式: 使用说话人 {speaker['name']} 的音频: {audio_path}")
-                
-                # 使用说话人的参考文本
-                ref_text = prompt_text or speaker.get("reference_text", "")
-                # 直接传递音频文件路径，inference_zero_shot 内部会调用 load_wav
-                model_output = cosyvoice.inference_zero_shot(text, ref_text, audio_path)
+                ref_text = speaker.get("reference_text", "")
+                logger.info(f"zero_shot模式: 使用说话人 {speaker['name']} 的音频: {audio_path}, 参考文本: {ref_text[:50] if ref_text else '无'}")
+
+                if ref_text:
+                    # CosyVoice 3.0 zero_shot 需要格式化的参考文本
+                    prompt_text = f"You are a helpful assistant.<|endofprompt|>{ref_text}"
+                    logger.info(f"使用 inference_zero_shot 进行声音克隆，prompt_text 前缀已添加")
+                    model_output = cosyvoice.inference_zero_shot(text, prompt_text, audio_path, stream=False)
+                else:
+                    # 无参考文本时回退到 cross_lingual
+                    logger.warning(f"说话人 {speaker['name']} 没有参考文本，回退到 cross_lingual 模式")
+                    formatted_text = f"You are a helpful assistant.<|endofprompt|>{text}"
+                    model_output = cosyvoice.inference_cross_lingual(formatted_text, audio_path, stream=False)
             
             # 方式2: 通过上传的音频文件
             elif prompt_wav:
@@ -1254,8 +1263,10 @@ async def tts_cosyvoice(
                     tmp_file.write(file_content)
                     tmp_path = tmp_file.name
                 try:
-                    # 直接传递临时文件路径，inference_zero_shot 内部会调用 load_wav
-                    model_output = cosyvoice.inference_zero_shot(text, prompt_text or "", tmp_path)
+                    # 上传音频无参考文本，使用 cross_lingual 作为 fallback
+                    logger.info(f"上传音频无参考文本，使用 cross_lingual 方式")
+                    formatted_text = f"You are a helpful assistant.<|endofprompt|>{text}"
+                    model_output = cosyvoice.inference_cross_lingual(formatted_text, tmp_path, stream=False)
                 finally:
                     if os.path.exists(tmp_path):
                         os.remove(tmp_path)
@@ -1270,15 +1281,45 @@ async def tts_cosyvoice(
                 tmp_file.write(file_content)
                 tmp_path = tmp_file.name
             try:
-                # 直接传递临时文件路径
-                model_output = cosyvoice.inference_cross_lingual(text, tmp_path)
+                # CosyVoice 3.0 cross_lingual 文本需要添加前缀
+                formatted_text = f"You are a helpful assistant.<|endofprompt|>{text}"
+                logger.info(f"cross_lingual模式: 使用格式化文本前缀")
+                model_output = cosyvoice.inference_cross_lingual(formatted_text, tmp_path, stream=False)
             finally:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
         elif mode == "instruct":
             if not instruct_text:
                 raise HTTPException(status_code=400, detail="instruct模式需要提供指令文本")
-            model_output = cosyvoice.inference_instruct(text, speaker_id, instruct_text)
+            
+            # CosyVoice 3.0 的instruct模式需要通过zero_shot实现
+            # 需要clone_speaker_id来提供参考音频
+            if not clone_speaker_id:
+                raise HTTPException(status_code=400, detail="CosyVoice 3.0 的instruct模式需要提供clone_speaker_id（参考人声）")
+            
+            db = load_speakers_db()
+            speaker = None
+            for s in db.get("speakers", []):
+                if s["id"] == clone_speaker_id:
+                    speaker = s
+                    break
+            
+            if not speaker:
+                raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+            
+            audio_path = speaker.get("audio_path")
+            if not audio_path or not os.path.exists(audio_path):
+                raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {audio_path}")
+            
+            logger.info(f"instruct模式: 使用说话人 {speaker['name']} 的音频: {audio_path}, instruct_text='{instruct_text}'")
+
+            # CosyVoice 3.0 使用 inference_instruct2 方法
+            # 需要将 instruct_text 格式化为 CosyVoice3 要求的格式
+            # 格式: "You are a helpful assistant. {instruct_text}<|endofprompt|>"
+            formatted_instruct = f"You are a helpful assistant. {instruct_text}<|endofprompt|>"
+            logger.info(f"格式化后的指令: {formatted_instruct}")
+
+            model_output = cosyvoice.inference_instruct2(text, formatted_instruct, audio_path, "")
         else:
             raise HTTPException(status_code=400, detail=f"不支持的模式: {mode}")
 
@@ -1329,7 +1370,7 @@ async def tts_cosyvoice(
 async def cosyvoice_speakers():
     """获取可用的说话人列表"""
     try:
-        cosyvoice = get_cosyvoice_model("CosyVoice-300M-SFT")
+        cosyvoice = get_cosyvoice_model("Fun-CosyVoice3-0.5B")
         speakers = cosyvoice.list_available_spks()
         return {"speakers": speakers}
     except Exception as e:

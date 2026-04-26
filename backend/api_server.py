@@ -6,6 +6,35 @@
 
 import os
 import sys
+
+# ========== Transformers 兼容性补丁 ==========
+# 必须在导入 transformers 之前加载
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 1. CosyVoice 兼容性补丁 - 为 transformers 4.51.3 添加缺失的函数
+# 注意：必须在 Qwen3-TTS 补丁之前加载，因为 Qwen3-TTS 补丁会导入 transformers
+try:
+    import transformers
+    # 添加 rope_config_validation
+    if not hasattr(transformers.modeling_rope_utils, 'rope_config_validation'):
+        def rope_config_validation(config):
+            pass
+        transformers.modeling_rope_utils.rope_config_validation = rope_config_validation
+        print("[API Server] CosyVoice rope_config_validation patch loaded")
+except Exception as e:
+    print(f"[API Server] Warning: Failed to load CosyVoice compatibility patch: {e}")
+
+# 2. Qwen3-TTS 兼容性补丁（暂时禁用，因为与 4.51.3 兼容性太差）
+# qwen_tts_path = os.path.join(PROJECT_ROOT, 'algorithms', 'Qwen3-TTS')
+# if qwen_tts_path not in sys.path:
+#     sys.path.insert(0, qwen_tts_path)
+# try:
+#     from qwen_tts.core.transformers_compat import *
+#     print("[API Server] Qwen3-TTS transformers compatibility patch loaded")
+# except Exception as e:
+#     print(f"[API Server] Warning: Failed to load Qwen3-TTS compatibility patch: {e}")
+# =============================================
+
 import io
 import json
 import base64
@@ -25,6 +54,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
+
+
+
 
 # 文本预处理函数 - 用于 ChatTTS
 def preprocess_text_for_chattts(text: str) -> str:
@@ -350,14 +382,48 @@ def get_chattts_model():
         start_time = time.time()
         OperationLogger.log_model_load("ChatTTS", "开始加载")
         
+        # 清理CUDA缓存和状态，避免与之前加载的模型（如CosyVoice）产生冲突
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                system_logger.info("【模型加载】ChatTTS CUDA缓存已清理")
+            except Exception as e:
+                system_logger.warning(f"【模型加载】ChatTTS CUDA缓存清理警告: {e}")
+        
         import ChatTTS
         chat = ChatTTS.Chat()
         model_path = os.path.join(PROJECT_ROOT, "algorithms", "ChatTTS", "models")
         system_logger.info(f"【模型加载】ChatTTS 从路径: {model_path}")
         
-        if not chat.load(source="custom", custom_path=model_path):
-            OperationLogger.log_model_load("ChatTTS", "失败", 0, "模型加载错误")
-            raise HTTPException(status_code=500, detail="ChatTTS模型加载失败")
+        # 显式指定设备，避免ChatTTS自动检测时出现问题
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        system_logger.info(f"【模型加载】ChatTTS 使用设备: {device}")
+        
+        try:
+            if not chat.load(source="custom", custom_path=model_path, device=device):
+                OperationLogger.log_model_load("ChatTTS", "失败", 0, "模型加载错误")
+                raise HTTPException(status_code=500, detail="ChatTTS模型加载失败")
+        except RuntimeError as e:
+            if "CUDA" in str(e) or "cuda" in str(e).lower():
+                system_logger.error(f"【模型加载】ChatTTS CUDA错误: {e}")
+                # 尝试强制重置CUDA状态
+                if torch.cuda.is_available():
+                    try:
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                        # 等待一点时间让CUDA恢复
+                        time.sleep(1)
+                        system_logger.info("【模型加载】ChatTTS 尝试重新加载...")
+                        if not chat.load(source="custom", custom_path=model_path, device=device):
+                            raise HTTPException(status_code=500, detail="ChatTTS模型加载失败（CUDA恢复后重试）")
+                    except Exception as retry_e:
+                        system_logger.error(f"【模型加载】ChatTTS CUDA恢复失败: {retry_e}")
+                        raise HTTPException(status_code=500, detail=f"ChatTTS模型加载失败: {str(e)}")
+                else:
+                    raise HTTPException(status_code=500, detail=f"ChatTTS模型加载失败: {str(e)}")
+            else:
+                raise
         
         models["chattts"] = chat
         duration = time.time() - start_time
@@ -370,12 +436,21 @@ def get_chattts_model():
     return models["chattts"]
 
 def get_cosyvoice_model(model_dir: str = "Fun-CosyVoice3-0.5B"):
-    """获取或加载CosyVoice模型"""
+    """获取或加载CosyVoice模型，使用独立的 transformers 4.51.3"""
     key = f"cosyvoice_{model_dir}"
     if key not in models:
         start_time = time.time()
         OperationLogger.log_model_load(f"CosyVoice-{model_dir}", "开始加载")
         
+        # 添加 CosyVoice 路径
+        cosyvoice_path = os.path.join(PROJECT_ROOT, "algorithms", "CosyVoice")
+        if cosyvoice_path not in sys.path:
+            sys.path.insert(0, cosyvoice_path)
+        matchatts_path = os.path.join(PROJECT_ROOT, "algorithms", "CosyVoice", "third_party", "Matcha-TTS")
+        if matchatts_path not in sys.path:
+            sys.path.insert(0, matchatts_path)
+        
+        # CosyVoice 源码已修改，直接使用本地 transformers 4.51.3
         from cosyvoice.cli.cosyvoice import AutoModel
         model_path = os.path.join(PROJECT_ROOT, "algorithms", "CosyVoice", "models", "iic", model_dir)
         if not os.path.exists(model_path):
@@ -417,6 +492,18 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
         model_size: 模型大小 "0.6B" 或 "1.7B"
         model_type: 模型类型 "Base", "CustomVoice", "VoiceDesign"
     """
+    # 检查 transformers 版本
+    import transformers
+    tv = transformers.__version__.split('.')
+    major, minor = int(tv[0]), int(tv[1])
+    if major < 4 or (major == 4 and minor < 57):
+        raise HTTPException(
+            status_code=503,
+            detail=f"Qwen3-TTS 需要 transformers >= 4.57.0，当前版本为 {transformers.__version__}。"
+                   f"CosyVoice 需要 transformers 4.51.3，两个模型版本要求冲突。"
+                   f"请使用 CosyVoice 或升级 transformers 到 4.57.3（但 CosyVoice 可能会产生杂音）。"
+        )
+    
     key = f"qwen3tts_{model_size}_{model_type}"
     if key not in models:
         start_time = time.time()
@@ -440,15 +527,23 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
         
         system_logger.info(f"【模型加载】Qwen3-TTS 路径: {model_path}")
         device = "cuda:0" if torch.cuda.is_available() else "cpu"
-        dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
         attn_impl = "flash_attention_2" if torch.cuda.is_available() else "eager"
         
-        models[key] = Qwen3TTSModel.from_pretrained(
-            model_path,
-            device_map=device,
-            dtype=dtype,
-            attn_implementation=attn_impl
-        )
+        # 兼容不同 transformers 版本
+        try:
+            models[key] = Qwen3TTSModel.from_pretrained(
+                model_path,
+                device_map=device,
+                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+                attn_implementation=attn_impl
+            )
+        except TypeError:
+            # 旧版本 transformers 使用 dtype 参数
+            models[key] = Qwen3TTSModel.from_pretrained(
+                model_path,
+                device_map=device,
+                attn_implementation=attn_impl
+            )
         
         duration = time.time() - start_time
         gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0

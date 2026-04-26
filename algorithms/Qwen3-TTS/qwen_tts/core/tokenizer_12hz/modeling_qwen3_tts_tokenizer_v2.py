@@ -14,6 +14,9 @@
 # limitations under the License.
 """PyTorch Qwen3TTSTokenizerV2 model."""
 
+# 首先加载兼容性补丁
+from ..transformers_compat import *
+
 import math
 from dataclasses import dataclass
 from typing import Callable, Optional, Union, List
@@ -25,21 +28,90 @@ from torch.nn import Parameter
 from torch.nn import functional as F
 from transformers import MimiConfig, MimiModel
 from transformers.activations import ACT2FN
-from transformers.cache_utils import Cache, DynamicCache
-from transformers.integrations import use_kernel_forward_from_hub
-from transformers.masking_utils import (
-    create_causal_mask,
-    create_sliding_window_causal_mask,
-)
-from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
-from transformers.modeling_layers import GradientCheckpointingLayer
+try:
+    from transformers.cache_utils import Cache, DynamicCache
+except ImportError:
+    from transformers import Cache, DynamicCache
+try:
+    from transformers.integrations import use_kernel_forward_from_hub
+except ImportError:
+    def use_kernel_forward_from_hub(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+try:
+    from transformers.masking_utils import (
+        create_causal_mask,
+        create_sliding_window_causal_mask,
+    )
+except ImportError:
+    # Fallback implementations for masking utils
+    def create_causal_mask(seq_len, device):
+        return torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
+    def create_sliding_window_causal_mask(seq_len, window_size, device):
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1)
+        if window_size > 0:
+            mask = mask | torch.tril(torch.ones(seq_len, seq_len, device=device), diagonal=-window_size)
+        return mask.bool()
+try:
+    from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
+except ImportError:
+    class FlashAttentionKwargs:
+        pass
+try:
+    from transformers.modeling_layers import GradientCheckpointingLayer
+except ImportError:
+    from torch.nn import Module as GradientCheckpointingLayer
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
+try:
+    from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
+except ImportError:
+    ROPE_INIT_FUNCTIONS = {}
+    def dynamic_rope_update(*args, **kwargs):
+        pass
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
-from transformers.processing_utils import Unpack
-from transformers.utils import ModelOutput, auto_docstring, logging
-from transformers.utils.deprecation import deprecate_kwarg
-from transformers.utils.generic import check_model_inputs
+try:
+    from transformers.processing_utils import Unpack
+except ImportError:
+    from typing import TypeVar
+    T = TypeVar('T')
+    class Unpack:
+        pass
+from transformers.utils import ModelOutput, logging
+try:
+    from transformers.utils import auto_docstring
+except ImportError:
+    # auto_docstring is not available in newer transformers versions
+    def auto_docstring(*args, **kwargs):
+        if args and callable(args[0]):
+            return args[0]
+        return lambda x: x
+try:
+    from transformers.utils.deprecation import deprecate_kwarg
+except ImportError:
+    def deprecate_kwarg(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+try:
+    from transformers.utils.generic import check_model_inputs
+    import inspect
+    # Check if check_model_inputs is a simple decorator or a decorator factory
+    if len(inspect.signature(check_model_inputs).parameters) == 1:
+        # It's a simple decorator like @check_model_inputs
+        _original_check_model_inputs = check_model_inputs
+        def check_model_inputs(*args, **kwargs):
+            if args and callable(args[0]):
+                # Used as @check_model_inputs (without parentheses)
+                return _original_check_model_inputs(args[0])
+            # Used as @check_model_inputs() (with parentheses)
+            return _original_check_model_inputs
+except ImportError:
+    # check_model_inputs is used as @check_model_inputs()
+    def check_model_inputs(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
 
 from .configuration_qwen3_tts_tokenizer_v2 import (
     Qwen3TTSTokenizerV2Config,

@@ -18,7 +18,21 @@
 qwen_tts: Qwen-TTS package.
 """
 
-from .inference.qwen3_tts_model import Qwen3TTSModel, VoiceClonePromptItem
-from .inference.qwen3_tts_tokenizer import Qwen3TTSTokenizer
+# 首先加载兼容性补丁（必须在导入 transformers 之前）
+from .core.transformers_compat import *
+
+# 延迟导入，避免在加载兼容性补丁时触发模型导入
+# from .inference.qwen3_tts_model import Qwen3TTSModel, VoiceClonePromptItem
+# from .inference.qwen3_tts_tokenizer import Qwen3TTSTokenizer
 
 __all__ = ["__version__"]
+
+# 提供延迟导入的辅助函数
+def __getattr__(name):
+    if name == "Qwen3TTSModel" or name == "VoiceClonePromptItem":
+        from .inference.qwen3_tts_model import Qwen3TTSModel, VoiceClonePromptItem
+        return locals()[name]
+    if name == "Qwen3TTSTokenizer":
+        from .inference.qwen3_tts_tokenizer import Qwen3TTSTokenizer
+        return Qwen3TTSTokenizer
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

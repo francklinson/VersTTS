@@ -14,6 +14,9 @@
 # limitations under the License.
 """PyTorch Qwen3TTS model."""
 
+# 首先加载兼容性补丁
+from ..transformers_compat import *
+
 import json
 import os
 from dataclasses import dataclass

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexTTS - VersTTS</title>
+    <link rel="stylesheet" href="../assets/css/common.css?v=6">
+    <style>
+        .indextts-theme { --primary-color: #607d8b; }
+        .btn-generate.indextts { background: linear-gradient(135deg, #607d8b 0%, #455a64 100%); }
+        .btn-generate.indextts:hover { box-shadow: 0 8px 25px rgba(96, 125, 139, 0.4); }
+        .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
+        .mode-tab { padding: 12px 24px; background: none; border: none; cursor: pointer; font-size: 1rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
+        .mode-tab.active { color: #607d8b; border-bottom-color: #607d8b; font-weight: 600; }
+        .mode-content { display: none; }
+        .mode-content.active { display: block; }
+        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #eceff1; border-radius: 8px; border-left: 4px solid #607d8b; }
+        .param-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
+        .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .param-item { display: flex; flex-direction: column; }
+        .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
+        .param-item input, .param-item select, .param-item textarea { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .info-box { background: #eceff1; border-left: 4px solid #607d8b; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #263238; }
+    </style>
+</head>
+<body class="indextts-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝎼</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>🎭 IndexTTS</h1>
+                <p>网秦Index - 精确时长控制TTS</p>
+            </header>
+            <div class="main-interface">
+                <div class="model-badge"><span>🎭</span><span>IndexTTS</span></div>
+                
+                <div class="info-box">
+                    💡 IndexTTS 支持 <strong>精确时长控制</strong> 和 <strong>情感表达控制</strong>，适合有声书制作和角色扮演场景。
+                </div>
+                
+                <div id="statusMessage" class="status-message"></div>
+                
+                <!-- 模式选择 -->
+                <div class="mode-tabs">
+                    <button class="mode-tab active" onclick="switchMode('free')">自由生成</button>
+                    <button class="mode-tab" onclick="switchMode('controlled')">可控生成</button>
+                </div>
+                
+                <!-- 自由生成模式 -->
+                <div id="mode-free" class="mode-content active">
+                    <p style="color: #666; font-size: 0.9rem;">使用默认音色生成语音</p>
+                </div>
+                
+                <!-- 可控生成模式 -->
+                <div id="mode-controlled" class="mode-content">
+                    <div class="ref-audio-section">
+                        <label style="font-weight: 600; color: #263238; display: block; margin-bottom: 10px;">参考音频（可选）</label>
+                        <input type="file" id="promptWav" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">上传参考音频进行声音克隆</p>
+                    </div>
+                    
+                    <div class="param-section">
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">情感描述（可选）</label>
+                        <textarea id="emotionText" rows="3" placeholder="用自然语言描述想要的情感，例如：开心、悲伤、愤怒、温柔..."></textarea>
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">描述想要的情感表达风格</p>
+                    </div>
+                    
+                    <div class="param-section">
+                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">时长控制（可选）</label>
+                        <input type="number" id="durationTokens" placeholder="例如: 100" min="10" max="500" step="10">
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">设置生成音频的时长token数</p>
+                    </div>
+                </div>
+                
+                <div class="input-section">
+                    <label for="textInput">生成文本</label>
+                    <textarea id="textInput" placeholder="请输入要转换为语音的文本..."></textarea>
+                </div>
+                
+                <button class="btn-generate indextts" id="generateBtn" onclick="generateTTS()">
+                    <span id="btnText">🎙️ 生成语音</span>
+                </button>
+                
+                <div id="resultSection" class="result-section" style="display: none;">
+                    <h3>🎵 生成结果</h3>
+                    <audio id="audioPlayer" class="audio-player" controls></audio>
+                    <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let currentMode = 'free';
+        
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(`mode-${mode}`).classList.add('active');
+        }
+        
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                const dot = document.getElementById('healthDot');
+                const text = document.getElementById('healthText');
+                if (data.status === 'healthy') {
+                    dot.className = 'health-dot online';
+                    text.textContent = '在线';
+                } else {
+                    dot.className = 'health-dot offline';
+                    text.textContent = '离线';
+                }
+            } catch (error) {
+                document.getElementById('healthDot').className = 'health-dot offline';
+                document.getElementById('healthText').textContent = '离线';
+            }
+        }
+        
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
+            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
+        }
+        
+        async function generateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            
+            if (!text) { showStatus('请输入生成文本', true); return; }
+            
+            const btn = document.getElementById('generateBtn');
+            const btnText = document.getElementById('btnText');
+            const originalText = btnText.innerHTML;
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('mode', currentMode);
+                
+                // 可控模式下的可选参数
+                if (currentMode === 'controlled') {
+                    const promptWav = document.getElementById('promptWav').files[0];
+                    const emotionText = document.getElementById('emotionText').value.trim();
+                    const durationTokens = document.getElementById('durationTokens').value;
+                    
+                    if (promptWav) formData.append('prompt_wav', promptWav);
+                    if (emotionText) formData.append('emotion_text', emotionText);
+                    if (durationTokens) formData.append('duration_tokens', durationTokens);
+                }
+                
+                const response = await fetch(`${API_BASE}/tts/indextts`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '生成失败');
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').download = `indextts_${Date.now()}.wav`;
+                    document.getElementById('resultSection').style.display = 'block';
+                    showStatus('语音生成成功！');
+                } else { 
+                    throw new Error(data.message || '生成失败'); 
+                }
+            } catch (error) { 
+                showStatus('生成失败: ' + error.message, true); 
+            }
+            finally { 
+                btn.disabled = false; 
+                btnText.innerHTML = originalText; 
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const auth = localStorage.getItem('versTTS_auth');
+            if (auth !== '1') {
+                window.location.href = '../login.html';
+                return;
+            }
+            checkHealth();
+        });
+    </script>
+</body>
+</html>

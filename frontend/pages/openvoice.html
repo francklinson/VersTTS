@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenVoice - VersTTS</title>
+    <link rel="stylesheet" href="../assets/css/common.css?v=6">
+    <style>
+        .openvoice-theme { --primary-color: #00bcd4; }
+        .btn-generate.openvoice { background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%); }
+        .btn-generate.openvoice:hover { box-shadow: 0 8px 25px rgba(0, 188, 212, 0.4); }
+        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #e0f7fa; border-radius: 8px; border-left: 4px solid #00bcd4; }
+        .param-section { margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; }
+        .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .param-item { display: flex; flex-direction: column; }
+        .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
+        .param-item input, .param-item select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .info-box { background: #e0f7fa; border-left: 4px solid #00bcd4; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #006064; }
+    </style>
+</head>
+<body class="openvoice-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝎼</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>🗣️ OpenVoice</h1>
+                <p>开源即时声音克隆 - 仅需10秒音频</p>
+            </header>
+            <div class="main-interface">
+                <div class="model-badge"><span>🗣️</span><span>OpenVoice</span></div>
+                
+                <div class="info-box">
+                    💡 OpenVoice 使用 VITS 模型，<strong>仅需 10 秒参考音频</strong>即可完成声音克隆，支持中英文。适合实时应用场景。
+                </div>
+                
+                <div id="statusMessage" class="status-message"></div>
+                
+                <div class="ref-audio-section">
+                    <label style="font-weight: 600; color: #006064; display: block; margin-bottom: 10px;">参考音频（10秒以上）</label>
+                    <input type="file" id="refAudio" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+                        上传清晰的10秒以上人声作为参考
+                    </p>
+                </div>
+                
+                <div class="input-section">
+                    <label for="textInput">生成文本</label>
+                    <textarea id="textInput" placeholder="请输入要生成语音的文本，支持中英文..."></textarea>
+                </div>
+                
+                <div class="param-section">
+                    <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
+                    <div class="param-grid">
+                        <div class="param-item">
+                            <label for="style">音色风格</label>
+                            <select id="style">
+                                <option value="default">默认风格</option>
+                                <option value="cheerful">欢快</option>
+                                <option value="excited">兴奋</option>
+                                <option value="friendly">友好</option>
+                                <option value="hopeful">充满希望</option>
+                                <option value="sad">悲伤</option>
+                                <option value="shouting">喊叫</option>
+                                <option value="terrified">惊恐</option>
+                                <option value="unfriendly">不友好</option>
+                                <option value="whispering">耳语</option>
+                            </select>
+                        </div>
+                        <div class="param-item">
+                            <label for="speed">语速 (Speed)</label>
+                            <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.1">
+                        </div>
+                    </div>
+                </div>
+                
+                <button class="btn-generate openvoice" id="generateBtn" onclick="generateTTS()">
+                    <span id="btnText">🎙️ 生成语音</span>
+                </button>
+                
+                <div id="resultSection" class="result-section" style="display: none;">
+                    <h3>🎵 生成结果</h3>
+                    <audio id="audioPlayer" class="audio-player" controls></audio>
+                    <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                const dot = document.getElementById('healthDot');
+                const text = document.getElementById('healthText');
+                if (data.status === 'healthy') {
+                    dot.className = 'health-dot online';
+                    text.textContent = '在线';
+                } else {
+                    dot.className = 'health-dot offline';
+                    text.textContent = '离线';
+                }
+            } catch (error) {
+                document.getElementById('healthDot').className = 'health-dot offline';
+                document.getElementById('healthText').textContent = '离线';
+            }
+        }
+        
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
+            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
+        }
+        
+        async function generateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            const refAudio = document.getElementById('refAudio').files[0];
+            const style = document.getElementById('style').value;
+            const speed = document.getElementById('speed').value;
+            
+            if (!text) { showStatus('请输入生成文本', true); return; }
+            if (!refAudio) { showStatus('请上传参考音频', true); return; }
+            
+            const btn = document.getElementById('generateBtn');
+            const btnText = document.getElementById('btnText');
+            const originalText = btnText.innerHTML;
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('ref_audio', refAudio);
+                formData.append('style', style);
+                formData.append('speed', speed);
+                
+                const response = await fetch(`${API_BASE}/tts/openvoice`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '生成失败');
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').download = `openvoice_${Date.now()}.wav`;
+                    document.getElementById('resultSection').style.display = 'block';
+                    showStatus('语音生成成功！');
+                } else { 
+                    throw new Error(data.message || '生成失败'); 
+                }
+            } catch (error) { 
+                showStatus('生成失败: ' + error.message, true); 
+            }
+            finally { 
+                btn.disabled = false; 
+                btnText.innerHTML = originalText; 
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const auth = localStorage.getItem('versTTS_auth');
+            if (auth !== '1') {
+                window.location.href = '../login.html';
+                return;
+            }
+            checkHealth();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,718 @@
+/* ==================== 说话人管理样式 ==================== */
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.header-title {
+    flex: 1;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-speaker-manage {
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-speaker-manage:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* 说话人选择区域样式 */
+.speaker-select-wrapper {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.speaker-select {
+    flex: 1;
+    padding: 12px 15px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 1rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.speaker-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.btn-manage-speaker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    white-space: nowrap;
+}
+
+.btn-manage-speaker:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-manage-speaker:active {
+    transform: translateY(0);
+}
+
+.btn-icon-manage {
+    font-size: 1.1rem;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    padding: 25px 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 1.5rem;
+    margin: 0;
+}
+
+.modal-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.modal-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+.modal-body {
+    padding: 30px;
+    overflow-y: auto;
+    max-height: calc(90vh - 100px);
+}
+
+/* 上传区域样式 */
+.upload-section {
+    margin-bottom: 30px;
+}
+
+.upload-area {
+    border: 3px dashed #d1d5db;
+    border-radius: 15px;
+    padding: 40px 30px;
+    text-align: center;
+    transition: all 0.3s ease;
+    background: #f9fafb;
+    cursor: pointer;
+}
+
+.upload-area:hover {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.upload-area.dragover {
+    border-color: #667eea;
+    background: #e0e7ff;
+    transform: scale(1.02);
+}
+
+.upload-area.has-file {
+    border-color: #10b981;
+    background: #ecfdf5;
+}
+
+.upload-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+}
+
+.upload-text {
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.upload-hint {
+    font-size: 0.85rem;
+    color: #9ca3af;
+}
+
+.file-input {
+    display: none;
+}
+
+.selected-file {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px;
+    background: white;
+    border-radius: 10px;
+    margin-top: 15px;
+}
+
+.selected-file.show {
+    display: flex;
+}
+
+.file-name {
+    font-weight: 500;
+    color: #374151;
+}
+
+.file-remove {
+    background: #fee2e2;
+    color: #dc2626;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+/* 录音功能样式 */
+.record-section {
+    margin-bottom: 30px;
+    padding: 25px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-radius: 15px;
+    border: 2px solid #f59e0b;
+}
+
+.record-title {
+    font-weight: 600;
+    color: #92400e;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.record-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.btn-record {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+    font-size: 2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-record:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 25px rgba(239, 68, 68, 0.5);
+}
+
+.btn-record.recording {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+    animation: pulse-record 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-record {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.record-status {
+    font-size: 1rem;
+    color: #92400e;
+    font-weight: 500;
+}
+
+.record-timer {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #dc2626;
+    font-family: 'Courier New', monospace;
+}
+
+.record-hint {
+    font-size: 0.85rem;
+    color: #a16207;
+    text-align: center;
+}
+
+.audio-preview {
+    display: none;
+    width: 100%;
+    margin-top: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 10px;
+}
+
+.audio-preview.show {
+    display: block;
+}
+
+.audio-preview audio {
+    width: 100%;
+    height: 40px;
+}
+
+.audio-preview-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+    justify-content: center;
+}
+
+.btn-use-record {
+    padding: 8px 20px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-use-record:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.btn-discard-record {
+    padding: 8px 20px;
+    background: #f3f4f6;
+    color: #374151;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-discard-record:hover {
+    background: #e5e7eb;
+}
+
+/* 录音波形动画 */
+.record-waves {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 40px;
+    margin-top: 10px;
+}
+
+.record-waves.show {
+    display: flex;
+}
+
+.record-wave-bar {
+    width: 4px;
+    background: #ef4444;
+    border-radius: 2px;
+    animation: wave-animation 0.5s ease-in-out infinite;
+}
+
+.record-wave-bar:nth-child(1) { height: 20%; animation-delay: 0s; }
+.record-wave-bar:nth-child(2) { height: 40%; animation-delay: 0.1s; }
+.record-wave-bar:nth-child(3) { height: 60%; animation-delay: 0.2s; }
+.record-wave-bar:nth-child(4) { height: 80%; animation-delay: 0.3s; }
+.record-wave-bar:nth-child(5) { height: 60%; animation-delay: 0.4s; }
+.record-wave-bar:nth-child(6) { height: 40%; animation-delay: 0.5s; }
+.record-wave-bar:nth-child(7) { height: 20%; animation-delay: 0.6s; }
+
+@keyframes wave-animation {
+    0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
+/* 分隔线 */
+.section-divider {
+    display: flex;
+    align-items: center;
+    margin: 25px 0;
+    color: #9ca3af;
+    font-size: 0.9rem;
+}
+
+.section-divider::before,
+.section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+}
+
+.section-divider span {
+    padding: 0 15px;
+}
+
+/* 进度条样式 */
+.progress-container {
+    display: none;
+    margin-top: 20px;
+}
+
+.progress-container.show {
+    display: block;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.progress-text {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 0.9rem;
+    color: #6b7280;
+}
+
+/* 命名输入样式 */
+.name-section {
+    margin-bottom: 25px;
+}
+
+.name-section label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.name-input-wrapper {
+    position: relative;
+}
+
+.name-input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.3s;
+}
+
+.name-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.name-input.error {
+    border-color: #dc2626;
+}
+
+.name-input.success {
+    border-color: #10b981;
+}
+
+.name-status {
+    margin-top: 5px;
+    font-size: 0.85rem;
+    min-height: 20px;
+}
+
+.name-status.error {
+    color: #dc2626;
+}
+
+.name-status.success {
+    color: #10b981;
+}
+
+/* 按钮样式 */
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+
+.btn-primary {
+    flex: 1;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    padding: 14px 24px;
+    background: #f3f4f6;
+    color: #374151;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-secondary:hover {
+    background: #e5e7eb;
+}
+
+/* 说话人列表样式 */
+.speakers-list-section {
+    border-top: 2px solid #f3f4f6;
+    padding-top: 25px;
+}
+
+.speakers-list-section h3 {
+    margin-bottom: 15px;
+    color: #374151;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.speakers-count {
+    background: #667eea;
+    color: white;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+}
+
+.speakers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.speaker-item {
+    display: flex;
+    align-items: center;
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 12px;
+    border: 2px solid transparent;
+    transition: all 0.3s;
+}
+
+.speaker-item:hover {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.speaker-icon {
+    width: 45px;
+    height: 45px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.speaker-info {
+    flex: 1;
+}
+
+.speaker-name {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 3px;
+}
+
+.speaker-meta {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+
+.speaker-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-use {
+    background: #dbeafe;
+    color: #2563eb;
+}
+
+.btn-use:hover {
+    background: #2563eb;
+    color: white;
+}
+
+.btn-delete {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.btn-delete:hover {
+    background: #dc2626;
+    color: white;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 10px;
+}
+
+/* 状态消息 */
+.status-message-speaker {
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-message-speaker.show {
+    display: flex;
+}
+
+.status-message-speaker.success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-message-speaker.error {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-message-speaker.info {
+    background: #dbeafe;
+    color: #1e40af;
+}

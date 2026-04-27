@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F5-TTS - VersTTS</title>
+    <link rel="stylesheet" href="../assets/css/common.css?v=6">
+    <style>
+        .f5tts-theme { --primary-color: #4caf50; }
+        .btn-generate.f5tts { background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%); }
+        .btn-generate.f5tts:hover { box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4); }
+        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50; }
+        .param-section { margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; }
+        .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .param-item { display: flex; flex-direction: column; }
+        .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
+        .param-item input, .param-item select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .info-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #2e7d32; }
+    </style>
+</head>
+<body class="f5tts-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝄞</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>🎵 F5-TTS</h1>
+                <p>清华开源 - 高质量声音克隆</p>
+            </header>
+            <div class="main-interface">
+                <div class="model-badge"><span>🎵</span><span>F5-TTS</span></div>
+                
+                <div class="info-box">
+                    💡 F5-TTS 支持中英文克隆。需要上传参考音频和对应文本，系统自动匹配参考音频的音色特征。
+                </div>
+                
+                <div id="statusMessage" class="status-message"></div>
+                
+                <div class="ref-audio-section">
+                    <label style="font-weight: 600; color: #2e7d32; display: block; margin-bottom: 10px;">参考音频（必须）</label>
+                    <input type="file" id="refAudio" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+                        上传3-10秒的清晰人声作为参考音色
+                    </p>
+                </div>
+                
+                <div class="input-section">
+                    <label for="refText">参考文本</label>
+                    <textarea id="refText" placeholder="请输入参考音频对应的文本内容..."></textarea>
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+                        准确输入参考音频的文本内容有助于提高克隆质量
+                    </p>
+                </div>
+                
+                <div class="input-section">
+                    <label for="genText">生成文本</label>
+                    <textarea id="genText" placeholder="请输入要生成语音的文本..."></textarea>
+                </div>
+                
+                <div class="param-section">
+                    <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
+                    <div class="param-grid">
+                        <div class="param-item">
+                            <label for="nfeStep">推理步数 (NFE Step)</label>
+                            <input type="number" id="nfeStep" value="32" min="8" max="64" step="8">
+                            <small style="color: #999;">越大质量越高，速度越慢</small>
+                        </div>
+                        <div class="param-item">
+                            <label for="cfgStrength">CFG强度</label>
+                            <input type="number" id="cfgStrength" value="2.0" min="0.5" max="5.0" step="0.1">
+                            <small style="color: #999;">控制生成自由度</small>
+                        </div>
+                        <div class="param-item">
+                            <label for="speed">语速 (Speed)</label>
+                            <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.1">
+                            <small style="color: #999;">1.0为正常语速</small>
+                        </div>
+                        <div class="param-item">
+                            <label for="crossLingual">跨语言合成</label>
+                            <select id="crossLingual">
+                                <option value="false">关闭</option>
+                                <option value="true">开启</option>
+                            </select>
+                            <small style="color: #999;">是否允许参考和生成语言不同</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <button class="btn-generate f5tts" id="generateBtn" onclick="generateTTS()">
+                    <span id="btnText">🎙️ 生成语音</span>
+                </button>
+                
+                <div id="resultSection" class="result-section" style="display: none;">
+                    <h3>🎵 生成结果</h3>
+                    <audio id="audioPlayer" class="audio-player" controls></audio>
+                    <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                const dot = document.getElementById('healthDot');
+                const text = document.getElementById('healthText');
+                if (data.status === 'healthy') {
+                    dot.className = 'health-dot online';
+                    text.textContent = '在线';
+                } else {
+                    dot.className = 'health-dot offline';
+                    text.textContent = '离线';
+                }
+            } catch (error) {
+                document.getElementById('healthDot').className = 'health-dot offline';
+                document.getElementById('healthText').textContent = '离线';
+            }
+        }
+        
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
+            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
+        }
+        
+        async function generateTTS() {
+            const refText = document.getElementById('refText').value.trim();
+            const genText = document.getElementById('genText').value.trim();
+            const refAudio = document.getElementById('refAudio').files[0];
+            const nfeStep = document.getElementById('nfeStep').value;
+            const cfgStrength = document.getElementById('cfgStrength').value;
+            const speed = document.getElementById('speed').value;
+            const crossLingual = document.getElementById('crossLingual').value === 'true';
+            
+            if (!refAudio) { showStatus('请上传参考音频', true); return; }
+            if (!genText) { showStatus('请输入生成文本', true); return; }
+            
+            const btn = document.getElementById('generateBtn');
+            const btnText = document.getElementById('btnText');
+            const originalText = btnText.innerHTML;
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('ref_text', refText);
+                formData.append('gen_text', genText);
+                formData.append('ref_audio', refAudio);
+                formData.append('nfe_step', nfeStep);
+                formData.append('cfg_strength', cfgStrength);
+                formData.append('speed', speed);
+                formData.append('cross_lingual', crossLingual);
+                
+                const response = await fetch(`${API_BASE}/tts/f5tts`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '生成失败');
+                }
+                
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
+                    document.getElementById('downloadLink').download = `f5tts_${Date.now()}.wav`;
+                    document.getElementById('resultSection').style.display = 'block';
+                    showStatus('语音生成成功！');
+                } else { 
+                    throw new Error(data.message || '生成失败'); 
+                }
+            } catch (error) { 
+                showStatus('生成失败: ' + error.message, true); 
+            }
+            finally { 
+                btn.disabled = false; 
+                btnText.innerHTML = originalText; 
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const auth = localStorage.getItem('versTTS_auth');
+            if (auth !== '1') {
+                window.location.href = '../login.html';
+                return;
+            }
+            checkHealth();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,194 @@
+<!-- ==================== 说话人管理模态框 ==================== -->
+    <div id="speakerModal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 700px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2>👤 说话人管理</h2>
+                <button class="modal-close" onclick="closeSpeakerManager()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 状态消息 -->
+                <div id="speakerStatusMessage" class="status-message-speaker"></div>
+
+                <!-- 子页面选项卡 -->
+                <div class="speaker-tabs" style="display: flex; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
+                    <button id="tabRecord" class="speaker-tab active" onclick="switchSpeakerTab('record')" style="flex: 1; padding: 12px 20px; background: none; border: none; font-size: 1rem; cursor: pointer; color: #0ea5e9; border-bottom: 2px solid #0ea5e9; font-weight: 600;">
+                        🎙️ 朗读录音
+                    </button>
+                    <button id="tabUpload" class="speaker-tab" onclick="switchSpeakerTab('upload')" style="flex: 1; padding: 12px 20px; background: none; border: none; font-size: 1rem; cursor: pointer; color: #64748b; border-bottom: 2px solid transparent;">
+                        📤 上传音频
+                    </button>
+                </div>
+
+                <!-- ========== 录音模式子页面 ========== -->
+                <div id="pageRecord" class="speaker-page">
+                    <!-- 朗读文本选择区域 -->
+                    <div class="script-section" style="margin-bottom: 20px; padding: 15px; background: #f0f9ff; border-radius: 12px; border: 1px solid #bae6fd;">
+                        <div style="font-weight: 600; color: #0369a1; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            📖 朗读文本
+                            <span style="font-size: 0.85em; font-weight: normal; color: #64748b;">（请朗读以下文本进行录音）</span>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <select id="scriptLength" onchange="loadRecordingScripts()" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.9rem; margin-right: 10px;">
+                                <option value="short">短文本 (5-8秒)</option>
+                                <option value="medium">中等 (10-15秒)</option>
+                                <option value="long">长文本 (15-20秒)</option>
+                            </select>
+                            <button onclick="refreshScript()" style="padding: 8px 16px; background: #0ea5e9; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem;">
+                                🔄 换一段
+                            </button>
+                        </div>
+                        <div id="scriptDisplay" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 1.1rem; line-height: 1.8; color: #1e293b; min-height: 60px;">
+                            正在加载朗读文本...
+                        </div>
+                        <div id="scriptInfo" style="margin-top: 8px; font-size: 0.85rem; color: #64748b;">
+                            <span id="scriptTypeBadge" style="display: inline-block; padding: 2px 8px; background: #e0f2fe; color: #0369a1; border-radius: 4px; margin-right: 8px;">-</span>
+                            <span id="scriptSource" style="color: #059669; font-style: italic;"></span>
+                            <span style="margin-left: 8px;">|</span>
+                            <span style="margin-left: 8px;">预计时长: <span id="scriptDuration">-</span></span>
+                        </div>
+                    </div>
+
+                    <!-- 录音区域 -->
+                    <div class="record-section">
+                        <div class="record-title">
+                            🎙️ 录音
+                        </div>
+                        <div class="record-controls">
+                            <button id="recordBtn" class="btn-record" onclick="toggleRecording()" title="开始/停止录音">
+                                🎤
+                            </button>
+                            <div class="record-status" id="recordStatus">点击按钮开始录音</div>
+                            <div class="record-timer" id="recordTimer" style="display: none;">00:00</div>
+                            <div class="record-waves" id="recordWaves">
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                                <div class="record-wave-bar"></div>
+                            </div>
+                            <div class="record-hint">
+                                建议录制 5-20 秒的清晰语音
+                            </div>
+                        </div>
+                        <!-- 录音预览 -->
+                        <div id="audioPreview" class="audio-preview">
+                            <div style="margin-bottom: 10px; color: #374151; font-weight: 500;">
+                                🔊 录音预览（时长: <span id="recordDuration">0</span> 秒）
+                            </div>
+                            <audio id="recordedAudio" controls preload="none" src="" style="width: 100%; display: none;">
+                                您的浏览器不支持音频播放
+                            </audio>
+                            <div id="audioErrorMsg" style="display: none; color: #dc2626; margin-top: 10px; padding: 10px; background: #fee2e2; border-radius: 8px;">
+                                音频格式不受支持，但数据仍可正常使用
+                            </div>
+                            <div class="audio-preview-actions">
+                                <button class="btn-use-record" onclick="useRecordedAudio()">
+                                    ✓ 使用此录音
+                                </button>
+                                <button class="btn-discard-record" onclick="discardRecordedAudio()">
+                                    ✕ 重新录制
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 命名区域 -->
+                    <div class="name-section" style="margin-top: 20px;">
+                        <label for="speakerNameRecord">说话人名称</label>
+                        <div class="name-input-wrapper">
+                            <input type="text" id="speakerNameRecord" class="name-input" placeholder="请输入说话人名称（如：小明、女声1等）" onblur="checkSpeakerName()">
+                        </div>
+                        <div id="nameStatusRecord" class="name-status"></div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div id="uploadProgressRecord" class="progress-container" style="margin-top: 15px;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFillRecord"></div>
+                        </div>
+                        <div class="progress-text" id="progressTextRecord">准备上传...</div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="action-buttons" style="margin-top: 20px;">
+                        <button id="saveSpeakerBtnRecord" class="btn-primary" onclick="saveSpeaker()" disabled>
+                            💾 保存说话人
+                        </button>
+                        <button class="btn-secondary" onclick="resetSpeakerForm()">
+                            重置
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ========== 上传模式子页面 ========== -->
+                <div id="pageUpload" class="speaker-page" style="display: none;">
+                    <!-- 上传区域 -->
+                    <div class="upload-section" style="margin-bottom: 20px;">
+                        <div id="uploadArea" class="upload-area" onclick="document.getElementById('audioFileInput').click()">
+                            <div class="upload-icon">🎵</div>
+                            <div class="upload-text">点击或拖拽上传音频文件</div>
+                            <div class="upload-hint">支持 MP3、WAV、FLAC、OGG、M4A、WEBM 格式</div>
+                            <input type="file" id="audioFileInput" class="file-input" accept="audio/*" onchange="handleFileSelect(event)">
+                        </div>
+                        <div id="selectedFile" class="selected-file">
+                            <span class="file-name" id="fileName"></span>
+                            <button class="file-remove" onclick="removeSelectedFile()">移除</button>
+                        </div>
+                    </div>
+
+                    <!-- 参考文本输入区域 -->
+                    <div class="script-section" style="margin-bottom: 20px; padding: 15px; background: #f0fdf4; border-radius: 12px; border: 1px solid #86efac;">
+                        <div style="font-weight: 600; color: #15803d; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            📝 参考文本
+                            <span style="font-size: 0.85em; font-weight: normal; color: #64748b;">（输入音频对应的文本内容）</span>
+                        </div>
+                        <textarea id="uploadReferenceText" rows="4" placeholder="请输入音频文件中朗读的文本内容..." oninput="updateSaveButton()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; line-height: 1.6; resize: vertical;"></textarea>
+                        <div style="margin-top: 8px; font-size: 0.85rem; color: #64748b;">
+                            💡 提示：准确的参考文本有助于提高声音克隆质量
+                        </div>
+                    </div>
+
+                    <!-- 命名区域 -->
+                    <div class="name-section">
+                        <label for="speakerNameUpload">说话人名称</label>
+                        <div class="name-input-wrapper">
+                            <input type="text" id="speakerNameUpload" class="name-input" placeholder="请输入说话人名称（如：小明、女声1等）" onblur="checkSpeakerName()">
+                        </div>
+                        <div id="nameStatusUpload" class="name-status"></div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    <div id="uploadProgressUpload" class="progress-container" style="margin-top: 15px;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFillUpload"></div>
+                        </div>
+                        <div class="progress-text" id="progressTextUpload">准备上传...</div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="action-buttons" style="margin-top: 20px;">
+                        <button id="saveSpeakerBtnUpload" class="btn-primary" onclick="saveSpeaker()" disabled>
+                            💾 保存说话人
+                        </button>
+                        <button class="btn-secondary" onclick="resetSpeakerForm()">
+                            重置
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 已保存说话人列表 -->
+                <div class="speakers-list-section" style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                    <h3>已保存的说话人 <span id="speakersCount" class="speakers-count">0</span></h3>
+                    <div id="speakersList" class="speakers-list">
+                        <!-- 动态填充 -->
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <div>暂无已保存的说话人</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

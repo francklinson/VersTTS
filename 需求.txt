@@ -42,21 +42,26 @@ https://github.com/myshell-ai/OpenVoice
 [21]对openvoice 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/OpenVoice/readme.md 中
 [22]对gpt-sovits 算法进行分析和验证. 整理核心思路/用法/局限性 在 algorithms/GPT-SoVITS/readme.md 中
 [23]使用了cosy-voice3.0的模型,但是生成的语音完全是混乱的,无论克隆模式还是instruct模式 - 已修复，原因是缺少 matcha 模块路径配置
-
-
-待完成:
-[1]前端文件太大了, 能否根据几种tts方案进行拆分,保证功能还是可用的
-[2]前端页面美化,和登陆页面一样增加一动态效果
-[3]新增如下几个tts算法:
+[24]前端文件太大了, 能否根据几种tts方案进行拆分,保证功能还是可用的
+[25]前端页面美化,和登陆页面一样增加一动态效果
+[26]新增如下几个tts算法:
 https://github.com/OpenBMB/VoxCPM/
 https://github.com/index-tts/index-tts
 https://github.com/FireRedTeam/FireRedTTS2
 跟上面的几个项目一样, 先部署, 然后分析和验证
+[27]检查每个算法支持的功能和前端实现是否一致, 若不一致, 则进行对应的前后端修复.(已完成)
+[28]为 VoxCPM/IndexTTS/FireRedTTS2 构建后端API服务(已完成)
+- 创建 /tts/voxcpm API端点，支持4种模式(base/voice_design/clone/ultimate_clone)
+- 创建 /tts/indextts API端点，支持2种模式(free/controlled)
+- 创建 /tts/fireredtts API端点，支持2种模式(clone/random)
+- 更新前端页面，移除"即将推出"标记
+
+待完成:
+无
 
 
-
-待处理(暂缓):
-[4]CosyVoice要求transformers 4.51.3, 而这个版本的transformers在其他几个项目中都无法使用
+后续处理(暂缓):
+CosyVoice要求transformers 4.51.3, 而这个版本的transformers在其他几个项目中都无法使用
 下载一个transformers4.51.3,修改其名称,专门给CosyVoice使用
 - 问题: tokenizers版本冲突(CosyVoice需要<0.22,其他项目需要>=0.22)
 - 状态: 已回退修改,暂缓处理,等待后续解决方案

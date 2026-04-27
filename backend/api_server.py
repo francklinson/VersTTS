@@ -49,7 +49,7 @@ import torchaudio
 import numpy as np
 import soundfile as sf
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request, BackgroundTasks, Query
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -366,6 +366,28 @@ class GPTSoVITSRequest(BaseTTSRequest):
     batch_size: int = Field(default=1, description="批处理大小")
     speed_factor: float = Field(default=1.0, description="语速因子")
     version: str = Field(default="v2", description="版本: v1, v2, v3, v4, v2Pro, v2ProPlus")
+
+class VoxCPMRequest(BaseTTSRequest):
+    mode: str = Field(default="base", description="模式: base, voice_design, clone, ultimate_clone")
+    voice_design_prompt: Optional[str] = Field(default=None, description="音色设计描述（voice_design模式使用）")
+    ref_audio_path: Optional[str] = Field(default=None, description="参考音频路径（clone模式使用）")
+    ref_text: Optional[str] = Field(default=None, description="参考文本（ultimate_clone模式使用）")
+    cfg_value: float = Field(default=2.0, description="CFG值")
+    inference_timesteps: int = Field(default=10, description="推理步数")
+
+class IndexTTSRequest(BaseTTSRequest):
+    prompt_wav: Optional[str] = Field(default=None, description="参考音频路径")
+    emotion_text: Optional[str] = Field(default=None, description="情感描述文本")
+    duration_tokens: Optional[int] = Field(default=None, description="时长控制token数")
+    mode: str = Field(default="free", description="模式: free(自由), controlled(可控)")
+
+class FireRedTTS2Request(BaseTTSRequest):
+    mode: str = Field(default="clone", description="模式: clone(克隆), random(随机音色)")
+    text_list: Optional[str] = Field(default=None, description="对话文本列表，JSON格式")
+    prompt_wav_list: Optional[str] = Field(default=None, description="参考音频路径列表，JSON格式")
+    prompt_text_list: Optional[str] = Field(default=None, description="参考文本列表，JSON格式")
+    temperature: float = Field(default=0.9, description="温度")
+    topk: int = Field(default=30, description="Top K采样")
 
 class TTSResponse(BaseModel):
     success: bool
@@ -707,6 +729,108 @@ def init_gpt_sovits_pipeline(model_info, ref_audio_path: str = None):
         # 恢复工作目录
         os.chdir(original_cwd)
 
+def get_voxcpm_model():
+    """获取或加载VoxCPM模型"""
+    if "voxcpm" not in models:
+        start_time = time.time()
+        OperationLogger.log_model_load("VoxCPM", "开始加载")
+        
+        try:
+            # 添加VoxCPM路径
+            voxcpm_path = os.path.join(PROJECT_ROOT, "algorithms", "VoxCPM", "src")
+            if voxcpm_path not in sys.path:
+                sys.path.insert(0, voxcpm_path)
+            
+            from voxcpm import VoxCPM
+            
+            model_path = os.path.join(PROJECT_ROOT, "algorithms", "VoxCPM", "models", "VoxCPM2")
+            if not os.path.exists(model_path):
+                # 尝试HuggingFace模型ID
+                model_path = "openbmb/VoxCPM2"
+            
+            system_logger.info(f"【模型加载】VoxCPM 从路径: {model_path}")
+            
+            models["voxcpm"] = VoxCPM.from_pretrained(model_path, load_denoiser=False)
+            
+            duration = time.time() - start_time
+            gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+            OperationLogger.log_model_load("VoxCPM", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
+            OperationLogger.log_performance("VoxCPM加载", duration, 0, gpu_mem)
+        except Exception as e:
+            OperationLogger.log_model_load("VoxCPM", "失败", 0, str(e))
+            system_logger.error(f"【模型加载】VoxCPM 失败: {e}")
+            raise HTTPException(status_code=500, detail=f"VoxCPM模型加载失败: {str(e)}")
+    
+    return models["voxcpm"]
+
+def get_indextts_model():
+    """获取或加载IndexTTS模型"""
+    if "indextts" not in models:
+        start_time = time.time()
+        OperationLogger.log_model_load("IndexTTS", "开始加载")
+        
+        try:
+            # 添加IndexTTS路径
+            indextts_path = os.path.join(PROJECT_ROOT, "algorithms", "IndexTTS")
+            if indextts_path not in sys.path:
+                sys.path.insert(0, indextts_path)
+            
+            from indextts.infer import IndexTTS
+            
+            model_path = os.path.join(PROJECT_ROOT, "algorithms", "IndexTTS", "checkpoints")
+            
+            system_logger.info(f"【模型加载】IndexTTS 从路径: {model_path}")
+            
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            models["indextts"] = IndexTTS(model_path=model_path, device=device)
+            
+            duration = time.time() - start_time
+            gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+            OperationLogger.log_model_load("IndexTTS", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
+            OperationLogger.log_performance("IndexTTS加载", duration, 0, gpu_mem)
+        except Exception as e:
+            OperationLogger.log_model_load("IndexTTS", "失败", 0, str(e))
+            system_logger.error(f"【模型加载】IndexTTS 失败: {e}")
+            raise HTTPException(status_code=500, detail=f"IndexTTS模型加载失败: {str(e)}")
+    
+    return models["indextts"]
+
+def get_fireredtts2_model():
+    """获取或加载FireRedTTS2模型"""
+    if "fireredtts2" not in models:
+        start_time = time.time()
+        OperationLogger.log_model_load("FireRedTTS2", "开始加载")
+        
+        try:
+            # 添加FireRedTTS2路径
+            fireredtts2_path = os.path.join(PROJECT_ROOT, "algorithms", "FireRedTTS2")
+            if fireredtts2_path not in sys.path:
+                sys.path.insert(0, fireredtts2_path)
+            
+            from fireredtts2.fireredtts2 import FireRedTTS2
+            
+            model_path = os.path.join(PROJECT_ROOT, "algorithms", "FireRedTTS2", "pretrained_models", "FireRedTTS2")
+            
+            system_logger.info(f"【模型加载】FireRedTTS2 从路径: {model_path}")
+            
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            models["fireredtts2"] = FireRedTTS2(
+                pretrained_dir=model_path,
+                gen_type="dialogue",
+                device=device
+            )
+            
+            duration = time.time() - start_time
+            gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
+            OperationLogger.log_model_load("FireRedTTS2", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
+            OperationLogger.log_performance("FireRedTTS2加载", duration, 0, gpu_mem)
+        except Exception as e:
+            OperationLogger.log_model_load("FireRedTTS2", "失败", 0, str(e))
+            system_logger.error(f"【模型加载】FireRedTTS2 失败: {e}")
+            raise HTTPException(status_code=500, detail=f"FireRedTTS2模型加载失败: {str(e)}")
+    
+    return models["fireredtts2"]
+
 # ==================== 工具函数 ====================
 
 def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> np.ndarray:
@@ -770,35 +894,6 @@ def audio_to_base64(audio_path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 # ==================== API路由 ====================
-
-@app.get("/")
-async def root(request: Request):
-    """根路径 - 返回前端页面"""
-    client_ip = request.client.host if request.client else "unknown"
-    OperationLogger.log_api_request("/", "GET", {}, client_ip, 0)
-    
-    # 返回前端页面
-    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "index.html")
-    if os.path.exists(frontend_path):
-        return FileResponse(frontend_path)
-    
-    # 如果前端文件不存在，返回API信息
-    return {
-        "name": "VersTTS API",
-        "version": "1.2.0",
-        "endpoints": [
-            "/tts/chattts",
-            "/tts/cosyvoice",
-            "/tts/f5tts",
-            "/tts/qwen3tts",
-            "/tts/openvoice",
-            "/tts/gptsovits",
-            "/tts/batch/create",
-            "/tts/batch/{job_id}/status",
-            "/tts/batch/{job_id}/process",
-            "/tts/batch/{job_id}/download",
-        ]
-    }
 
 @app.get("/health")
 async def health(request: Request):
@@ -1481,29 +1576,50 @@ DEFAULT_F5TTS_TEXT_EN = "Some call me nature, others call me mother nature."
 
 @app.post("/tts/f5tts")
 async def tts_f5tts(
-    text: str = Form(...),
+    text: Optional[str] = Form(None),
+    gen_text: Optional[str] = Form(None),
     ref_text: Optional[str] = Form(None),
     ref_wav: Optional[UploadFile] = File(None),
+    ref_audio: Optional[UploadFile] = File(None),
     nfe_step: int = Form(32),
     cfg_strength: float = Form(2.0),
     speed: float = Form(1.0),
+    cross_lingual: bool = Form(False),
     output_format: str = Form("url")
 ):
-    """F5-TTS语音合成"""
+    """F5-TTS语音合成
+    
+    参数说明:
+    - gen_text/text: 要生成的文本（gen_text优先）
+    - ref_text: 参考音频对应的文本
+    - ref_audio/ref_wav: 参考音频文件（ref_audio优先）
+    - nfe_step: 推理步数(默认32)
+    - cfg_strength: CFG强度(默认2.0)
+    - speed: 语速(默认1.0)
+    - cross_lingual: 跨语言合成标志
+    """
     try:
-        logger.info(f"F5-TTS请求: {text[:50]}...")
+        # 兼容前端参数名
+        use_gen_text = gen_text or text
+        if not use_gen_text:
+            raise HTTPException(status_code=400, detail="缺少生成文本参数")
+        
+        logger.info(f"F5-TTS请求: {use_gen_text[:50]}..., 跨语言: {cross_lingual}")
 
+        # 优先使用 ref_audio, 兼容 ref_wav
+        ref_file = ref_audio or ref_wav
+        
         # 判断是否使用默认参考音频
-        if ref_wav:
+        if ref_file:
             # 使用上传的参考音频
             ref_path = f"uploads/ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
             with open(ref_path, "wb") as f:
-                f.write(await ref_wav.read())
+                f.write(await ref_file.read())
             use_ref_text = ref_text or "参考音频文本"
             is_temp = True
         else:
             # 使用默认参考音频（根据语言选择）
-            has_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
+            has_chinese = any('\u4e00' <= char <= '\u9fff' for char in use_gen_text)
             if has_chinese and os.path.exists(DEFAULT_F5TTS_REF_ZH):
                 ref_path = DEFAULT_F5TTS_REF_ZH
                 use_ref_text = ref_text or DEFAULT_F5TTS_TEXT_ZH
@@ -1519,7 +1635,7 @@ async def tts_f5tts(
         wav, sr, _ = f5tts.infer(
             ref_file=ref_path,
             ref_text=use_ref_text,
-            gen_text=text,
+            gen_text=use_gen_text,
             nfe_step=nfe_step,
             cfg_strength=cfg_strength,
             speed=speed,
@@ -1990,6 +2106,203 @@ async def tts_gptsovits(
         # 清理临时文件
         if 'ref_path' in locals() and os.path.exists(ref_path):
             os.remove(ref_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== VoxCPM API ====================
+
+@app.post("/tts/voxcpm")
+async def tts_voxcpm(
+    text: str = Form(...),
+    mode: str = Form("base"),
+    ref_audio: Optional[UploadFile] = File(None),
+    ref_text: Optional[str] = Form(None),
+    voice_design_prompt: Optional[str] = Form(None),
+    cfg_value: float = Form(2.0),
+    inference_timesteps: int = Form(10),
+    output_format: str = Form("url")
+):
+    """VoxCPM语音合成 - 支持30种语言的无Tokenizer TTS"""
+    try:
+        logger.info(f"VoxCPM请求 | 模式: {mode} | 文本: {text[:50]}...")
+        
+        # 保存参考音频（如果需要）
+        ref_path = None
+        if ref_audio and mode in ["clone", "ultimate_clone"]:
+            ref_path = f"uploads/voxcpm_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            with open(ref_path, "wb") as f:
+                f.write(await ref_audio.read())
+        
+        # 加载模型
+        model = get_voxcpm_model()
+        
+        # 根据模式调用不同的生成方法
+        if mode == "base":
+            audio_data = model.generate(text, cfg_value=cfg_value, timesteps=inference_timesteps)
+        elif mode == "voice_design":
+            if not voice_design_prompt:
+                raise HTTPException(status_code=400, detail="voice_design模式需要提供voice_design_prompt")
+            audio_data = model.generate_by_design(
+                text, 
+                voice_design_prompt, 
+                cfg_value=cfg_value, 
+                timesteps=inference_timesteps
+            )
+        elif mode == "clone":
+            if not ref_path:
+                raise HTTPException(status_code=400, detail="clone模式需要提供参考音频")
+            audio_data = model.clone(text, ref_path, cfg_value=cfg_value, timesteps=inference_timesteps)
+        elif mode == "ultimate_clone":
+            if not ref_path or not ref_text:
+                raise HTTPException(status_code=400, detail="ultimate_clone模式需要提供参考音频和参考文本")
+            audio_data = model.ultimate_clone(text, ref_path, ref_text, cfg_value=cfg_value, timesteps=inference_timesteps)
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的模式: {mode}")
+        
+        # 保存音频
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        audio_path = f"outputs/voxcpm_{timestamp}.wav"
+        sf.write(audio_path, audio_data, samplerate=48000)
+        
+        # 清理临时文件
+        if ref_path and os.path.exists(ref_path):
+            os.remove(ref_path)
+        
+        logger.info(f"VoxCPM生成完成: {audio_path}")
+        
+        if output_format == "base64":
+            audio_b64 = audio_to_base64(audio_path)
+            return TTSResponse(success=True, message="合成成功", audio_base64=audio_b64, sample_rate=48000)
+        else:
+            return TTSResponse(success=True, message="合成成功", audio_url=f"/audio/{os.path.basename(audio_path)}", sample_rate=48000)
+            
+    except Exception as e:
+        logger.error(f"VoxCPM合成错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== IndexTTS API ====================
+
+@app.post("/tts/indextts")
+async def tts_indextts(
+    text: str = Form(...),
+    mode: str = Form("free"),
+    prompt_wav: Optional[UploadFile] = File(None),
+    emotion_text: Optional[str] = Form(None),
+    duration_tokens: Optional[int] = Form(None),
+    output_format: str = Form("url")
+):
+    """IndexTTS语音合成 - 支持精确时长控制"""
+    try:
+        logger.info(f"IndexTTS请求 | 模式: {mode} | 文本: {text[:50]}...")
+        
+        # 保存参考音频（如果需要）
+        ref_path = None
+        if prompt_wav:
+            ref_path = f"uploads/indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            with open(ref_path, "wb") as f:
+                f.write(await prompt_wav.read())
+        
+        # 加载模型
+        model = get_indextts_model()
+        
+        # 准备条件数据
+        condition = {}
+        if ref_path:
+            condition["prompt_wav"] = ref_path
+        if emotion_text:
+            condition["emotion_text"] = emotion_text
+        if duration_tokens:
+            condition["duration_tokens"] = duration_tokens
+        
+        # 生成音频
+        audio_data = model.infer(text, condition=condition if condition else None)
+        
+        # 保存音频
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        audio_path = f"outputs/indextts_{timestamp}.wav"
+        sf.write(audio_path, audio_data, samplerate=24000)
+        
+        # 清理临时文件
+        if ref_path and os.path.exists(ref_path):
+            os.remove(ref_path)
+        
+        logger.info(f"IndexTTS生成完成: {audio_path}")
+        
+        if output_format == "base64":
+            audio_b64 = audio_to_base64(audio_path)
+            return TTSResponse(success=True, message="合成成功", audio_base64=audio_b64, sample_rate=24000)
+        else:
+            return TTSResponse(success=True, message="合成成功", audio_url=f"/audio/{os.path.basename(audio_path)}", sample_rate=24000)
+            
+    except Exception as e:
+        logger.error(f"IndexTTS合成错误: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== FireRedTTS2 API ====================
+
+@app.post("/tts/fireredtts")
+async def tts_fireredtts(
+    text: str = Form(...),
+    mode: str = Form("clone"),
+    ref_audio: Optional[UploadFile] = File(None),
+    ref_text: Optional[str] = Form(None),
+    temperature: float = Form(0.9),
+    topk: int = Form(30),
+    output_format: str = Form("url")
+):
+    """FireRedTTS2语音合成 - 支持多说话人对话生成"""
+    try:
+        logger.info(f"FireRedTTS2请求 | 模式: {mode} | 文本: {text[:50]}...")
+        
+        # 加载模型
+        model = get_fireredtts2_model()
+        
+        # 保存参考音频（如果需要）
+        ref_path = None
+        if ref_audio and mode == "clone":
+            ref_path = f"uploads/fireredtts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            with open(ref_path, "wb") as f:
+                f.write(await ref_audio.read())
+        
+        # 生成音频
+        if mode == "clone":
+            if not ref_path:
+                raise HTTPException(status_code=400, detail="clone模式需要提供参考音频")
+            
+            # 设置参考音频
+            model.set_ref_audio(ref_path, ref_text or "")
+            
+            # 推理
+            audio_data = model.infer(
+                text,
+                temperature=temperature,
+                topk=topk
+            )
+        else:  # random模式
+            audio_data = model.infer(
+                text,
+                temperature=temperature,
+                topk=topk
+            )
+        
+        # 保存音频
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        audio_path = f"outputs/fireredtts_{timestamp}.wav"
+        sf.write(audio_path, audio_data, samplerate=16000)
+        
+        # 清理临时文件
+        if ref_path and os.path.exists(ref_path):
+            os.remove(ref_path)
+        
+        logger.info(f"FireRedTTS2生成完成: {audio_path}")
+        
+        if output_format == "base64":
+            audio_b64 = audio_to_base64(audio_path)
+            return TTSResponse(success=True, message="合成成功", audio_base64=audio_b64, sample_rate=16000)
+        else:
+            return TTSResponse(success=True, message="合成成功", audio_url=f"/audio/{os.path.basename(audio_path)}", sample_rate=16000)
+            
+    except Exception as e:
+        logger.error(f"FireRedTTS2合成错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== 批量处理 API ====================
@@ -2604,6 +2917,34 @@ async def get_random_recording_script(
 
 # ==================== 静态文件服务 ====================
 
+# 根路径重定向到登录页面
+@app.get("/")
+async def root():
+    """根路径重定向到登录页面"""
+    return RedirectResponse(url="/login.html")
+
+# 前端页面路由
+@app.get("/login.html")
+async def login_page():
+    """登录页面"""
+    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "login.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    raise HTTPException(status_code=404, detail="登录页面不存在")
+
+@app.get("/index.html")
+async def index_page():
+    """首页"""
+    frontend_path = os.path.join(PROJECT_ROOT, "frontend", "index.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    raise HTTPException(status_code=404, detail="首页不存在")
+
+@app.get("/app.html")
+async def app_page():
+    """应用页面 - 重定向到首页"""
+    return RedirectResponse(url="/index.html")
+
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
     """获取音频文件"""
@@ -2612,10 +2953,14 @@ async def get_audio(filename: str):
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(file_path, media_type="audio/wav")
 
-# 挂载前端静态文件 - 使用frontend目录作为静态文件根目录
+# 挂载前端静态文件 - 子目录
 frontend_dir = os.path.join(PROJECT_ROOT, "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+assets_dir = os.path.join(frontend_dir, "assets")
+pages_dir = os.path.join(frontend_dir, "pages")
+if os.path.exists(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+if os.path.exists(pages_dir):
+    app.mount("/pages", StaticFiles(directory=pages_dir), name="pages")
 
 # ==================== 主函数 ====================
 

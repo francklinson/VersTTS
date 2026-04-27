@@ -25,7 +25,7 @@
         <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
     </div>
-    
+
     <div class="floating-notes">
         <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
         <div class="note">♮</div><div class="note">♯</div><div class="note">𝄞</div><div class="note">𝄢</div>
@@ -38,32 +38,32 @@
                 <span id="healthText">在线</span>
             </div>
         </div>
-        
+
         <div class="container">
             <a href="../index.html" class="nav-back">← 返回模型列表</a>
-            
+
             <header>
                 <h1>🎭 ChatTTS</h1>
                 <p>对话式语音合成 - 每次生成随机音色</p>
             </header>
-            
+
             <div class="main-interface">
                 <div class="model-badge">
                     <span>🎭</span>
                     <span>ChatTTS</span>
                 </div>
-                
+
                 <div class="info-box">
                     💡 ChatTTS 专为对话场景设计，<strong>每次生成使用随机音色</strong>，不支持特定音色克隆。适合LLM助手、对话机器人等场景。
                 </div>
-                
+
                 <div id="statusMessage" class="status-message"></div>
-                
+
                 <div class="input-section">
                     <label for="textInput">输入文本</label>
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本，支持中英文混合..."></textarea>
                 </div>
-                
+
                 <div class="param-section">
                     <label style="font-weight: 600; margin-bottom: 10px; display: block;">推理参数</label>
                     <div class="param-grid">
@@ -84,11 +84,11 @@
                         Temperature: 控制随机性(建议0.1-0.5) | Top P/K: 控制采样范围
                     </p>
                 </div>
-                
+
                 <button class="btn-generate chattts" id="generateBtn" onclick="generateTTS()">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
-                
+
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
@@ -101,111 +101,48 @@
         </div>
     </div>
 
+    <script src="../assets/js/common.js"></script>
     <script>
-        const API_BASE = window.location.origin;
-        
-        // 检查服务器健康状态
-        async function checkHealth() {
-            const dot = document.getElementById('healthDot');
-            const text = document.getElementById('healthText');
-            
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                if (data.status === 'healthy') {
-                    dot.className = 'health-dot online';
-                    text.textContent = '在线';
-                } else {
-                    dot.className = 'health-dot offline';
-                    text.textContent = '离线';
-                }
-            } catch (error) {
-                dot.className = 'health-dot offline';
-                text.textContent = '离线';
-            }
-        }
-        
-        // 显示状态消息
-        function showStatus(message, isError = false) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-            setTimeout(() => {
-                statusEl.classList.remove('show');
-            }, 5000);
-        }
-        
-        // 生成TTS
+        // 页面特定的生成函数
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
             const temperature = document.getElementById('temperature').value;
             const topP = document.getElementById('topP').value;
             const topK = document.getElementById('topK').value;
-            
+
             if (!text) {
-                showStatus('请输入要转换的文本', true);
+                VersTTS.showStatus('请输入要转换的文本', true);
                 return;
             }
-            
+
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
-            const originalText = btnText.innerHTML;
-            
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+            VersTTS.setButtonLoading(btn, btnText, true);
+
             try {
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('temperature', temperature);
                 formData.append('top_P', topP);
                 formData.append('top_K', topK);
-                
-                const response = await fetch(`${API_BASE}/tts/chattts`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '生成失败');
-                }
-                
-                const data = await response.json();
-                
+
+                const data = await VersTTS.postForm('/tts/chattts', formData);
+
                 if (data.success) {
-                    const audioPlayer = document.getElementById('audioPlayer');
-                    const downloadLink = document.getElementById('downloadLink');
-                    const resultSection = document.getElementById('resultSection');
-                    
-                    audioPlayer.src = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    downloadLink.href = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    downloadLink.download = `chattts_${Date.now()}.wav`;
-                    resultSection.style.display = 'block';
-                    
-                    showStatus('语音生成成功！(随机音色)');
+                    VersTTS.showResult(data, { filename: `chattts_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！(随机音色)');
                 } else {
                     throw new Error(data.message || '生成失败');
                 }
             } catch (error) {
-                showStatus('生成失败: ' + error.message, true);
+                VersTTS.showStatus('生成失败: ' + error.message, true);
             } finally {
-                btn.disabled = false;
-                btnText.innerHTML = originalText;
+                VersTTS.setButtonLoading(btn, btnText, false);
             }
         }
-        
-        // 初始化
-        document.addEventListener("DOMContentLoaded", function() {
-            // 检查登录状态
-            const auth = localStorage.getItem("versTTS_auth");
-            if (auth !== "1") {
-                window.location.href = "../login.html";
-                return;
-            }
 
-            checkHealth();
-        });
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>

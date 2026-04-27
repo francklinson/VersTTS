@@ -48,50 +48,28 @@
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🎤</span><span>CosyVoice</span></div>
-                
+
                 <div class="info-box">
                     💡 CosyVoice 3.0 支持多种克隆模式。建议使用<strong>说话人管理</strong>中保存的参考音频进行克隆。
                 </div>
-                
+
                 <div id="statusMessage" class="status-message"></div>
-                
-                <!-- 模式选择 -->
+
                 <div class="mode-tabs">
                     <button class="mode-tab active" onclick="switchMode('zero_shot')">零样本克隆</button>
-                    <button class="mode-tab" onclick="switchMode('cross_lingual')">跨语言克隆</button>
                     <button class="mode-tab" onclick="switchMode('instruct')">指令控制</button>
                 </div>
-                
-                <!-- 零样本克隆模式 -->
+
                 <div id="mode-zero_shot" class="mode-content active">
                     <div class="speaker-section">
                         <label style="font-weight: 600; color: #6a1b9a;">选择说话人</label>
                         <select id="speakerSelect" style="width: 100%; margin-top: 8px; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                             <option value="">-- 请选择说话人 --</option>
                         </select>
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-                            从说话人管理中选择，或<a href="../index.html" onclick="localStorage.setItem('openSpeakerManager', 'true')">先去添加说话人</a>
-                        </p>
-                    </div>
-                    
-                    <div class="ref-audio-section" style="display: none;">
-                        <label>或上传参考音频</label>
-                        <input type="file" id="refAudioZero" accept="audio/*" style="margin-top: 8px;">
+
                     </div>
                 </div>
-                
-                <!-- 跨语言克隆模式 -->
-                <div id="mode-cross_lingual" class="mode-content">
-                    <div class="ref-audio-section">
-                        <label>参考音频</label>
-                        <input type="file" id="refAudioCross" accept="audio/*" style="margin-top: 8px;">
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-                            上传参考音频，可用不同语言合成（如用中文参考音频合成英文）
-                        </p>
-                    </div>
-                </div>
-                
-                <!-- 指令控制模式 -->
+
                 <div id="mode-instruct" class="mode-content">
                     <div class="speaker-section">
                         <label style="font-weight: 600; color: #6a1b9a;">选择说话人</label>
@@ -107,16 +85,20 @@
                         </p>
                     </div>
                 </div>
-                
+
                 <div class="input-section">
                     <label for="textInput">输入文本</label>
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本..."></textarea>
                 </div>
-                
-                <button class="btn-generate cosyvoice" id="generateBtn" onclick="generateTTS()">
+
+                <div class="warning-box" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #e65100;">
+                    ⚠️ 由于环境配置冲突，当前功能不可用，待后续开放
+                </div>
+
+                <button class="btn-generate cosyvoice" id="generateBtn" onclick="generateTTS()" disabled style="opacity: 0.6; cursor: not-allowed;">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
-                
+
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
@@ -126,151 +108,68 @@
         </div>
     </div>
 
+    <script src="../assets/js/common.js"></script>
     <script>
-        const API_BASE = window.location.origin;
         let currentMode = 'zero_shot';
-        let speakers = [];
-        
-        // 切换模式
-        function switchMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById(`mode-${mode}`).classList.add('active');
-        }
-        
-        // 加载说话人列表
-        async function loadSpeakers() {
-            try {
-                const response = await fetch(`${API_BASE}/speakers`);
-                const data = await response.json();
-                if (data.success) {
-                    speakers = data.speakers || [];
-                    const options = speakers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-                    document.getElementById('speakerSelect').innerHTML = '<option value="">-- 请选择说话人 --</option>' + options;
-                    document.getElementById('speakerSelectInstruct').innerHTML = '<option value="">-- 请选择说话人 --</option>' + options;
-                }
-            } catch (e) {
-                console.error('加载说话人失败:', e);
-            }
-        }
-        
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                const dot = document.getElementById('healthDot');
-                const text = document.getElementById('healthText');
-                if (data.status === 'healthy') {
-                    dot.className = 'health-dot online';
-                    text.textContent = '在线';
-                } else {
-                    dot.className = 'health-dot offline';
-                    text.textContent = '离线';
-                }
-            } catch (error) {
-                document.getElementById('healthDot').className = 'health-dot offline';
-                document.getElementById('healthText').textContent = '离线';
-            }
-        }
-        
-        function showStatus(message, isError = false) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
-        }
-        
+
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
-            if (!text) { showStatus('请输入要转换的文本', true); return; }
-            
+            if (!text) { VersTTS.showStatus('请输入要转换的文本', true); return; }
+
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
-            const originalText = btnText.innerHTML;
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+            VersTTS.setButtonLoading(btn, btnText, true);
+
             try {
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('mode', currentMode);
-                
+
                 if (currentMode === 'zero_shot') {
                     const speakerId = document.getElementById('speakerSelect').value;
                     if (!speakerId) {
-                        showStatus('请选择说话人', true);
-                        btn.disabled = false;
-                        btnText.innerHTML = originalText;
+                        VersTTS.showStatus('请选择说话人', true);
+                        VersTTS.setButtonLoading(btn, btnText, false);
                         return;
                     }
                     formData.append('clone_speaker_id', speakerId);
-                } else if (currentMode === 'cross_lingual') {
-                    const refAudio = document.getElementById('refAudioCross').files[0];
-                    if (!refAudio) {
-                        showStatus('请上传参考音频', true);
-                        btn.disabled = false;
-                        btnText.innerHTML = originalText;
-                        return;
-                    }
-                    formData.append('prompt_wav', refAudio);
                 } else if (currentMode === 'instruct') {
                     const speakerId = document.getElementById('speakerSelectInstruct').value;
                     const instructText = document.getElementById('instructText').value.trim();
                     if (!speakerId) {
-                        showStatus('请选择说话人', true);
-                        btn.disabled = false;
-                        btnText.innerHTML = originalText;
+                        VersTTS.showStatus('请选择说话人', true);
+                        VersTTS.setButtonLoading(btn, btnText, false);
                         return;
                     }
                     if (!instructText) {
-                        showStatus('请输入指令文本', true);
-                        btn.disabled = false;
-                        btnText.innerHTML = originalText;
+                        VersTTS.showStatus('请输入指令文本', true);
+                        VersTTS.setButtonLoading(btn, btnText, false);
                         return;
                     }
                     formData.append('clone_speaker_id', speakerId);
                     formData.append('instruct_text', instructText);
                 }
-                
-                const response = await fetch(`${API_BASE}/tts/cosyvoice`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '生成失败');
-                }
-                
-                const data = await response.json();
+
+                const data = await VersTTS.postForm('/tts/cosyvoice', formData);
+
                 if (data.success) {
-                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').download = `cosyvoice_${Date.now()}.wav`;
-                    document.getElementById('resultSection').style.display = 'block';
-                    showStatus('语音生成成功！');
-                } else { 
-                    throw new Error(data.message || '生成失败'); 
+                    VersTTS.showResult(data, { filename: `cosyvoice_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！');
+                } else {
+                    throw new Error(data.message || '生成失败');
                 }
-            } catch (error) { 
-                showStatus('生成失败: ' + error.message, true); 
-            }
-            finally { 
-                btn.disabled = false; 
-                btnText.innerHTML = originalText; 
+            } catch (error) {
+                VersTTS.showStatus('生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
             }
         }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const auth = localStorage.getItem('versTTS_auth');
-            if (auth !== '1') {
-                window.location.href = '../login.html';
-                return;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (initPage()) {
+                VersTTS.loadSpeakers('speakerSelect');
+                VersTTS.loadSpeakers('speakerSelectInstruct');
             }
-            checkHealth();
-            loadSpeakers();
         });
     </script>
 </body>

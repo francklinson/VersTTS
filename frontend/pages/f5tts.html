@@ -45,13 +45,13 @@
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🎵</span><span>F5-TTS</span></div>
-                
+
                 <div class="info-box">
                     💡 F5-TTS 支持中英文克隆。需要上传参考音频和对应文本，系统自动匹配参考音频的音色特征。
                 </div>
-                
+
                 <div id="statusMessage" class="status-message"></div>
-                
+
                 <div class="ref-audio-section">
                     <label style="font-weight: 600; color: #2e7d32; display: block; margin-bottom: 10px;">参考音频（必须）</label>
                     <input type="file" id="refAudio" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
@@ -59,7 +59,7 @@
                         上传3-10秒的清晰人声作为参考音色
                     </p>
                 </div>
-                
+
                 <div class="input-section">
                     <label for="refText">参考文本</label>
                     <textarea id="refText" placeholder="请输入参考音频对应的文本内容..."></textarea>
@@ -67,12 +67,12 @@
                         准确输入参考音频的文本内容有助于提高克隆质量
                     </p>
                 </div>
-                
+
                 <div class="input-section">
                     <label for="genText">生成文本</label>
                     <textarea id="genText" placeholder="请输入要生成语音的文本..."></textarea>
                 </div>
-                
+
                 <div class="param-section">
                     <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
                     <div class="param-grid">
@@ -101,11 +101,11 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <button class="btn-generate f5tts" id="generateBtn" onclick="generateTTS()">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
-                
+
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
@@ -115,35 +115,8 @@
         </div>
     </div>
 
+    <script src="../assets/js/common.js"></script>
     <script>
-        const API_BASE = window.location.origin;
-        
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                const dot = document.getElementById('healthDot');
-                const text = document.getElementById('healthText');
-                if (data.status === 'healthy') {
-                    dot.className = 'health-dot online';
-                    text.textContent = '在线';
-                } else {
-                    dot.className = 'health-dot offline';
-                    text.textContent = '离线';
-                }
-            } catch (error) {
-                document.getElementById('healthDot').className = 'health-dot offline';
-                document.getElementById('healthText').textContent = '离线';
-            }
-        }
-        
-        function showStatus(message, isError = false) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
-        }
-        
         async function generateTTS() {
             const refText = document.getElementById('refText').value.trim();
             const genText = document.getElementById('genText').value.trim();
@@ -152,16 +125,14 @@
             const cfgStrength = document.getElementById('cfgStrength').value;
             const speed = document.getElementById('speed').value;
             const crossLingual = document.getElementById('crossLingual').value === 'true';
-            
-            if (!refAudio) { showStatus('请上传参考音频', true); return; }
-            if (!genText) { showStatus('请输入生成文本', true); return; }
-            
+
+            if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
+            if (!genText) { VersTTS.showStatus('请输入生成文本', true); return; }
+
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
-            const originalText = btnText.innerHTML;
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+            VersTTS.setButtonLoading(btn, btnText, true);
+
             try {
                 const formData = new FormData();
                 formData.append('ref_text', refText);
@@ -171,44 +142,23 @@
                 formData.append('cfg_strength', cfgStrength);
                 formData.append('speed', speed);
                 formData.append('cross_lingual', crossLingual);
-                
-                const response = await fetch(`${API_BASE}/tts/f5tts`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '生成失败');
-                }
-                
-                const data = await response.json();
+
+                const data = await VersTTS.postForm('/tts/f5tts', formData);
+
                 if (data.success) {
-                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').download = `f5tts_${Date.now()}.wav`;
-                    document.getElementById('resultSection').style.display = 'block';
-                    showStatus('语音生成成功！');
-                } else { 
-                    throw new Error(data.message || '生成失败'); 
+                    VersTTS.showResult(data, { filename: `f5tts_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！');
+                } else {
+                    throw new Error(data.message || '生成失败');
                 }
-            } catch (error) { 
-                showStatus('生成失败: ' + error.message, true); 
-            }
-            finally { 
-                btn.disabled = false; 
-                btnText.innerHTML = originalText; 
+            } catch (error) {
+                VersTTS.showStatus('生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
             }
         }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const auth = localStorage.getItem('versTTS_auth');
-            if (auth !== '1') {
-                window.location.href = '../login.html';
-                return;
-            }
-            checkHealth();
-        });
+
+        document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>

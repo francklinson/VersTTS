@@ -51,27 +51,24 @@
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🌐</span><span>VoxCPM</span></div>
-                
+
                 <div class="info-box">
                     💡 VoxCPM 支持 <strong>30种语言</strong> 的无Tokenizer语音合成，支持音色设计、声音克隆等多种模式。
                 </div>
-                
+
                 <div id="statusMessage" class="status-message"></div>
-                
-                <!-- 模式选择 -->
+
                 <div class="mode-tabs">
                     <button class="mode-tab active" onclick="switchMode('base')">基础生成</button>
                     <button class="mode-tab" onclick="switchMode('voice_design')">音色设计</button>
                     <button class="mode-tab" onclick="switchMode('clone')">声音克隆</button>
                     <button class="mode-tab" onclick="switchMode('ultimate_clone')">极致克隆</button>
                 </div>
-                
-                <!-- 基础生成模式 -->
+
                 <div id="mode-base" class="mode-content active">
                     <p style="color: #666; font-size: 0.9rem;">使用默认音色生成语音</p>
                 </div>
-                
-                <!-- 音色设计模式 -->
+
                 <div id="mode-voice_design" class="mode-content">
                     <div class="param-section">
                         <label style="font-weight: 600; margin-bottom: 10px; display: block;">音色描述</label>
@@ -79,8 +76,7 @@
                         <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">详细描述想要的音色特征，越详细效果越好</p>
                     </div>
                 </div>
-                
-                <!-- 声音克隆模式 -->
+
                 <div id="mode-clone" class="mode-content">
                     <div class="ref-audio-section">
                         <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">参考音频</label>
@@ -88,8 +84,7 @@
                         <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">上传参考音频，5-10秒效果最佳</p>
                     </div>
                 </div>
-                
-                <!-- 极致克隆模式 -->
+
                 <div id="mode-ultimate_clone" class="mode-content">
                     <div class="ref-audio-section">
                         <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">参考音频</label>
@@ -101,12 +96,12 @@
                         <p style="font-size: 0.85rem; color: #666;">提供参考音频的准确文本，提高克隆质量</p>
                     </div>
                 </div>
-                
+
                 <div class="input-section">
                     <label for="textInput">生成文本</label>
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本，支持30种语言..."></textarea>
                 </div>
-                
+
                 <div class="param-section">
                     <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
                     <div class="param-grid">
@@ -120,11 +115,11 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <button class="btn-generate voxcpm" id="generateBtn" onclick="generateTTS()">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
-                
+
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
@@ -134,78 +129,41 @@
         </div>
     </div>
 
+    <script src="../assets/js/common.js"></script>
     <script>
-        const API_BASE = window.location.origin;
         let currentMode = 'base';
-        
-        function switchMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById(`mode-${mode}`).classList.add('active');
-        }
-        
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                const dot = document.getElementById('healthDot');
-                const text = document.getElementById('healthText');
-                if (data.status === 'healthy') {
-                    dot.className = 'health-dot online';
-                    text.textContent = '在线';
-                } else {
-                    dot.className = 'health-dot offline';
-                    text.textContent = '离线';
-                }
-            } catch (error) {
-                document.getElementById('healthDot').className = 'health-dot offline';
-                document.getElementById('healthText').textContent = '离线';
-            }
-        }
-        
-        function showStatus(message, isError = false) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
-        }
-        
+
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
             const cfgValue = document.getElementById('cfgValue').value;
             const timesteps = document.getElementById('timesteps').value;
-            
-            if (!text) { showStatus('请输入生成文本', true); return; }
-            
-            // 验证不同模式的要求
+
+            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+
             if (currentMode === 'voice_design') {
                 const prompt = document.getElementById('voiceDesignPrompt').value.trim();
-                if (!prompt) { showStatus('请输入音色描述', true); return; }
+                if (!prompt) { VersTTS.showStatus('请输入音色描述', true); return; }
             } else if (currentMode === 'clone') {
                 const refAudio = document.getElementById('refAudioClone').files[0];
-                if (!refAudio) { showStatus('请上传参考音频', true); return; }
+                if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
             } else if (currentMode === 'ultimate_clone') {
                 const refAudio = document.getElementById('refAudioUltimate').files[0];
                 const refText = document.getElementById('refTextUltimate').value.trim();
-                if (!refAudio) { showStatus('请上传参考音频', true); return; }
-                if (!refText) { showStatus('请输入参考文本', true); return; }
+                if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
+                if (!refText) { VersTTS.showStatus('请输入参考文本', true); return; }
             }
-            
+
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
-            const originalText = btnText.innerHTML;
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+            VersTTS.setButtonLoading(btn, btnText, true);
+
             try {
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('mode', currentMode);
                 formData.append('cfg_value', cfgValue);
                 formData.append('inference_timesteps', timesteps);
-                
+
                 if (currentMode === 'voice_design') {
                     formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
                 } else if (currentMode === 'clone') {
@@ -214,44 +172,23 @@
                     formData.append('ref_audio', document.getElementById('refAudioUltimate').files[0]);
                     formData.append('ref_text', document.getElementById('refTextUltimate').value.trim());
                 }
-                
-                const response = await fetch(`${API_BASE}/tts/voxcpm`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '生成失败');
-                }
-                
-                const data = await response.json();
+
+                const data = await VersTTS.postForm('/tts/voxcpm', formData);
+
                 if (data.success) {
-                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').download = `voxcpm_${Date.now()}.wav`;
-                    document.getElementById('resultSection').style.display = 'block';
-                    showStatus('语音生成成功！');
-                } else { 
-                    throw new Error(data.message || '生成失败'); 
+                    VersTTS.showResult(data, { filename: `voxcpm_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！');
+                } else {
+                    throw new Error(data.message || '生成失败');
                 }
-            } catch (error) { 
-                showStatus('生成失败: ' + error.message, true); 
-            }
-            finally { 
-                btn.disabled = false; 
-                btnText.innerHTML = originalText; 
+            } catch (error) {
+                VersTTS.showStatus('生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
             }
         }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const auth = localStorage.getItem('versTTS_auth');
-            if (auth !== '1') {
-                window.location.href = '../login.html';
-                return;
-            }
-            checkHealth();
-        });
+
+        document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>

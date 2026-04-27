@@ -45,13 +45,13 @@
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🗣️</span><span>OpenVoice</span></div>
-                
+
                 <div class="info-box">
                     💡 OpenVoice 使用 VITS 模型，<strong>仅需 10 秒参考音频</strong>即可完成声音克隆，支持中英文。适合实时应用场景。
                 </div>
-                
+
                 <div id="statusMessage" class="status-message"></div>
-                
+
                 <div class="ref-audio-section">
                     <label style="font-weight: 600; color: #006064; display: block; margin-bottom: 10px;">参考音频（10秒以上）</label>
                     <input type="file" id="refAudio" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
@@ -59,12 +59,12 @@
                         上传清晰的10秒以上人声作为参考
                     </p>
                 </div>
-                
+
                 <div class="input-section">
                     <label for="textInput">生成文本</label>
                     <textarea id="textInput" placeholder="请输入要生成语音的文本，支持中英文..."></textarea>
                 </div>
-                
+
                 <div class="param-section">
                     <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
                     <div class="param-grid">
@@ -89,11 +89,11 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <button class="btn-generate openvoice" id="generateBtn" onclick="generateTTS()">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
-                
+
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
@@ -103,94 +103,44 @@
         </div>
     </div>
 
+    <script src="../assets/js/common.js"></script>
     <script>
-        const API_BASE = window.location.origin;
-        
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                const dot = document.getElementById('healthDot');
-                const text = document.getElementById('healthText');
-                if (data.status === 'healthy') {
-                    dot.className = 'health-dot online';
-                    text.textContent = '在线';
-                } else {
-                    dot.className = 'health-dot offline';
-                    text.textContent = '离线';
-                }
-            } catch (error) {
-                document.getElementById('healthDot').className = 'health-dot offline';
-                document.getElementById('healthText').textContent = '离线';
-            }
-        }
-        
-        function showStatus(message, isError = false) {
-            const statusEl = document.getElementById('statusMessage');
-            statusEl.textContent = message;
-            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-            setTimeout(() => { statusEl.classList.remove('show'); }, 5000);
-        }
-        
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
             const refAudio = document.getElementById('refAudio').files[0];
             const style = document.getElementById('style').value;
             const speed = document.getElementById('speed').value;
-            
-            if (!text) { showStatus('请输入生成文本', true); return; }
-            if (!refAudio) { showStatus('请上传参考音频', true); return; }
-            
+
+            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+            if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
+
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
-            const originalText = btnText.innerHTML;
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+            VersTTS.setButtonLoading(btn, btnText, true);
+
             try {
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('ref_audio', refAudio);
                 formData.append('style', style);
                 formData.append('speed', speed);
-                
-                const response = await fetch(`${API_BASE}/tts/openvoice`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || '生成失败');
-                }
-                
-                const data = await response.json();
+
+                const data = await VersTTS.postForm('/tts/openvoice', formData);
+
                 if (data.success) {
-                    document.getElementById('audioPlayer').src = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').href = data.audio_url || `${API_BASE}${data.audio_url}`;
-                    document.getElementById('downloadLink').download = `openvoice_${Date.now()}.wav`;
-                    document.getElementById('resultSection').style.display = 'block';
-                    showStatus('语音生成成功！');
-                } else { 
-                    throw new Error(data.message || '生成失败'); 
+                    VersTTS.showResult(data, { filename: `openvoice_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！');
+                } else {
+                    throw new Error(data.message || '生成失败');
                 }
-            } catch (error) { 
-                showStatus('生成失败: ' + error.message, true); 
-            }
-            finally { 
-                btn.disabled = false; 
-                btnText.innerHTML = originalText; 
+            } catch (error) {
+                VersTTS.showStatus('生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
             }
         }
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const auth = localStorage.getItem('versTTS_auth');
-            if (auth !== '1') {
-                window.location.href = '../login.html';
-                return;
-            }
-            checkHealth();
-        });
+
+        document.addEventListener('DOMContentLoaded', initPage);
     </script>
 </body>
 </html>

@@ -341,7 +341,7 @@ class F5TTSRequest(BaseTTSRequest):
 class Qwen3TTSRequest(BaseTTSRequest):
     model_size: str = Field(default="1.7B", description="模型大小: 0.6B, 1.7B")
     mode: str = Field(default="base", description="模式: base, voice_clone, custom_voice, voice_design")
-    speaker: Optional[str] = Field(default=None, description="预设音色: Vivian, Serena, Uncle_Fu, Dylan, Eric, Ryan, Aiden, Ono_Anna, Sohee")
+    speaker: Optional[str] = Field(default=None, description="预设音色: vivian, serena, uncle_fu, dylan, eric, ryan, aiden, ono_anna, sohee (小写)")
     ref_audio: Optional[str] = Field(default=None, description="参考音频URL/base64")
     ref_text: Optional[str] = Field(default=None, description="参考文本")
     voice_design_prompt: Optional[str] = Field(default=None, description="音色设计描述（voice_design模式使用）")
@@ -1681,7 +1681,8 @@ async def tts_qwen3tts(
     instruct_text: Optional[str] = Form(None),
     streaming: bool = Form(False),
     x_vector_only_mode: bool = Form(False),
-    output_format: str = Form("url")
+    output_format: str = Form("url"),
+    clone_speaker_id: Optional[str] = Form(None)  # 用于从说话人管理中选择说话人
 ):
     """Qwen3-TTS语音合成
     
@@ -1701,63 +1702,96 @@ async def tts_qwen3tts(
         }
         model_type = model_type_map.get(mode, "Base")
         
+        logger.info(f"模式: {mode}, 选择模型类型: {model_type}")
+        
         tts = get_qwen3tts_model(model_size, model_type)
+        
+        # 验证模型类型是否正确
+        actual_model_type = getattr(tts.model, 'tts_model_type', 'unknown')
+        logger.info(f"实际加载的模型类型: {actual_model_type}")
 
         if mode == "voice_clone":
-            if ref_wav:
-                # 保存参考音频
-                ref_path = f"uploads/ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
-                with open(ref_path, "wb") as f:
-                    f.write(await ref_wav.read())
+            # 声音克隆模式必须使用说话人管理中的音频
+            if not clone_speaker_id:
+                raise HTTPException(status_code=400, detail="voice_clone 模式需要选择说话人")
+            
+            db = load_speakers_db()
+            speaker = None
+            for s in db.get("speakers", []):
+                if s["id"] == clone_speaker_id:
+                    speaker = s
+                    break
+            
+            if not speaker:
+                raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+            
+            audio_path = speaker.get("audio_path")
+            if not audio_path or not os.path.exists(audio_path):
+                raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {audio_path}")
+            
+            # 使用说话人保存的参考文本（如果存在）
+            ref_text_to_use = ""
+            if speaker.get("reference_text"):
+                ref_text_to_use = speaker["reference_text"]
+            
+            # 如果没有参考文本，强制使用 x_vector_only_mode=True
+            # 因为当 x_vector_only_mode=False 时，ref_text 是必需的
+            effective_x_vector_mode = x_vector_only_mode
+            if not ref_text_to_use and not x_vector_only_mode:
+                logger.info(f"说话人 {speaker['name']} 没有参考文本，自动切换到 x_vector_only_mode=True")
+                effective_x_vector_mode = True
+            
+            logger.info(f"voice_clone模式：使用说话人 {speaker['name']} 的音频, x_vector_only_mode={effective_x_vector_mode}")
+            
+            wavs, sr = tts.generate_voice_clone(
+                text=text,
+                language="Auto",
+                ref_audio=audio_path,
+                ref_text=ref_text_to_use,
+                x_vector_only_mode=effective_x_vector_mode
+            )
+            wav = wavs[0] if isinstance(wavs, list) else wavs
 
-                wavs, sr = tts.generate_voice_clone(
-                    text=text,
-                    language="Auto",
-                    ref_audio=ref_path,
-                    ref_text=ref_text or "",
-                    x_vector_only_mode=x_vector_only_mode
-                )
-                os.remove(ref_path)
-                wav = wavs[0] if isinstance(wavs, list) else wavs
-            else:
-                # 使用默认参考音频
-                default_ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone_1.wav"
-                default_ref_text = "甚至出现交易几乎停滞的情况。"
-                
-                logger.info(f"voice_clone模式：使用默认参考音频")
-                wavs, sr = tts.generate_voice_clone(
-                    text=text,
-                    language="Auto",
-                    ref_audio=default_ref_audio,
-                    ref_text=default_ref_text,
-                    x_vector_only_mode=True
-                )
-                wav = wavs[0] if isinstance(wavs, list) else wavs
-                
         elif mode == "custom_voice":
             # 预设音色模式
+            logger.info(f"custom_voice模式：接收到 speaker 参数: {speaker}")
+            
             if not speaker:
                 # 默认使用 Vivian
-                speaker = "Vivian"
+                speaker = "vivian"
+                logger.warning(f"speaker 参数为空，使用默认音色: {speaker}")
             
             logger.info(f"custom_voice模式：使用预设音色 {speaker}, 指令: {instruct_text or '无'}")
+            
+            # 检查模型支持的音色
+            supported_speakers = tts.get_supported_speakers()
+            if supported_speakers:
+                logger.info(f"CustomVoice 支持的音色: {supported_speakers}")
+                if speaker.lower() not in [s.lower() for s in supported_speakers]:
+                    logger.warning(f"音色 {speaker} 不在支持列表中，可用音色: {supported_speakers}")
             
             # 尝试使用 generate_custom_voice，如果不支持则回退
             custom_voice_success = False
             try:
                 if hasattr(tts, 'generate_custom_voice'):
+                    # CustomVoice 模型使用 "Chinese" 而不是 "Auto"
+                    #  speaker 名称保持小写，与配置文件一致
                     wavs, sr = tts.generate_custom_voice(
                         text=text,
-                        language="Auto",
+                        language="Chinese",
                         speaker=speaker,
-                        instruct=instruct_text or ""
+                        instruct=instruct_text or "",
+                        do_sample=True,
+                        temperature=0.9,
+                        top_k=50,
+                        top_p=1.0
                     )
                     wav = wavs[0] if isinstance(wavs, list) else wavs
                     custom_voice_success = True
-                    logger.info("使用 CustomVoice 模型生成成功")
-            except ValueError as e:
-                if "does not support generate_custom_voice" in str(e):
-                    logger.warning(f"CustomVoice 模型不支持该方法: {e}")
+                    logger.info(f"使用 CustomVoice 模型生成成功 | 音色: {speaker}, 语言: Chinese, 指令: {instruct_text or '无'}")
+            except (ValueError, NotImplementedError) as e:
+                if "does not support generate_custom_voice" in str(e) or "not implemented" in str(e).lower():
+                    logger.warning(f"CustomVoice 模型不支持: {e}")
                 else:
                     raise
             

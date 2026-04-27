@@ -30,9 +30,13 @@ try:
 except ImportError:
     # auto_docstring is not available in newer transformers versions
     def auto_docstring(*args, **kwargs):
+        # Handle both @auto_docstring and @auto_docstring(custom_intro=...) cases
         if args and callable(args[0]):
             return args[0]
-        return lambda x: x
+        # If used as decorator factory with kwargs, return a decorator that ignores the kwargs
+        def decorator(func):
+            return func
+        return decorator
 from transformers.utils.hub import cached_file
 
 from torch.nn.utils.rnn import pad_sequence

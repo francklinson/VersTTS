@@ -57,7 +57,12 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 更新前端页面，移除"即将推出"标记
 
 待完成:
-无
+[1]部署这几个算法(代码已经下载了),下载预训练模型,调试后端api,验证音频生成功能
+https://github.com/OpenBMB/VoxCPM/
+https://github.com/index-tts/index-tts
+https://github.com/FireRedTeam/FireRedTTS2
+
+
 
 
 后续处理(暂缓):

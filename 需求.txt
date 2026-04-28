@@ -55,13 +55,22 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 创建 /tts/indextts API端点，支持2种模式(free/controlled)
 - 创建 /tts/fireredtts API端点，支持2种模式(clone/random)
 - 更新前端页面，移除"即将推出"标记
-
-待完成:
-[1]部署这几个算法(代码已经下载),下载预训练模型,调试后端api,验证音频生成功能
+[29]部署这几个算法(代码已经下载),下载预训练模型,调试后端api,验证音频生成功能
 https://github.com/OpenBMB/VoxCPM/
 https://github.com/index-tts/index-tts
 https://github.com/FireRedTeam/FireRedTTS2
+[30]对应算法的前后端页面要与算法支持的功能保持一致.
+[31]调试openvoice,移除参考音频,使用说话人管理模块中的人声进行克隆.(已完成)
+- 后端API修改: 新增 clone_speaker_id 参数，支持从说话人管理模块获取音频进行克隆
+- 前端页面修改: 移除参考音频上传，改为选择说话人下拉框
+- 升级到 OpenVoice V2: 使用 V1 中文 TTS 模型 + V2 Converter + V2 音色嵌入
+- 修复依赖: 安装 whisper-timestamped 模块
+- 修复中文口音: 加载中文 TTS 模型而非英文模型
+- 记录局限性: 音色相似度一般、仅支持 default 风格等
 
+
+待完成:
+[1]调试F5-TTS,删除页面中的 参考音频+参考文本, 使用说话人管理模块中的人声进行克隆
 
 
 后续处理(暂缓):

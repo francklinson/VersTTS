@@ -9,13 +9,20 @@
         .openvoice-theme { --primary-color: #00bcd4; }
         .btn-generate.openvoice { background: linear-gradient(135deg, #00bcd4 0%, #0097a7 100%); }
         .btn-generate.openvoice:hover { box-shadow: 0 8px 25px rgba(0, 188, 212, 0.4); }
-        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #e0f7fa; border-radius: 8px; border-left: 4px solid #00bcd4; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #e0f7fa; border-radius: 8px; border-left: 4px solid #00bcd4; }
+        .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
+        .speaker-actions { display: flex; gap: 10px; }
+        .btn-manage-speaker { padding: 12px 20px; background: #00bcd4; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.3s; }
+        .btn-manage-speaker:hover { background: #0097a7; }
         .param-section { margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; }
         .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
         .param-item { display: flex; flex-direction: column; }
         .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
         .param-item input, .param-item select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
         .info-box { background: #e0f7fa; border-left: 4px solid #00bcd4; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #006064; }
+        .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
+        .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
     </style>
 </head>
 <body class="openvoice-theme">
@@ -40,24 +47,34 @@
         <div class="container">
             <a href="../index.html" class="nav-back">← 返回模型列表</a>
             <header>
-                <h1>🗣️ OpenVoice</h1>
-                <p>开源即时声音克隆 - 仅需10秒音频</p>
+                <h1>🗣️ OpenVoice V2</h1>
+                <p>开源即时声音克隆 V2版本 - 更好的音质，使用说话人管理模块中的人声</p>
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🗣️</span><span>OpenVoice</span></div>
 
                 <div class="info-box">
-                    💡 OpenVoice 使用 VITS 模型，<strong>仅需 10 秒参考音频</strong>即可完成声音克隆，支持中英文。适合实时应用场景。
+                    💡 OpenVoice 使用 VITS 模型，<strong>使用说话人管理模块中保存的人声</strong>进行克隆，支持中英文。适合实时应用场景。
                 </div>
 
                 <div id="statusMessage" class="status-message"></div>
 
-                <div class="ref-audio-section">
-                    <label style="font-weight: 600; color: #006064; display: block; margin-bottom: 10px;">参考音频（10秒以上）</label>
-                    <input type="file" id="refAudio" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
-                        上传清晰的10秒以上人声作为参考
-                    </p>
+                <!-- 说话人选择区域 -->
+                <div class="speaker-section">
+                    <label style="font-weight: 600; color: #006064; display: block; margin-bottom: 10px;">
+                        🎙️ 选择说话人
+                    </label>
+                    <div class="speaker-select-wrapper">
+                        <select id="speakerSelect" class="speaker-select" onchange="onSpeakerChange()">
+                            <option value="">-- 请选择说话人 --</option>
+                        </select>
+                    </div>
+                    <div id="speakerInfo" class="speaker-info-display" style="display: none;">
+                        <!-- 动态显示说话人信息 -->
+                    </div>
+                    <div id="noSpeakerWarning" class="no-speaker-warning" style="display: none;">
+                        ⚠️ 暂无可用说话人，请先添加说话人
+                    </div>
                 </div>
 
                 <div class="input-section">
@@ -72,16 +89,8 @@
                             <label for="style">音色风格</label>
                             <select id="style">
                                 <option value="default">默认风格</option>
-                                <option value="cheerful">欢快</option>
-                                <option value="excited">兴奋</option>
-                                <option value="friendly">友好</option>
-                                <option value="hopeful">充满希望</option>
-                                <option value="sad">悲伤</option>
-                                <option value="shouting">喊叫</option>
-                                <option value="terrified">惊恐</option>
-                                <option value="unfriendly">不友好</option>
-                                <option value="whispering">耳语</option>
                             </select>
+                            <small style="color: #666; margin-top: 4px;">当前模型仅支持默认风格</small>
                         </div>
                         <div class="param-item">
                             <label for="speed">语速 (Speed)</label>
@@ -104,15 +113,91 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../speaker.js"></script>
     <script>
+        let selectedSpeakerId = null;
+        let savedSpeakers = [];
+
+        // 加载说话人列表
+        async function loadSpeakers() {
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/speakers`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        savedSpeakers = data.speakers || [];
+                        renderSpeakerSelect();
+                    }
+                }
+            } catch (error) {
+                console.error('加载说话人列表失败:', error);
+            }
+        }
+
+        // 渲染说话人选择下拉框
+        function renderSpeakerSelect() {
+            const select = document.getElementById('speakerSelect');
+            const noSpeakerWarning = document.getElementById('noSpeakerWarning');
+            
+            // 保留第一个选项
+            select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
+            
+            if (savedSpeakers.length === 0) {
+                noSpeakerWarning.style.display = 'block';
+                return;
+            }
+            
+            noSpeakerWarning.style.display = 'none';
+            
+            savedSpeakers.forEach(speaker => {
+                const option = document.createElement('option');
+                option.value = speaker.id;
+                option.textContent = speaker.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 说话人选择变化处理
+        function onSpeakerChange() {
+            const select = document.getElementById('speakerSelect');
+            const speakerInfo = document.getElementById('speakerInfo');
+            selectedSpeakerId = select.value;
+            
+            if (selectedSpeakerId) {
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId);
+                if (speaker) {
+                    speakerInfo.innerHTML = `
+                        <strong>已选择:</strong> ${speaker.name}<br>
+                        <small>创建于: ${formatDate(speaker.created_at)}</small>
+                        ${speaker.has_reference_text ? '<br><small>✓ 有参考文本</small>' : ''}
+                    `;
+                    speakerInfo.style.display = 'block';
+                }
+            } else {
+                speakerInfo.style.display = 'none';
+            }
+        }
+
+        // 格式化日期
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN');
+        }
+
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
-            const refAudio = document.getElementById('refAudio').files[0];
             const style = document.getElementById('style').value;
             const speed = document.getElementById('speed').value;
 
-            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
-            if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
+            if (!text) { 
+                VersTTS.showStatus('请输入生成文本', true); 
+                return; 
+            }
+            if (!selectedSpeakerId) { 
+                VersTTS.showStatus('请选择说话人', true); 
+                return; 
+            }
 
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
@@ -121,7 +206,7 @@
             try {
                 const formData = new FormData();
                 formData.append('text', text);
-                formData.append('ref_audio', refAudio);
+                formData.append('clone_speaker_id', selectedSpeakerId);
                 formData.append('style', style);
                 formData.append('speed', speed);
 
@@ -140,7 +225,10 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', initPage);
+        document.addEventListener('DOMContentLoaded', () => {
+            initPage();
+            loadSpeakers();
+        });
     </script>
 </body>
 </html>

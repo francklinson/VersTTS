@@ -40,19 +40,23 @@ peft>=0.8.0
 funasr>=1.0.0
 onnxruntime-gpu>=1.17.0
 
-# ========== ChatTTS相关 ==========
-chattts>=0.0.0
-vocos>=0.1.0
-encodec>=0.1.1
-vector-quantize-pytorch>=1.14.0
+# ChatTTS (内置在项目目录)
+# 见 algorithms/ChatTTS/requirements.txt
 
-# ========== CosyVoice相关 ==========
-hyperpyyaml>=1.2.0
-matcha-tts>=0.0.0
+# CosyVoice (内置在项目目录)
+# 见 algorithms/CosyVoice/requirements.txt
 
-# ========== F5-TTS相关 ==========
-f5-tts>=1.0.0
-ema-pytorch>=0.5.0
+# F5-TTS (内置在项目目录)
+# 见 algorithms/F5-TTS/requirements.txt
+
+# FireRedTTS2 (内置在项目目录)
+# 见 algorithms/FireRedTTS2/requirements.txt
+
+# IndexTTS (内置在项目目录)
+# 见 algorithms/IndexTTS/requirements.txt
+
+# VoxCPM (内置在项目目录)
+# 见 algorithms/VoxCPM/requirements.txt
 
 # ========== OpenVoice相关 ==========
 pyworld>=0.3.0

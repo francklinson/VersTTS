@@ -3,11 +3,11 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/CUDA-支持-green.svg" alt="CUDA Support">
-  <img src="https://img.shields.io/badge/支持-6种TTS算法-orange.svg" alt="6 TTS Algorithms">
+  <img src="https://img.shields.io/badge/支持-8种TTS算法-orange.svg" alt="8 TTS Algorithms">
   <img src="https://img.shields.io/badge/许可-Apache%202.0-yellow.svg" alt="License">
 </p>
 
-VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 6 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
+VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 8 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
 
 ---
 
@@ -31,13 +31,14 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ### 核心功能
 
-- **多算法集成**: 一键切换 6 种主流 TTS 算法
+- **多算法集成**: 一键切换 9 种主流 TTS 算法
 - **音色克隆**: 支持使用参考音频进行声音克隆
 - **预设音色**: 提供多种优质预设人声
 - **语音设计**: 通过自然语言描述生成特定音色
 - **批量处理**: 支持批量文本上传和音频下载
 - **Web界面**: 美观的现代化 Web 交互界面
 - **统一API**: RESTful API 设计，易于集成
+- **说话人管理**: 统一管理参考人声，多算法共享音色库
 
 ### 技术特点
 
@@ -59,14 +60,18 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 | **ChatTTS** | 对话优化 | ✅ | ❌ | 有限 | ❌ | 优秀 |
 | **F5-TTS** | 克隆专用 | ✅ | ❌ | 有限 | ❌ | 良好 |
 | **OpenVoice** | 克隆专用 | ✅ | ❌ | ❌ | ❌ | 良好 |
+| **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 |
+| **IndexTTS** | 全功能 | ✅ | ❌ | 有限 | ❌ | 优秀 |
+| **FireRedTTS2** | 对话优化 | ✅ | ❌ | ❌ | ❌ | 优秀 |
 
 ### 算法选择建议
 
 - **需要流式低延迟**: 选择 Qwen3-TTS、CosyVoice
-- **需要音色设计**: 选择 Qwen3-TTS (VoiceDesign)
-- **最佳克隆效果**: 选择 GPT-SoVITS
-- **对话场景**: 选择 ChatTTS
+- **需要音色设计**: 选择 Qwen3-TTS (VoiceDesign)、VoxCPM
+- **最佳克隆效果**: 选择 GPT-SoVITS、VoxCPM
+- **对话场景**: 选择 ChatTTS、FireRedTTS2
 - **轻量部署**: 选择 F5-TTS、OpenVoice
+- **极致克隆**: 选择 VoxCPM (Ultimate Clone)
 
 ---
 
@@ -74,13 +79,16 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ```
 VersTTS/
-├── algorithms/              # 六种TTS算法目录
+├── algorithms/              # 八种TTS算法目录
 │   ├── ChatTTS/            # ChatTTS 项目
 │   ├── CosyVoice/          # CosyVoice 项目
 │   ├── F5-TTS/             # F5-TTS 项目
+│   ├── FireRedTTS2/        # FireRedTTS2 项目
 │   ├── GPT-SoVITS/         # GPT-SoVITS 项目
+│   ├── IndexTTS/           # IndexTTS 项目
 │   ├── OpenVoice/          # OpenVoice 项目
-│   └── Qwen3-TTS/          # Qwen3-TTS 项目
+│   ├── Qwen3-TTS/          # Qwen3-TTS 项目
+│   └── VoxCPM/             # VoxCPM 项目
 │
 ├── backend/                 # 后端服务
 │   ├── api_server.py       # 统一API服务主文件
@@ -97,9 +105,12 @@ VersTTS/
 │   ├── test_chattts.py
 │   ├── test_cosyvoice.py
 │   ├── test_f5_tts.py
+│   ├── test_fireredtts2.py
 │   ├── test_gpt_sovits.py
+│   ├── test_indextts.py
 │   ├── test_openvoice.py
-│   └── test_qwen3_tts.py
+│   ├── test_qwen3_tts.py
+│   └── test_voxcpm.py
 │
 ├── logs/                    # 日志文件目录
 ├── records/                 # 工作记录文档
@@ -203,12 +214,15 @@ pip install -r requirements.txt
 
 | 算法 | 模型下载文档 |
 |------|-------------|
-| ChatTTS | [algorithms/ChatTTS/README.md](algorithms/ChatTTS/README.md) |
-| CosyVoice | [algorithms/CosyVoice/README.md](algorithms/CosyVoice/README.md) |
-| F5-TTS | [algorithms/F5-TTS/README.md](algorithms/F5-TTS/README.md) |
-| GPT-SoVITS | [algorithms/GPT-SoVITS/README.md](algorithms/GPT-SoVITS/README.md) |
-| OpenVoice | [algorithms/OpenVoice/README.md](algorithms/OpenVoice/README.md) |
-| Qwen3-TTS | [algorithms/Qwen3-TTS/README.md](algorithms/Qwen3-TTS/README.md) |
+| ChatTTS | [algorithms/ChatTTS/readme.md](algorithms/ChatTTS/readme.md) |
+| CosyVoice | [algorithms/CosyVoice/readme.md](algorithms/CosyVoice/readme.md) |
+| F5-TTS | [algorithms/F5-TTS/readme.md](algorithms/F5-TTS/readme.md) |
+| FireRedTTS2 | [algorithms/FireRedTTS2/readme.md](algorithms/FireRedTTS2/readme.md) |
+| GPT-SoVITS | [algorithms/GPT-SoVITS/readme.md](algorithms/GPT-SoVITS/readme.md) |
+| IndexTTS | [algorithms/IndexTTS/readme.md](algorithms/IndexTTS/readme.md) |
+| OpenVoice | [algorithms/OpenVoice/readme.md](algorithms/OpenVoice/readme.md) |
+| Qwen3-TTS | [algorithms/Qwen3-TTS/readme.md](algorithms/Qwen3-TTS/readme.md) |
+| VoxCPM | [algorithms/VoxCPM/readme.md](algorithms/VoxCPM/readme.md) |
 
 #### 步骤4: 验证安装
 
@@ -335,6 +349,9 @@ response = requests.post(url, files=files, data=data)
 | **F5-TTS** | [algorithms/F5-TTS/readme.md](algorithms/F5-TTS/readme.md) | 流匹配+DiT，高效快速 |
 | **OpenVoice** | [algorithms/OpenVoice/readme.md](algorithms/OpenVoice/readme.md) | VAE+VITS，音色风格解耦 |
 | **GPT-SoVITS** | [algorithms/GPT-SoVITS/readme.md](algorithms/GPT-SoVITS/readme.md) | VQ+GPT+VITS，最佳克隆效果 |
+| **VoxCPM** | [algorithms/VoxCPM/readme.md](algorithms/VoxCPM/readme.md) | 无Tokenizer扩散自回归，30语言支持 |
+| **IndexTTS** | [algorithms/IndexTTS/readme.md](algorithms/IndexTTS/readme.md) | 自回归GPT架构，哔哩哔哩开源 |
+| **FireRedTTS2** | [algorithms/FireRedTTS2/readme.md](algorithms/FireRedTTS2/readme.md) | 双Transformer，长对话优化 |
 
 ### 算法对比总结
 
@@ -348,6 +365,9 @@ response = requests.post(url, files=files, data=data)
 │ ChatTTS     │ 扩散+GPT   │    ★★    │   ★★    │   中     │
 │ F5-TTS      │ 流匹配     │    ★★★   │   ★★★   │   低     │
 │ OpenVoice   │ VAE+TTS    │    ★★    │   ★★★   │   低     │
+│ VoxCPM      │ 扩散自回归 │    ★★★★  │   ★★    │   高     │
+│ IndexTTS    │ GPT自回归  │    ★★★   │   ★★    │   中     │
+│ FireRedTTS2 │ 双Transformer│  ★★★   │   ★★    │   高     │
 └─────────────┴────────────┴──────────┴──────────┴──────────┘
 ```
 
@@ -380,6 +400,18 @@ response = requests.post(url, files=files, data=data)
 | | 语速控制 | ✅ 已实现 | |
 | | 文本切分方法 | ⚠️ 待添加 | |
 | | 批处理大小 | ⚠️ 待添加 | |
+| **VoxCPM** | 基础生成(Base) | ✅ 已实现 | 100% |
+| | 声音设计(VoiceDesign) | ✅ 已实现 | |
+| | 声音克隆(Clone) | ✅ 已实现 | |
+| | 极致克隆(UltimateClone) | ✅ 已实现 | |
+| | 说话人管理集成 | ✅ 已实现 | |
+| **IndexTTS** | 自由生成(Free) | ✅ 已实现 | 100% |
+| | 可控生成(Controlled) | ✅ 已实现 | |
+| | 说话人管理集成 | ✅ 已实现 | |
+| **FireRedTTS2** | 声音克隆(Clone) | ✅ 已实现 | 100% |
+| | 随机音色(Random) | ✅ 已实现 | |
+| | 参数调节(Temperature/TopK) | ✅ 已实现 | |
+| | 说话人管理集成 | ✅ 已实现 | |
 
 ### 通用功能
 
@@ -409,43 +441,6 @@ response = requests.post(url, files=files, data=data)
 ls -la records/
 ```
 
----
-
-## ❓ 常见问题
-
-### Q1: 启动时提示 CUDA out of memory
-
-**A**: 尝试以下方法：
-1. 使用较小的模型（如 0.6B 版本）
-2. 减少 batch size
-3. 使用 `device_map="auto"` 让模型自动分配显存
-4. 关闭其他占用显存的程序
-
-### Q2: 模型文件应该放在哪里？
-
-**A**: 模型文件统一放在 `models/` 目录下，按算法分子目录存放，不要放在 `.cache` 目录。
-
-### Q3: 如何使用 CPU 运行？
-
-**A**: 修改代码中的 `device_map` 参数为 `"cpu"`，但生成速度会较慢。
-
-### Q4: 前端无法登录？
-
-**A**: 检查：
-1. 默认账号密码是否正确
-2. 浏览器 localStorage 是否正常
-3. 尝试清除浏览器缓存
-
-### Q5: 音色克隆效果不佳？
-
-**A**: 建议：
-1. 使用 3-10 秒的高质量参考音频
-2. 参考音频应只包含单人声音
-3. 避免背景噪音
-4. 部分算法（如 ChatTTS）的克隆效果本身较弱
-
----
-
 ## 🔧 系统架构
 
 ```
@@ -463,17 +458,17 @@ ls -la records/
 │  │   /tts  /tts/clone  /algorithms  /speakers/...     │   │
 │  └────────────────────┬────────────────────────────────┘   │
 │                       │ 算法调度层                          │
-│  ┌─────────┬─────────┬─────────┬─────────┬─────────┐      │
-│  │ChatTTS  │CosyVoice│ F5-TTS  │GPT-SoVITS│OpenVoice│      │
-│  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │      │
-│  └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┘      │
-│       │         │         │         │         │            │
-└───────┼─────────┼─────────┼─────────┼─────────┼────────────┘
-        │         │         │         │         │
-   ┌────┴────┐ ┌─┴────┐ ┌──┴───┐ ┌───┴───┐ ┌───┴────┐
-   │ ChatTTS │ │CosyVo│ │F5-TTS│ │GPT-SoV│ │OpenVoic│
-   │  模型   │ │模型  │ │ 模型 │ │模型   │ │模型    │
-   └─────────┘ └──────┘ └──────┘ └───────┘ └────────┘
+│  ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐      │
+│  │ChatTTS  │CosyVoice│ F5-TTS  │GPT-SoVITS│OpenVoice│ VoxCPM │FireRed │      │
+│  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │TTS2适配│      │
+│  └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┴────┬────┴────┬───┘      │
+│       │         │         │         │         │         │         │            │
+└───────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼────────────┘
+        │         │         │         │         │         │         │
+   ┌────┴────┐ ┌─┴────┐ ┌──┴───┐ ┌───┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴────┐
+   │ ChatTTS │ │CosyVo│ │F5-TTS│ │GPT-SoV│ │OpenVoic│ │VoxCPM│ │FireRed │
+   │  模型   │ │模型  │ │ 模型 │ │模型   │ │模型    │ │模型  │ │TTS2模型│
+   └─────────┘ └──────┘ └──────┘ └───────┘ └────────┘ └──────┘ └────────┘
 ```
 
 ---
@@ -486,9 +481,12 @@ ls -la records/
 - ChatTTS: AGPL-3.0
 - CosyVoice: Apache 2.0
 - F5-TTS: MIT
+- FireRedTTS2: Apache 2.0
 - GPT-SoVITS: MIT
+- IndexTTS: 自定义开源许可
 - OpenVoice: MIT
 - Qwen3-TTS: Apache 2.0
+- VoxCPM: Apache 2.0
 
 ---
 

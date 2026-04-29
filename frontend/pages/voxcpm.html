@@ -14,7 +14,9 @@
         .mode-tab.active { color: #8bc34a; border-bottom-color: #8bc34a; font-weight: 600; }
         .mode-content { display: none; }
         .mode-content.active { display: block; }
-        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #f1f8e9; border-radius: 8px; border-left: 4px solid #8bc34a; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #f1f8e9; border-radius: 8px; border-left: 4px solid #8bc34a; }
+        .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
         .param-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
         .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
         .param-item { display: flex; flex-direction: column; }
@@ -22,6 +24,9 @@
         .param-item input, .param-item select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
         .info-box { background: #f1f8e9; border-left: 4px solid #8bc34a; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #33691e; }
         .lang-badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin: 2px; }
+        .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
+        .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+        .voice-design-section { margin-bottom: 20px; padding: 15px; background: #f1f8e9; border-radius: 8px; border-left: 4px solid #8bc34a; }
     </style>
 </head>
 <body class="voxcpm-theme">
@@ -59,10 +64,10 @@
                 <div id="statusMessage" class="status-message"></div>
 
                 <div class="mode-tabs">
-                    <button class="mode-tab active" onclick="switchMode('base')">基础生成</button>
-                    <button class="mode-tab" onclick="switchMode('voice_design')">音色设计</button>
-                    <button class="mode-tab" onclick="switchMode('clone')">声音克隆</button>
-                    <button class="mode-tab" onclick="switchMode('ultimate_clone')">极致克隆</button>
+                    <button class="mode-tab active" onclick="switchVoxCPMMode('base')">基础生成</button>
+                    <button class="mode-tab" onclick="switchVoxCPMMode('voice_design')">音色设计</button>
+                    <button class="mode-tab" onclick="switchVoxCPMMode('clone')">声音克隆</button>
+                    <button class="mode-tab" onclick="switchVoxCPMMode('ultimate_clone')">极致克隆</button>
                 </div>
 
                 <div id="mode-base" class="mode-content active">
@@ -70,30 +75,54 @@
                 </div>
 
                 <div id="mode-voice_design" class="mode-content">
-                    <div class="param-section">
-                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">音色描述</label>
+                    <div class="voice-design-section">
+                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">音色描述</label>
                         <textarea id="voiceDesignPrompt" placeholder="用自然语言描述你想要的音色特征，例如：年轻女性，声音甜美，说话温柔..."></textarea>
                         <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">详细描述想要的音色特征，越详细效果越好</p>
                     </div>
                 </div>
 
                 <div id="mode-clone" class="mode-content">
-                    <div class="ref-audio-section">
-                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">参考音频</label>
-                        <input type="file" id="refAudioClone" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">上传参考音频，5-10秒效果最佳</p>
+                    <div class="speaker-section">
+                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">
+                            🎙️ 选择说话人
+                        </label>
+                        <div class="speaker-select-wrapper">
+                            <select id="speakerSelectClone" class="speaker-select" onchange="onSpeakerChange('clone')">
+                                <option value="">-- 请选择说话人 --</option>
+                            </select>
+                        </div>
+                        <div id="speakerInfoClone" class="speaker-info-display" style="display: none;">
+                            <!-- 动态显示说话人信息 -->
+                        </div>
+                        <div id="noSpeakerWarningClone" class="no-speaker-warning" style="display: none;">
+                            ⚠️ 暂无可用说话人，请先添加说话人
+                        </div>
                     </div>
                 </div>
 
                 <div id="mode-ultimate_clone" class="mode-content">
-                    <div class="ref-audio-section">
-                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">参考音频</label>
-                        <input type="file" id="refAudioUltimate" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-                    </div>
-                    <div class="input-section">
-                        <label for="refTextUltimate">参考文本</label>
-                        <textarea id="refTextUltimate" placeholder="输入参考音频对应的文本内容..."></textarea>
-                        <p style="font-size: 0.85rem; color: #666;">提供参考音频的准确文本，提高克隆质量</p>
+                    <div class="speaker-section">
+                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">
+                            🎙️ 选择说话人
+                        </label>
+                        <div class="speaker-select-wrapper">
+                            <select id="speakerSelectUltimate" class="speaker-select" onchange="onSpeakerChange('ultimate')">
+                                <option value="">-- 请选择说话人 --</option>
+                            </select>
+                        </div>
+                        <div id="speakerInfoUltimate" class="speaker-info-display" style="display: none;">
+                            <!-- 动态显示说话人信息 -->
+                        </div>
+                        <div id="noSpeakerWarningUltimate" class="no-speaker-warning" style="display: none;">
+                            ⚠️ 暂无可用说话人，请先添加说话人
+                        </div>
+                        <div id="refTextSection" style="margin-top: 15px; display: none;">
+                            <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 8px;">参考文本</label>
+                            <div id="refTextDisplay" style="padding: 10px; background: white; border-radius: 6px; font-size: 0.9rem; color: #666; font-style: italic; border: 1px solid #ddd;">
+                                <!-- 显示参考文本 -->
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -132,6 +161,114 @@
     <script src="../assets/js/common.js"></script>
     <script>
         let currentMode = 'base';
+        let savedSpeakers = [];
+        let selectedSpeakerId = { clone: null, ultimate: null };
+
+        // 加载说话人列表
+        async function loadSpeakers() {
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/speakers`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        savedSpeakers = data.speakers || [];
+                        renderSpeakerSelects();
+                    }
+                }
+            } catch (error) {
+                console.error('加载说话人列表失败:', error);
+            }
+        }
+
+        // 渲染说话人选择下拉框
+        function renderSpeakerSelects() {
+            renderSpeakerSelect('speakerSelectClone', 'noSpeakerWarningClone');
+            renderSpeakerSelect('speakerSelectUltimate', 'noSpeakerWarningUltimate');
+        }
+
+        function renderSpeakerSelect(selectId, warningId) {
+            const select = document.getElementById(selectId);
+            const warning = document.getElementById(warningId);
+
+            // 保留第一个选项
+            select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
+
+            if (savedSpeakers.length === 0) {
+                warning.style.display = 'block';
+                return;
+            }
+
+            warning.style.display = 'none';
+
+            savedSpeakers.forEach(speaker => {
+                const option = document.createElement('option');
+                option.value = speaker.id;
+                option.textContent = speaker.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 说话人选择变化处理
+        function onSpeakerChange(mode) {
+            const selectId = mode === 'clone' ? 'speakerSelectClone' : 'speakerSelectUltimate';
+            const infoId = mode === 'clone' ? 'speakerInfoClone' : 'speakerInfoUltimate';
+            const select = document.getElementById(selectId);
+            const speakerInfo = document.getElementById(infoId);
+
+            selectedSpeakerId[mode] = select.value;
+
+            if (selectedSpeakerId[mode]) {
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId[mode]);
+                if (speaker) {
+                    let infoHtml = `<strong>已选择:</strong> ${speaker.name}<br>`;
+                    infoHtml += `<small>创建于: ${formatDate(speaker.created_at)}</small>`;
+
+                    if (speaker.reference_text) {
+                        const refTextPreview = speaker.reference_text.substring(0, 50) + (speaker.reference_text.length > 50 ? '...' : '');
+                        infoHtml += `<br><small>参考文本: ${refTextPreview}</small>`;
+                    }
+
+                    speakerInfo.innerHTML = infoHtml;
+                    speakerInfo.style.display = 'block';
+
+                    // 如果是ultimate模式，显示参考文本
+                    if (mode === 'ultimate' && speaker.reference_text) {
+                        document.getElementById('refTextSection').style.display = 'block';
+                        document.getElementById('refTextDisplay').textContent = speaker.reference_text;
+                    } else if (mode === 'ultimate') {
+                        document.getElementById('refTextSection').style.display = 'none';
+                    }
+                }
+            } else {
+                speakerInfo.style.display = 'none';
+                if (mode === 'ultimate') {
+                    document.getElementById('refTextSection').style.display = 'none';
+                }
+            }
+        }
+
+        // 格式化日期
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN');
+        }
+
+        function switchVoxCPMMode(mode) {
+            currentMode = mode;
+
+            // 更新选项卡
+            document.querySelectorAll('.mode-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新内容
+            document.querySelectorAll('.mode-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`mode-${mode}`).classList.add('active');
+        }
 
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
@@ -144,13 +281,14 @@
                 const prompt = document.getElementById('voiceDesignPrompt').value.trim();
                 if (!prompt) { VersTTS.showStatus('请输入音色描述', true); return; }
             } else if (currentMode === 'clone') {
-                const refAudio = document.getElementById('refAudioClone').files[0];
-                if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
+                if (!selectedSpeakerId.clone) { VersTTS.showStatus('请选择说话人', true); return; }
             } else if (currentMode === 'ultimate_clone') {
-                const refAudio = document.getElementById('refAudioUltimate').files[0];
-                const refText = document.getElementById('refTextUltimate').value.trim();
-                if (!refAudio) { VersTTS.showStatus('请上传参考音频', true); return; }
-                if (!refText) { VersTTS.showStatus('请输入参考文本', true); return; }
+                if (!selectedSpeakerId.ultimate) { VersTTS.showStatus('请选择说话人', true); return; }
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId.ultimate);
+                if (!speaker || !speaker.reference_text) {
+                    VersTTS.showStatus('选中的说话人没有参考文本，无法使用极致克隆模式', true);
+                    return;
+                }
             }
 
             const btn = document.getElementById('generateBtn');
@@ -164,13 +302,24 @@
                 formData.append('cfg_value', cfgValue);
                 formData.append('inference_timesteps', timesteps);
 
+                // 调试信息
+                console.log('【VoxCPM调试】当前模式:', currentMode);
+                console.log('【VoxCPM调试】selectedSpeakerId:', selectedSpeakerId);
+
                 if (currentMode === 'voice_design') {
                     formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
                 } else if (currentMode === 'clone') {
-                    formData.append('ref_audio', document.getElementById('refAudioClone').files[0]);
+                    console.log('【VoxCPM调试】clone模式 - speaker_id:', selectedSpeakerId.clone);
+                    formData.append('clone_speaker_id', selectedSpeakerId.clone);
                 } else if (currentMode === 'ultimate_clone') {
-                    formData.append('ref_audio', document.getElementById('refAudioUltimate').files[0]);
-                    formData.append('ref_text', document.getElementById('refTextUltimate').value.trim());
+                    console.log('【VoxCPM调试】ultimate_clone模式 - speaker_id:', selectedSpeakerId.ultimate);
+                    formData.append('clone_speaker_id', selectedSpeakerId.ultimate);
+                }
+
+                // 打印FormData内容用于调试
+                console.log('【VoxCPM调试】发送的FormData:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`  ${key}:`, value);
                 }
 
                 const data = await VersTTS.postForm('/tts/voxcpm', formData);
@@ -188,7 +337,10 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', initPage);
+        document.addEventListener('DOMContentLoaded', () => {
+            initPage();
+            loadSpeakers();
+        });
     </script>
 </body>
 </html>

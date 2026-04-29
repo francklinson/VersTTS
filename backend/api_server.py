@@ -413,6 +413,7 @@ class IndexTTSRequest(BaseTTSRequest):
     emotion_text: Optional[str] = Field(default=None, description="情感描述文本")
     duration_tokens: Optional[int] = Field(default=None, description="时长控制token数")
     mode: str = Field(default="free", description="模式: free(自由), controlled(可控)")
+    clone_speaker_id: Optional[str] = Field(default=None, description="说话人ID，用于从说话人管理模块获取参考音频")
 
 
 class FireRedTTS2Request(BaseTTSRequest):
@@ -2580,22 +2581,56 @@ async def tts_indextts(
         prompt_wav: Optional[UploadFile] = File(None),
         emotion_text: Optional[str] = Form(None),
         duration_tokens: Optional[int] = Form(None),
+        clone_speaker_id: Optional[str] = Form(None),  # 用于从说话人管理中选择说话人
         output_format: str = Form("url")
 ):
-    """IndexTTS2语音合成 - 按照原始GitHub代码方式调用
+    """IndexTTS2语音合成 - 支持说话人管理模块
+    
+    参数:
+    - clone_speaker_id: 说话人管理中的说话人ID，优先使用
+    - prompt_wav: 直接上传参考音频（当clone_speaker_id为空时使用）
+    - emotion_text: 情感描述文本（可选）
+    - duration_tokens: 时长控制token数（可选，当前版本暂不支持）
     
     使用方法与官方一致:
     tts.infer(spk_audio_prompt='voice.wav', text=text, output_path="gen.wav")
     """
     try:
         logger.info(f"IndexTTS2请求 | 模式: {mode} | 文本: {text[:50]}...")
+        logger.info(f"IndexTTS2参数 | clone_speaker_id: {clone_speaker_id}, prompt_wav: {prompt_wav}, emotion_text: {emotion_text}")
 
-        # 保存参考音频（如果需要）
         ref_path = None
-        if prompt_wav:
+        is_temp = False
+
+        # 方式1: 优先使用clone_speaker_id从说话人管理模块获取音频
+        if clone_speaker_id:
+            logger.info(f"IndexTTS2 | 检测到clone_speaker_id: {clone_speaker_id}")
+            db = load_speakers_db()
+            speaker = None
+            for s in db.get("speakers", []):
+                if s["id"] == clone_speaker_id:
+                    speaker = s
+                    break
+
+            if not speaker:
+                raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+
+            ref_path = speaker.get("audio_path")
+            if not ref_path or not os.path.exists(ref_path):
+                raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {ref_path}")
+
+            logger.info(f"使用说话人 {speaker['name']} 的音频: {ref_path}")
+
+        # 方式2: 兼容旧版本，使用上传的参考音频
+        elif prompt_wav:
             ref_path = f"uploads/indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
             with open(ref_path, "wb") as f:
                 f.write(await prompt_wav.read())
+            is_temp = True
+            logger.info(f"使用上传的参考音频: {ref_path}")
+
+        else:
+            raise HTTPException(status_code=400, detail="需要提供clone_speaker_id（说话人ID）或prompt_wav（参考音频）")
 
         # 加载模型
         model = get_indextts_model()
@@ -2604,31 +2639,36 @@ async def tts_indextts(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         audio_path = f"outputs/indextts_{timestamp}.wav"
 
-        if ref_path:
-            # 使用参考音频进行声音克隆
-            model.infer(
-                spk_audio_prompt=ref_path,
-                text=text,
-                output_path=audio_path,
-                verbose=True
-            )
-        else:
-            # 没有参考音频时使用默认方式（可能需要创建一个默认参考音频）
-            # 按照GitHub示例，必须要有spk_audio_prompt
-            raise HTTPException(status_code=400, detail="IndexTTS2需要提供参考音频(spk_audio_prompt)")
+        # 准备infer参数
+        infer_kwargs = {
+            "spk_audio_prompt": ref_path,
+            "text": text,
+            "output_path": audio_path,
+            "verbose": True
+        }
+
+        # 添加情感描述参数（如果提供）
+        if emotion_text and emotion_text.strip():
+            infer_kwargs["use_emo_text"] = True
+            infer_kwargs["emo_text"] = emotion_text.strip()
+            infer_kwargs["emo_alpha"] = 0.6  # 使用推荐的emo_alpha值
+            logger.info(f"使用情感描述: {emotion_text}")
+
+        # 调用模型推理
+        model.infer(**infer_kwargs)
 
         # 清理临时文件
-        if ref_path and os.path.exists(ref_path):
+        if is_temp and ref_path and os.path.exists(ref_path):
             os.remove(ref_path)
 
         logger.info(f"IndexTTS2生成完成: {audio_path}")
 
         if output_format == "base64":
             audio_b64 = audio_to_base64(audio_path)
-            return TTSResponse(success=True, message="合成成功", audio_base64=audio_b64, sample_rate=24000)
+            return TTSResponse(success=True, message="合成成功", audio_base64=audio_b64, sample_rate=22050)
         else:
             return TTSResponse(success=True, message="合成成功", audio_url=f"/audio/{os.path.basename(audio_path)}",
-                               sample_rate=24000)
+                               sample_rate=22050)
 
     except Exception as e:
         logger.error(f"IndexTTS2合成错误: {e}")

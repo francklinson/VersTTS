@@ -9,7 +9,7 @@
 目标是生成中文语音
 服务日志文件在 logs 下
 音频输出存放在 outputs 目录下
-使用sh脚本开关服务
+使用/home/zhouchenghao/PycharmProjects/VersTTS/start_server.sh脚本开关服务
 
 
 已完成:
@@ -97,10 +97,39 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 提交核心代码(610个文件,约20万行)
 - Git仓库总代码行数: 478,851行
 
+[36]分析VoxCPM TTS方案并适配说话人管理模块.(已完成)
+- 分析VoxCPM实现原理: 无tokenizer的扩散自回归架构,基于MiniCPM-4的2B参数模型
+- 整理三种参考音频模式: Reference-only/Continuation/Combined mode
+- 可用版本: VoxCPM2(推荐)/VoxCPM1.5/VoxCPM-0.5B,模型大小约8GB
+- 支持功能: 30语言TTS/声音克隆/音色设计/极致克隆
+- 声音克隆和极致克隆去掉参考音频上传入口,改为说话人选择下拉框
+- 后端API支持clone_speaker_id参数,根据说话人ID自动获取音频路径和参考文本
+- 修复clone模式使用正确参数(reference_wav_path Reference-only mode)
+- 极致克隆使用Combined mode: reference_wav_path + prompt_wav_path + prompt_text
+- 添加详细调试日志便于排查问题
+- 更新项目文档: 在readme.md中添加VersTTS集成说明章节
+- 工作记录: records/2026-04-29_20-30-00_VoxCPM_说话人模块改造完成.md
+
+[37]分析IndexTTS TTS方案并适配说话人管理模块.(已完成)
+- 分析IndexTTS实现原理: 自回归零样本TTS模型，基于GPT风格Transformer
+- 版本: IndexTTS2 (哔哩哔哩官方最新版本)
+- 模型大小: 约6.2GB (gpt.pth 3.4GB + s2mel.pth 1.2GB + qwen模型1.2GB)
+- 支持功能: 自由生成/可控生成(情感控制)，两种模式均支持说话人选择
+- 移除参考音频上传入口，改为说话人选择下拉框
+- 后端API支持clone_speaker_id参数，根据说话人ID自动获取音频路径
+- 修复transformers版本兼容性问题 (forced_decoder_ids属性访问)
+- 修复前端函数名冲突问题 (switchMode -> onSwitchMode)
+- 修复前端模式切换清除选择状态的问题
+- 删除不支持的时长控制控件
+- 修正前端文案错误 (网秦 -> 哔哩哔哩)
+- 添加详细调试日志便于排查问题
+- 更新项目文档: 在readme.md中添加VersTTS集成说明章节
+- 工作记录: records/2026-04-29_21-25-16_IndexTTS_任务完成.md
+
 
 待完成:
-[1]分析VoxCPM tts方案的实现原理 可用版本 模型大小 支持的功能 性能优劣
-[2]声音克隆和极致克隆都去掉参考音频上传入口,适配说话人管理模块的说话人选择.
+
+[2]确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署
 
 
 后续处理(暂缓):

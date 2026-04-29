@@ -159,6 +159,59 @@ model.infer(
 
 如需商业使用和合作，请联系: indexspeech@bilibili.com
 
+## VersTTS 集成说明
+
+### 后端 API 调用
+
+IndexTTS 在 VersTTS 中通过 `/tts/indextts` 端点提供服务：
+
+```python
+# API 参数说明
+{
+    "text": "要合成的文本",
+    "mode": "free|controlled",  # 自由生成或可控生成
+    "clone_speaker_id": "说话人ID",  # 从说话人管理模块获取
+    "emotion_text": "情感描述",  # 可选，例如："开心地"、"悲伤地"
+    "duration_tokens": 100  # 可选，时长控制（当前版本暂不支持）
+}
+```
+
+### 支持的功能模式
+
+| 模式 | 说明 | 需要参数 |
+|------|------|----------|
+| **free** | 自由生成，复现参考音频的韵律 | clone_speaker_id |
+| **controlled** | 可控生成，支持情感控制 | clone_speaker_id + emotion_text |
+
+### 与说话人管理模块集成
+
+IndexTTS 使用 VersTTS 的说话人管理模块：
+
+1. **自由生成模式**: 使用说话人音频进行声音克隆
+2. **可控生成模式**: 使用说话人音频 + 情感描述进行情感控制克隆
+
+### 前端页面
+
+前端页面位于 `frontend/pages/indextts.html`：
+- 支持说话人选择下拉框
+- 支持情感描述输入（controlled模式）
+- 自动从 `/speakers` API 加载说话人列表
+
+### 模型文件
+
+模型文件位于 `algorithms/IndexTTS/checkpoints/`：
+- `gpt.pth` (3.4GB) - GPT模型权重
+- `s2mel.pth` (1.2GB) - S2MEL模型权重
+- `feat1.pt`, `feat2.pt` - 特征矩阵
+- `bpe.model` - BPE分词器
+- `wav2vec2bert_stats.pt` - Wav2Vec2Bert统计信息
+- `qwen0.6bemo4-merge/` - Qwen情感分析模型
+
+### 音频采样率
+
+- 输出音频采样率: **22050Hz**
+- 参考音频支持格式: WAV, MP3 等常见音频格式
+
 ## 注意事项
 
 - 官方唯一维护渠道: https://github.com/index-tts/index-tts

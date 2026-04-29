@@ -1018,7 +1018,9 @@ class GenerationMixin:
                     device=device,
                 )
             )
-        if generation_config.forced_decoder_ids is not None:
+        # VersTTS fix: 兼容新版transformers，forced_decoder_ids属性可能不存在
+        forced_decoder_ids = getattr(generation_config, 'forced_decoder_ids', None)
+        if forced_decoder_ids is not None:
             # TODO (sanchit): move this exception to GenerationConfig.validate() when TF & FLAX are aligned with PT
             raise ValueError(
                 "You have explicitly specified `forced_decoder_ids`. Please remove the `forced_decoder_ids` argument "

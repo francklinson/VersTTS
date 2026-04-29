@@ -14,13 +14,17 @@
         .mode-tab.active { color: #607d8b; border-bottom-color: #607d8b; font-weight: 600; }
         .mode-content { display: none; }
         .mode-content.active { display: block; }
-        .ref-audio-section { margin-bottom: 20px; padding: 15px; background: #eceff1; border-radius: 8px; border-left: 4px solid #607d8b; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #eceff1; border-radius: 8px; border-left: 4px solid #607d8b; }
+        .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
         .param-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
         .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
         .param-item { display: flex; flex-direction: column; }
         .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
         .param-item input, .param-item select, .param-item textarea { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
         .info-box { background: #eceff1; border-left: 4px solid #607d8b; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #263238; }
+        .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
+        .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
     </style>
 </head>
 <body class="indextts-theme">
@@ -46,7 +50,7 @@
             <a href="../index.html" class="nav-back">← 返回模型列表</a>
             <header>
                 <h1>🎭 IndexTTS</h1>
-                <p>网秦Index - 精确时长控制TTS</p>
+                <p>哔哩哔哩 IndexTTS - 精确时长控制TTS</p>
             </header>
             <div class="main-interface">
                 <div class="model-badge"><span>🎭</span><span>IndexTTS</span></div>
@@ -58,19 +62,48 @@
                 <div id="statusMessage" class="status-message"></div>
 
                 <div class="mode-tabs">
-                    <button class="mode-tab active" onclick="switchMode('free')">自由生成</button>
-                    <button class="mode-tab" onclick="switchMode('controlled')">可控生成</button>
+                    <button class="mode-tab active" onclick="onSwitchMode(event, 'free')">自由生成</button>
+                    <button class="mode-tab" onclick="onSwitchMode(event, 'controlled')">可控生成</button>
                 </div>
 
                 <div id="mode-free" class="mode-content active">
-                    <p style="color: #666; font-size: 0.9rem;">使用默认音色生成语音</p>
+                    <p style="color: #666; font-size: 0.9rem;">使用默认音色生成语音（需要选择说话人）</p>
+                    <!-- 说话人选择区域 -->
+                    <div class="speaker-section">
+                        <label style="font-weight: 600; color: #263238; display: block; margin-bottom: 10px;">
+                            🎙️ 选择说话人
+                        </label>
+                        <div class="speaker-select-wrapper">
+                            <select id="speakerSelectFree" class="speaker-select" onchange="onSpeakerChange('free')">
+                                <option value="">-- 请选择说话人 --</option>
+                            </select>
+                        </div>
+                        <div id="speakerInfoFree" class="speaker-info-display" style="display: none;">
+                            <!-- 动态显示说话人信息 -->
+                        </div>
+                        <div id="noSpeakerWarningFree" class="no-speaker-warning" style="display: none;">
+                            ⚠️ 暂无可用说话人，请先添加说话人
+                        </div>
+                    </div>
                 </div>
 
                 <div id="mode-controlled" class="mode-content">
-                    <div class="ref-audio-section">
-                        <label style="font-weight: 600; color: #263238; display: block; margin-bottom: 10px;">参考音频（可选）</label>
-                        <input type="file" id="promptWav" accept="audio/*" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">上传参考音频进行声音克隆</p>
+                    <!-- 说话人选择区域 -->
+                    <div class="speaker-section">
+                        <label style="font-weight: 600; color: #263238; display: block; margin-bottom: 10px;">
+                            🎙️ 选择说话人
+                        </label>
+                        <div class="speaker-select-wrapper">
+                            <select id="speakerSelectControlled" class="speaker-select" onchange="onSpeakerChange('controlled')">
+                                <option value="">-- 请选择说话人 --</option>
+                            </select>
+                        </div>
+                        <div id="speakerInfoControlled" class="speaker-info-display" style="display: none;">
+                            <!-- 动态显示说话人信息 -->
+                        </div>
+                        <div id="noSpeakerWarningControlled" class="no-speaker-warning" style="display: none;">
+                            ⚠️ 暂无可用说话人，请先添加说话人
+                        </div>
                     </div>
 
                     <div class="param-section">
@@ -79,11 +112,7 @@
                         <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">描述想要的情感表达风格</p>
                     </div>
 
-                    <div class="param-section">
-                        <label style="font-weight: 600; margin-bottom: 10px; display: block;">时长控制（可选）</label>
-                        <input type="number" id="durationTokens" placeholder="例如: 100" min="10" max="500" step="10">
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">设置生成音频的时长token数</p>
-                    </div>
+
                 </div>
 
                 <div class="input-section">
@@ -107,11 +136,174 @@
     <script src="../assets/js/common.js"></script>
     <script>
         let currentMode = 'free';
+        let selectedSpeakerId = null;
+        let savedSpeakers = [];
+
+        function onSwitchMode(event, mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.mode-content').forEach(content => content.classList.remove('active'));
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
+            document.getElementById(`mode-${mode}`).classList.add('active');
+
+            // 同步两个下拉框的选择状态
+            const selectFree = document.getElementById('speakerSelectFree');
+            const selectControlled = document.getElementById('speakerSelectControlled');
+            if (selectFree && selectControlled) {
+                if (mode === 'free') {
+                    selectControlled.value = selectFree.value;
+                } else {
+                    selectFree.value = selectControlled.value;
+                }
+            }
+
+            // 更新信息显示
+            updateSpeakerInfoDisplay();
+        }
+
+        // 更新说话人信息显示
+        function updateSpeakerInfoDisplay() {
+            const speakerInfoFree = document.getElementById('speakerInfoFree');
+            const speakerInfoControlled = document.getElementById('speakerInfoControlled');
+
+            if (selectedSpeakerId) {
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId);
+                if (speaker) {
+                    const infoHtml = `
+                        <strong>已选择:</strong> ${speaker.name}<br>
+                        <small>创建于: ${formatDate(speaker.created_at)}</small>
+                        ${speaker.reference_text ? '<br><small>参考文本: ' + speaker.reference_text.substring(0, 50) + (speaker.reference_text.length > 50 ? '...' : '') + '</small>' : ''}
+                    `;
+                    if (speakerInfoFree) {
+                        speakerInfoFree.innerHTML = infoHtml;
+                        speakerInfoFree.style.display = 'block';
+                    }
+                    if (speakerInfoControlled) {
+                        speakerInfoControlled.innerHTML = infoHtml;
+                        speakerInfoControlled.style.display = 'block';
+                    }
+                }
+            } else {
+                if (speakerInfoFree) speakerInfoFree.style.display = 'none';
+                if (speakerInfoControlled) speakerInfoControlled.style.display = 'none';
+            }
+        }
+
+        // 加载说话人列表
+        async function loadSpeakers() {
+            console.log('开始加载说话人列表...');
+            try {
+                const apiUrl = `${VersTTS.API_BASE}/speakers`;
+                console.log('API URL:', apiUrl);
+
+                const response = await fetch(apiUrl);
+                console.log('Response status:', response.status, response.ok);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+
+                    if (data.success) {
+                        savedSpeakers = data.speakers || [];
+                        console.log('加载到说话人数量:', savedSpeakers.length);
+                        renderSpeakerSelect();
+                    } else {
+                        console.error('API返回失败:', data);
+                        VersTTS.showStatus('加载说话人列表失败: ' + (data.message || '未知错误'), true);
+                    }
+                } else {
+                    console.error('HTTP请求失败:', response.status);
+                    VersTTS.showStatus('加载说话人列表失败: HTTP ' + response.status, true);
+                }
+            } catch (error) {
+                console.error('加载说话人列表失败:', error);
+                VersTTS.showStatus('加载说话人列表失败: ' + error.message, true);
+            }
+        }
+
+        // 渲染说话人选择下拉框
+        function renderSpeakerSelect() {
+            console.log('渲染说话人选择下拉框...');
+
+            const selectFree = document.getElementById('speakerSelectFree');
+            const selectControlled = document.getElementById('speakerSelectControlled');
+            const noSpeakerWarningFree = document.getElementById('noSpeakerWarningFree');
+            const noSpeakerWarningControlled = document.getElementById('noSpeakerWarningControlled');
+
+            // 检查DOM元素是否存在
+            if (!selectFree || !selectControlled) {
+                console.error('说话人选择DOM元素不存在!');
+                return;
+            }
+
+            console.log('DOM元素存在，开始渲染...');
+
+            // 保留第一个选项
+            const defaultOption = '<option value="">-- 请选择说话人 --</option>';
+            selectFree.innerHTML = defaultOption;
+            selectControlled.innerHTML = defaultOption;
+
+            console.log('savedSpeakers数量:', savedSpeakers.length);
+
+            if (savedSpeakers.length === 0) {
+                console.log('没有说话人数据，显示警告');
+                if (noSpeakerWarningFree) noSpeakerWarningFree.style.display = 'block';
+                if (noSpeakerWarningControlled) noSpeakerWarningControlled.style.display = 'block';
+                return;
+            }
+
+            if (noSpeakerWarningFree) noSpeakerWarningFree.style.display = 'none';
+            if (noSpeakerWarningControlled) noSpeakerWarningControlled.style.display = 'none';
+
+            savedSpeakers.forEach((speaker, index) => {
+                console.log(`添加说话人 ${index}:`, speaker.name, speaker.id);
+                const option = document.createElement('option');
+                option.value = speaker.id;
+                option.textContent = speaker.name;
+                selectFree.appendChild(option.cloneNode(true));
+                selectControlled.appendChild(option);
+            });
+
+            console.log('说话人列表渲染完成');
+        }
+
+        // 说话人选择变化处理
+        function onSpeakerChange(mode) {
+            const select = document.getElementById(`speakerSelect${mode === 'free' ? 'Free' : 'Controlled'}`);
+            selectedSpeakerId = select.value;
+
+            // 同步另一个下拉框的选择
+            const otherSelect = document.getElementById(`speakerSelect${mode === 'free' ? 'Controlled' : 'Free'}`);
+            if (otherSelect) {
+                otherSelect.value = selectedSpeakerId;
+            }
+
+            // 更新信息显示
+            updateSpeakerInfoDisplay();
+        }
+
+        // 格式化日期
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN');
+        }
 
         async function generateTTS() {
+            console.log('generateTTS 被调用');
             const text = document.getElementById('textInput').value.trim();
+            console.log('文本:', text);
+            console.log('当前模式:', currentMode);
+            console.log('selectedSpeakerId:', selectedSpeakerId);
 
             if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+            if (!selectedSpeakerId) {
+                console.error('没有选择说话人! selectedSpeakerId is null or empty');
+                VersTTS.showStatus('请选择说话人', true);
+                return;
+            }
 
             const btn = document.getElementById('generateBtn');
             const btnText = document.getElementById('btnText');
@@ -121,15 +313,12 @@
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('mode', currentMode);
+                formData.append('clone_speaker_id', selectedSpeakerId);
+                console.log('发送 clone_speaker_id:', selectedSpeakerId);
 
                 if (currentMode === 'controlled') {
-                    const promptWav = document.getElementById('promptWav').files[0];
                     const emotionText = document.getElementById('emotionText').value.trim();
-                    const durationTokens = document.getElementById('durationTokens').value;
-
-                    if (promptWav) formData.append('prompt_wav', promptWav);
                     if (emotionText) formData.append('emotion_text', emotionText);
-                    if (durationTokens) formData.append('duration_tokens', durationTokens);
                 }
 
                 const data = await VersTTS.postForm('/tts/indextts', formData);
@@ -148,9 +337,22 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            if (initPage()) {
-                // 页面初始化成功
+            console.log('DOMContentLoaded 事件触发');
+
+            // 检查 VersTTS 对象是否存在
+            if (typeof VersTTS === 'undefined') {
+                console.error('VersTTS 对象未定义! common.js 可能未正确加载。');
+                return;
             }
+            console.log('VersTTS 对象存在:', VersTTS);
+            console.log('API_BASE:', VersTTS.API_BASE);
+
+            // 初始化页面
+            const initResult = initPage();
+            console.log('initPage() 返回值:', initResult);
+
+            // 加载说话人列表
+            loadSpeakers();
         });
     </script>
 </body>

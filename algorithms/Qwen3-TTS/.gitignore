@@ -1,0 +1,83 @@
+# ============================================
+# TTS项目 - Git Ignore Configuration
+# ============================================
+
+# ============================================
+# 1. 模型文件 (大文件,通过脚本下载)
+# ============================================
+*.pth
+*.ckpt
+*.pt
+*.onnx
+*.bin
+*.safetensors
+*.pkl
+*.pickle
+*.h5
+*.pb
+
+# 模型目录
+models/
+pretrained_models/
+checkpoints/
+ckpts/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+*.safetensors
+
+# 缓存目录
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 输出文件
+outputs/
+output/
+*.wav
+*.mp3
+*.flac
+*.m4a
+
+# 日志文件
+logs/
+*.log
+
+# 压缩包
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+
+# 数据文件
+data/
+datasets/
+
+# 临时文件
+tmp/
+temp/
+*.tmp

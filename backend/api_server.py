@@ -913,7 +913,7 @@ def get_fireredtts2_model():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             models["fireredtts2"] = FireRedTTS2(
                 pretrained_dir=model_path,
-                gen_type="dialogue",
+                gen_type="monologue",
                 device=device
             )
 
@@ -2681,17 +2681,21 @@ async def tts_indextts(
 async def tts_fireredtts(
         text: str = Form(...),
         mode: str = Form("clone"),
-        ref_audio: Optional[UploadFile] = File(None),
         ref_text: Optional[str] = Form(None),
+        clone_speaker_id: Optional[str] = Form(None),  # 用于声音克隆的说话人ID
         temperature: float = Form(0.9),
         topk: int = Form(30),
-        output_format: str = Form("url")
+        output_format: str = Form("url"),
+        ref_audio: Optional[UploadFile] = File(None)
 ):
     """FireRedTTS2语音合成 - 按照原始GitHub代码方式调用
-    
+
     使用方法与官方一致:
     - generate_monologue: 独白生成（支持参考音频和随机音色）
     - 使用torchaudio.save()保存音频，采样率24000Hz
+
+    参数:
+    - clone_speaker_id: 说话人管理中的说话人ID，用于clone模式直接读取本地音频和参考文本
     """
     try:
         logger.info(f"FireRedTTS2请求 | 模式: {mode} | 文本: {text[:50]}...")
@@ -2701,21 +2705,46 @@ async def tts_fireredtts(
 
         # 保存参考音频（如果需要）
         ref_path = None
-        if ref_audio and mode == "clone":
-            ref_path = f"uploads/fireredtts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
-            with open(ref_path, "wb") as f:
-                f.write(await ref_audio.read())
+        final_ref_text = ref_text or ""
 
-        # 生成音频 - 按照GitHub示例使用generate_monologue
         if mode == "clone":
-            if not ref_path:
-                raise HTTPException(status_code=400, detail="clone模式需要提供参考音频")
+            # 方式1: 通过clone_speaker_id使用本地说话人音频
+            if clone_speaker_id:
+                db = load_speakers_db()
+                speaker = None
+                for s in db.get("speakers", []):
+                    if s["id"] == clone_speaker_id:
+                        speaker = s
+                        break
+
+                if not speaker:
+                    raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+
+                ref_path = speaker.get("audio_path")
+                if not ref_path or not os.path.exists(ref_path):
+                    raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {ref_path}")
+
+                # 使用说话人管理中的参考文本
+                final_ref_text = speaker.get("reference_text", "") or ref_text or ""
+                if not final_ref_text:
+                    raise HTTPException(status_code=400, detail=f"说话人 {speaker['name']} 没有参考文本，无法用于声音克隆。请在说话人管理中添加参考文本。")
+                logger.info(f"clone模式: 使用说话人 {speaker['name']} 的音频: {ref_path}, 参考文本: {final_ref_text[:50]}")
+
+            # 方式2: 通过上传的音频文件
+            elif ref_audio:
+                ref_path = f"uploads/fireredtts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+                with open(ref_path, "wb") as f:
+                    f.write(await ref_audio.read())
+                logger.info(f"clone模式: 使用上传的参考音频: {ref_path}")
+
+            else:
+                raise HTTPException(status_code=400, detail="clone模式需要提供clone_speaker_id或上传参考音频")
 
             # 使用generate_monologue进行克隆 - 按照GitHub README示例
             audio = model.generate_monologue(
                 text=text,
                 prompt_wav=ref_path,
-                prompt_text=ref_text or "",
+                prompt_text=final_ref_text,
                 temperature=temperature,
                 topk=topk
             )
@@ -2740,8 +2769,8 @@ async def tts_fireredtts(
 
         torchaudio.save(audio_path, audio, sr)
 
-        # 清理临时文件
-        if ref_path and os.path.exists(ref_path):
+        # 清理临时文件（仅清理上传的临时文件，不清理说话人管理中的文件）
+        if ref_path and ref_path.startswith("uploads/") and os.path.exists(ref_path):
             os.remove(ref_path)
 
         logger.info(f"FireRedTTS2生成完成: {audio_path}")
@@ -2753,8 +2782,13 @@ async def tts_fireredtts(
             return TTSResponse(success=True, message="合成成功", audio_url=f"/audio/{os.path.basename(audio_path)}",
                                sample_rate=sr)
 
+    except HTTPException:
+        # 直接重新抛出HTTPException，保持原始状态码和错误消息
+        raise
     except Exception as e:
         logger.error(f"FireRedTTS2合成错误: {e}")
+        import traceback
+        logger.error(f"FireRedTTS2堆栈跟踪:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -128,10 +128,12 @@ https://github.com/FireRedTeam/FireRedTTS2
 
 
 待完成:
+[1]调试FireRedTTS2,分析其功能\特性,下载必需的模型文件, 将前端入口和后端api功能对齐.
+声音克隆使用说话人管理模块中的数据.
 
-[2]确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署
 
 
 后续处理(暂缓):
 CosyVoice要求transformers 4.51.3, 而这个版本的transformers在其他几个项目中都无法使用
 - 状态: 已回退修改,暂缓处理,生成按钮置为无效,等待后续解决方案
+确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署

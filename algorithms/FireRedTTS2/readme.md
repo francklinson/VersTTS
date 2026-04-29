@@ -260,6 +260,75 @@ python bin/finetune_example/posttrain.py --config bin/finetune_example/config_fi
 4. **教育内容**: 多人对话教学材料
 5. **数据生成**: 生成ASR和语音交互训练数据
 
+## VersTTS 集成说明
+
+本项目已集成到 VersTTS 统一TTS平台，支持通过Web界面和API进行语音合成。
+
+### 集成特性
+
+1. **说话人管理模块集成**
+   - 声音克隆模式使用说话人管理模块中保存的参考音频
+   - 自动获取说话人的参考文本用于TTS合成
+   - 无需在前端页面上传参考音频
+
+2. **支持的模式**
+   - **声音克隆**: 使用说话人管理模块中的音频和参考文本
+   - **随机音色**: 生成随机说话人音色
+
+3. **后端API端点**
+   - `POST /tts/fireredtts` - 语音合成
+   - 参数:
+     - `text`: 生成文本（必填）
+     - `mode`: 模式，可选 `clone` 或 `random`
+     - `clone_speaker_id`: 说话人ID（clone模式必填）
+     - `temperature`: 温度参数，默认0.9
+     - `topk`: Top K参数，默认30
+
+### 前端使用流程
+
+1. 访问 `/frontend/pages/fireredtts.html`
+2. 选择模式:
+   - **声音克隆**: 从说话人管理模块选择说话人
+   - **随机音色**: 直接生成，无需选择说话人
+3. 输入生成文本
+4. 调整参数（可选）
+5. 点击生成
+
+### API调用示例
+
+```bash
+# 声音克隆模式
+curl -X POST "http://localhost:8000/tts/fireredtts" \
+  -F "text=你好，这是FireRedTTS2的测试。" \
+  -F "mode=clone" \
+  -F "clone_speaker_id=your_speaker_id" \
+  -F "temperature=0.9" \
+  -F "topk=30"
+
+# 随机音色模式
+curl -X POST "http://localhost:8000/tts/fireredtts" \
+  -F "text=你好，这是FireRedTTS2的测试。" \
+  -F "mode=random" \
+  -F "temperature=0.9" \
+  -F "topk=30"
+```
+
+### 模型文件
+
+- 模型路径: `pretrained_models/FireRedTTS2/`
+- 模型大小: 约19.7GB
+- 包含文件:
+  - `llm_pretrain.pt` / `llm_posttrain.pt` (7.8GB x2)
+  - `codec.pt` (4.1GB)
+  - `Qwen2.5-1.5B/` (tokenizer)
+
+### 技术细节
+
+- **采样率**: 24kHz
+- **显存需求**: 约9GB (bf16推理)
+- **首包延迟**: 约140ms (L20 GPU)
+- **支持语言**: 中文、英文、日文、韩文、法文、德文、俄文
+
 ## 版本更新
 
 - **2025/10/26**: 发布微调代码和教程

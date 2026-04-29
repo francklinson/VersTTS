@@ -182,6 +182,14 @@ def get_speaker_by_name(name: str) -> Optional[Dict]:
             return speaker
     return None
 
+def get_speaker_by_id(speaker_id: str) -> Optional[Dict]:
+    """根据ID获取说话人"""
+    db = load_speakers_db()
+    for speaker in db["speakers"]:
+        if speaker["id"] == speaker_id:
+            return speaker
+    return None
+
 def check_speaker_name_exists(name: str) -> bool:
     """检查说话人名称是否已存在"""
     return get_speaker_by_name(name) is not None
@@ -263,7 +271,7 @@ async def lifespan(app: FastAPI):
         system_logger.warning("【硬件信息】CUDA不可用,将使用CPU模式")
 
     # 创建输出目录
-    directories = ["output", "uploads", "logs"]
+    directories = ["outputs", "uploads", "logs"]
     for dir_name in directories:
         dir_path = os.path.join(PROJECT_ROOT, dir_name)
         os.makedirs(dir_path, exist_ok=True)
@@ -648,28 +656,28 @@ def _setup_gpt_sovits_path():
     """设置GPT-SoVITS所需的系统路径"""
     gpt_sovits_root = os.path.join(PROJECT_ROOT, "algorithms", "GPT-SoVITS")
     gpt_sovits_module = os.path.join(gpt_sovits_root, "GPT_SoVITS")
-    
+
     if gpt_sovits_root not in sys.path:
         sys.path.append(gpt_sovits_root)
     if gpt_sovits_module not in sys.path:
         sys.path.append(gpt_sovits_module)
-    
+
     # 设置BERT模型路径环境变量（使用绝对路径）
     bert_path = os.path.join(gpt_sovits_module, "pretrained_models", "chinese-roberta-wwm-ext-large")
     os.environ["bert_path"] = bert_path
-    
+
     # 设置G2PW模型路径环境变量（使用绝对路径，避免相对路径问题）
     g2pw_model_path = os.path.join(gpt_sovits_module, "text", "G2PWModel")
     os.environ["g2pw_model"] = g2pw_model_path
-    
+
     # 确保G2PW模型目录存在（避免自动下载逻辑触发）
     os.makedirs(g2pw_model_path, exist_ok=True)
-    
+
     # 保存当前工作目录并切换到GPT-SoVITS目录
     original_cwd = os.getcwd()
     if os.getcwd() != gpt_sovits_root:
         os.chdir(gpt_sovits_root)
-    
+
     return original_cwd
 
 def get_gpt_sovits_model(version: str = "v2"):
@@ -733,9 +741,24 @@ def init_gpt_sovits_pipeline(model_info, ref_audio_path: str = None):
     try:
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS
         
-        if model_info["pipeline"] is None:
+        # 检查是否需要重新初始化管道（版本变化或未初始化）
+        pipeline = model_info.get("pipeline")
+        cached_version = model_info.get("pipeline_version")
+        current_version = model_info.get("version")
+        
+        if pipeline is None or cached_version != current_version:
+            # 清理旧的管道
+            if pipeline is not None:
+                del pipeline
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                system_logger.info(f"【GPT-SoVITS】版本切换: {cached_version} -> {current_version}")
+            
+            # 创建新管道
             pipeline = TTS(model_info["config"])
             model_info["pipeline"] = pipeline
+            model_info["pipeline_version"] = current_version
+            system_logger.info(f"【GPT-SoVITS】管道初始化完成 | 版本: {current_version}")
             
         if ref_audio_path and os.path.exists(ref_audio_path):
             model_info["pipeline"].set_ref_audio(ref_audio_path)
@@ -905,7 +928,7 @@ def save_temp_audio(audio_data: np.ndarray, sample_rate: int, suffix: str = ".wa
         normalize: 是否进行音量归一化，默认True
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    temp_path = f"output/tts_{timestamp}{suffix}"
+    temp_path = f"outputs/tts_{timestamp}{suffix}"
     
     # 音量归一化处理
     if normalize:
@@ -1559,7 +1582,7 @@ async def tts_cosyvoice(
 
             # 使用torchaudio保存
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            audio_path = f"output/tts_{timestamp}.wav"
+            audio_path = f"outputs/tts_{timestamp}.wav"
             torchaudio.save(audio_path, torch.from_numpy(audio_np), cosyvoice.sample_rate)
             break
 
@@ -2066,11 +2089,11 @@ async def tts_openvoice(
             os.remove(ref_path)
 
         # 生成基础音频
-        temp_path = f"output/temp_openvoice_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+        temp_path = f"outputs/temp_openvoice_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
         tts.tts(text, temp_path, speaker=style, language=language_full, speed=speed)
 
         # 转换音色
-        audio_path = f"output/openvoice_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+        audio_path = f"outputs/openvoice_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
         src_se = source_se.get("zh" if language == "zh" else "en")
         converter.convert(
             audio_src_path=temp_path,
@@ -2113,40 +2136,101 @@ async def tts_openvoice(
 @app.post("/tts/gptsovits")
 async def tts_gptsovits(
     request: Request,
-    text: str = Form(...),
-    text_lang: str = Form("zh"),
-    prompt_wav: UploadFile = File(...),
-    prompt_text: str = Form(...),
-    prompt_lang: str = Form("zh"),
-    top_k: int = Form(15),
-    top_p: float = Form(1.0),
-    temperature: float = Form(1.0),
-    text_split_method: str = Form("cut5"),
-    batch_size: int = Form(1),
-    speed_factor: float = Form(1.0),
-    version: str = Form("v2"),
-    output_format: str = Form("url")
 ):
-    """GPT-SoVITS语音合成 - 必须提供参考音频"""
+    """GPT-SoVITS语音合成 - 支持上传参考音频或从说话人管理模块选择
+    
+    参数:
+    - text: 要合成的文本 (必需)
+    - text_lang: 文本语言，默认zh (可选)
+    - prompt_wav: 上传的参考音频文件（与clone_speaker_id二选一）
+    - prompt_text: 参考音频对应的文本（上传音频时必需）
+    - prompt_lang: 参考音频语言，默认zh (可选)
+    - clone_speaker_id: 说话人ID，从说话人管理模块获取音频（与prompt_wav二选一）
+    - top_k: Top K采样，默认15 (可选)
+    - top_p: Top P采样，默认1.0 (可选)
+    - temperature: 温度，默认1.0 (可选)
+    - text_split_method: 文本分割方法，默认cut5 (可选)
+    - batch_size: 批处理大小，默认1 (可选)
+    - speed_factor: 语速因子，默认1.0 (可选)
+    - version: 模型版本，默认v2 (可选)
+    - output_format: 输出格式，默认url (可选)
+    """
     start_time = time.time()
     client_ip = request.client.host if request.client else "unknown"
+    ref_path = None
+    prompt_text = None
     
     try:
+        # 解析表单数据
+        form = await request.form()
+        
+        # 获取必需参数
+        text = form.get("text")
+        if not text:
+            raise HTTPException(status_code=400, detail="请提供要合成的文本(text)")
+        
+        # 获取可选参数
+        text_lang = form.get("text_lang", "zh")
+        prompt_lang = form.get("prompt_lang", "zh")
+        clone_speaker_id = form.get("clone_speaker_id")
+        top_k = int(form.get("top_k", 15))
+        top_p = float(form.get("top_p", 1.0))
+        temperature = float(form.get("temperature", 1.0))
+        text_split_method = form.get("text_split_method", "cut5")
+        batch_size = int(form.get("batch_size", 1))
+        speed_factor = float(form.get("speed_factor", 1.0))
+        version = form.get("version", "v2")
+        output_format = form.get("output_format", "url")
+        
+        # 获取文件上传
+        prompt_wav = form.get("prompt_wav")
+        if prompt_wav and isinstance(prompt_wav, UploadFile):
+            prompt_text = form.get("prompt_text")
+        else:
+            prompt_wav = None
+            prompt_text = form.get("prompt_text")
+        
         # 记录API请求
         OperationLogger.log_api_request("/tts/gptsovits", "POST", {
             "text_preview": text[:50],
             "text_lang": text_lang,
             "prompt_lang": prompt_lang,
-            "version": version
+            "version": version,
+            "clone_speaker_id": clone_speaker_id
         }, client_ip)
         
         system_logger.info(f"【GPT-SoVITS】开始合成 | 文本: {text[:50]}... | 版本: {version} | 客户端: {client_ip}")
         
-        # 保存参考音频
-        ref_path = f"uploads/gptsovits_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
-        with open(ref_path, "wb") as f:
-            f.write(await prompt_wav.read())
-        system_logger.info(f"【GPT-SoVITS】参考音频已保存: {ref_path}")
+        # 处理参考音频来源
+        if clone_speaker_id:
+            # 从说话人管理模块获取音频
+            speaker = get_speaker_by_id(clone_speaker_id)
+            if not speaker:
+                raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+            
+            ref_path = speaker.get("audio_path")
+            if not ref_path or not os.path.exists(ref_path):
+                raise HTTPException(status_code=404, detail=f"说话人音频文件不存在: {ref_path}")
+            
+            # 使用说话人的参考文本
+            if not prompt_text and speaker.get("reference_text"):
+                prompt_text = speaker.get("reference_text")
+                system_logger.info(f"【GPT-SoVITS】使用说话人参考文本: {prompt_text[:50] if prompt_text else '无'}...")
+            
+            system_logger.info(f"【GPT-SoVITS】使用说话人音频: {speaker.get('name')} | {ref_path}")
+            
+        elif prompt_wav:
+            # 保存上传的参考音频
+            ref_path = f"uploads/gptsovits_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            with open(ref_path, "wb") as f:
+                f.write(await prompt_wav.read())
+            system_logger.info(f"【GPT-SoVITS】参考音频已保存: {ref_path}")
+        else:
+            raise HTTPException(status_code=400, detail="请提供参考音频(prompt_wav)或选择说话人(clone_speaker_id)")
+        
+        # 检查参考文本
+        if not prompt_text:
+            raise HTTPException(status_code=400, detail="请提供参考音频文本(prompt_text)")
         
         # 获取模型
         model_info = get_gpt_sovits_model(version)
@@ -2183,12 +2267,13 @@ async def tts_gptsovits(
         
         # 保存音频
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        audio_path = f"output/gptsovits_{timestamp}.wav"
+        audio_path = f"outputs/gptsovits_{timestamp}.wav"
         sf.write(audio_path, audio_data, sr)
         
-        # 清理临时参考音频
-        if os.path.exists(ref_path):
+        # 清理临时参考音频（仅清理上传的临时文件，不删除说话人管理模块的音频）
+        if not clone_speaker_id and ref_path and os.path.exists(ref_path) and ref_path.startswith("uploads/"):
             os.remove(ref_path)
+            system_logger.info(f"【GPT-SoVITS】清理临时参考音频: {ref_path}")
             
         audio_size = os.path.getsize(audio_path)
         OperationLogger.log_file_operation("保存音频", audio_path, audio_size, "成功")
@@ -2224,9 +2309,10 @@ async def tts_gptsovits(
         total_duration = time.time() - start_time
         OperationLogger.log_error("GPT-SoVITS合成错误", str(e))
         OperationLogger.log_tts_request("GPT-SoVITS", text, {}, total_duration, f"失败: {str(e)}")
-        # 清理临时文件
-        if 'ref_path' in locals() and os.path.exists(ref_path):
+        # 清理临时文件（仅清理上传的临时文件）
+        if 'ref_path' in locals() and ref_path and os.path.exists(ref_path) and ref_path.startswith("uploads/"):
             os.remove(ref_path)
+            system_logger.info(f"【GPT-SoVITS】清理临时参考音频: {ref_path}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== VoxCPM API ====================
@@ -3106,7 +3192,7 @@ async def app_page():
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
     """获取音频文件"""
-    file_path = f"output/{filename}"
+    file_path = f"outputs/{filename}"
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(file_path, media_type="audio/wav")

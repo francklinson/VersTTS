@@ -8,6 +8,7 @@
 将工作记录留痕, 在records文件夹中生成md文件存储工作记录(具体的时间戳,必须是真实的当前时间)
 目标是生成中文语音
 服务日志文件在 logs 下
+音频输出存放在 outputs 目录下
 使用sh脚本开关服务
 
 
@@ -59,7 +60,7 @@ https://github.com/FireRedTeam/FireRedTTS2
 https://github.com/OpenBMB/VoxCPM/
 https://github.com/index-tts/index-tts
 https://github.com/FireRedTeam/FireRedTTS2
-[30]对应算法的前后端页面要与算法支持的功能保持一致.
+[30]对应算法的前后端页面要与算法支持的功能保持一致.0
 [31]调试openvoice,移除参考音频,使用说话人管理模块中的人声进行克隆.(已完成)
 - 后端API修改: 新增 clone_speaker_id 参数，支持从说话人管理模块获取音频进行克隆
 - 前端页面修改: 移除参考音频上传，改为选择说话人下拉框
@@ -67,10 +68,17 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 修复依赖: 安装 whisper-timestamped 模块
 - 修复中文口音: 加载中文 TTS 模型而非英文模型
 - 记录局限性: 音色相似度一般、仅支持 default 风格等
+[32]调试F5-TTS,删除页面中的 参考音频+参考文本, 使用说话人管理模块中的人声进行克隆.(已完成)
+- 后端API修改: 新增 clone_speaker_id 参数，支持从说话人管理模块获取音频和参考文本进行克隆
+- 前端页面修改: 移除参考音频上传和参考文本输入，改为选择说话人下拉框
+- 修复路径问题: 修改 sys.path 将 F5-TTS/src 移到 GPT-SoVITS 之后，避免模块冲突
+- 修复依赖问题: 升级 protobuf 到 4.25.3 版本
+- 更新项目文档: 在 readme.md 中添加 VersTTS 集成说明章节
 
 
 待完成:
-[1]调试F5-TTS,删除页面中的 参考音频+参考文本, 使用说话人管理模块中的人声进行克隆
+[1]调试GPT-SOVITS,删除页面中的 参考音频+参考文本, 使用说话人管理模块中的人声进行克隆.
+测试GPT-SOVITS的模型文件是否下载完整,后端APIU是否正常, 生成的语音是否正常(拿ASR验证一下)
 
 
 后续处理(暂缓):

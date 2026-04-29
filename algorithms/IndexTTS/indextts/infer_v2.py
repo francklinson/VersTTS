@@ -1,7 +1,9 @@
 import os
 from subprocess import CalledProcessError
 
-os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+# 使用项目级环境变量配置，如果已设置则不再覆盖
+if 'HF_HUB_CACHE' not in os.environ:
+    os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
 import json
 import re
 import time
@@ -34,6 +36,36 @@ import safetensors
 from transformers import SeamlessM4TFeatureExtractor
 import random
 import torch.nn.functional as F
+
+
+def is_offline_mode():
+    """检查是否处于离线模式"""
+    return os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1'
+
+
+def get_local_model_path(model_name, local_dir=None):
+    """
+    获取本地模型路径
+    Args:
+        model_name: HuggingFace 模型名称
+        local_dir: 本地模型目录
+    Returns:
+        本地模型路径或 None
+    """
+    if local_dir and os.path.exists(local_dir):
+        return local_dir
+    
+    # 检查 HF_HOME 缓存
+    hf_home = os.environ.get('HF_HOME', os.path.expanduser('~/.cache/huggingface'))
+    model_cache_dir = os.path.join(hf_home, 'hub', f'models--{model_name.replace("/", "--")}')
+    
+    if os.path.exists(model_cache_dir):
+        # 查找快照目录
+        for root, dirs, files in os.walk(model_cache_dir):
+            if 'config.json' in files:
+                return root
+    
+    return None
 
 class IndexTTS2:
     def __init__(
@@ -112,20 +144,46 @@ class IndexTTS2:
                 print(f"{e!r}")
                 self.use_cuda_kernel = False
 
-        self.extract_features = SeamlessM4TFeatureExtractor.from_pretrained("facebook/w2v-bert-2.0")
+        # 加载 SeamlessM4TFeatureExtractor，离线模式下使用本地模型
+        w2v_bert_local = os.path.join(self.model_dir, "w2v-bert-2.0")
+        if os.path.exists(w2v_bert_local):
+            print(f">> Loading w2v-bert-2.0 from local path: {w2v_bert_local}")
+            self.extract_features = SeamlessM4TFeatureExtractor.from_pretrained(w2v_bert_local, local_files_only=True)
+        elif is_offline_mode():
+            raise FileNotFoundError(f"Offline mode: w2v-bert-2.0 model not found at {w2v_bert_local}")
+        else:
+            print(">> Loading w2v-bert-2.0 from HuggingFace...")
+            self.extract_features = SeamlessM4TFeatureExtractor.from_pretrained("facebook/w2v-bert-2.0")
+        
+        # 加载语义模型，传入本地 w2v-bert-2.0 路径
+        w2v_bert_local = os.path.join(self.model_dir, "w2v-bert-2.0")
         self.semantic_model, self.semantic_mean, self.semantic_std = build_semantic_model(
-            os.path.join(self.model_dir, self.cfg.w2v_stat))
+            os.path.join(self.model_dir, self.cfg.w2v_stat),
+            w2v_bert_local_path=w2v_bert_local if os.path.exists(w2v_bert_local) else None
+        )
         self.semantic_model = self.semantic_model.to(self.device)
         self.semantic_model.eval()
         self.semantic_mean = self.semantic_mean.to(self.device)
         self.semantic_std = self.semantic_std.to(self.device)
 
         semantic_codec = build_semantic_codec(self.cfg.semantic_codec)
-        semantic_code_ckpt = hf_hub_download("amphion/MaskGCT", filename="semantic_codec/model.safetensors")
-        safetensors.torch.load_model(semantic_codec, semantic_code_ckpt)
+        
+        # 加载 semantic_codec 权重，离线模式下使用本地文件
+        semantic_codec_local = os.path.join(self.model_dir, "semantic_codec", "model.safetensors")
+        if os.path.exists(semantic_codec_local):
+            print(f">> Loading semantic_codec from local path: {semantic_codec_local}")
+            safetensors.torch.load_model(semantic_codec, semantic_codec_local)
+        elif is_offline_mode():
+            raise FileNotFoundError(f"Offline mode: semantic_codec model not found at {semantic_codec_local}")
+        else:
+            print(">> Loading semantic_codec from HuggingFace...")
+            semantic_code_ckpt = hf_hub_download("amphion/MaskGCT", filename="semantic_codec/model.safetensors")
+            safetensors.torch.load_model(semantic_codec, semantic_code_ckpt)
+            semantic_codec_local = semantic_code_ckpt
+        
         self.semantic_codec = semantic_codec.to(self.device)
         self.semantic_codec.eval()
-        print('>> semantic_codec weights restored from: {}'.format(semantic_code_ckpt))
+        print('>> semantic_codec weights restored from: {}'.format(semantic_codec_local))
 
         s2mel_path = os.path.join(self.model_dir, self.cfg.s2mel_checkpoint)
         s2mel = MyModel(self.cfg.s2mel, use_gpt_latent=True)
@@ -150,21 +208,57 @@ class IndexTTS2:
         print(">> s2mel weights restored from:", s2mel_path)
 
         # load campplus_model
-        campplus_ckpt_path = hf_hub_download(
-            "funasr/campplus", filename="campplus_cn_common.bin"
-        )
+        campplus_local = os.path.join(self.model_dir, "campplus_cn_common.bin")
+        if os.path.exists(campplus_local):
+            print(f">> Loading campplus from local path: {campplus_local}")
+            campplus_ckpt_path = campplus_local
+        elif is_offline_mode():
+            raise FileNotFoundError(f"Offline mode: campplus model not found at {campplus_local}")
+        else:
+            print(">> Loading campplus from HuggingFace...")
+            campplus_ckpt_path = hf_hub_download(
+                "funasr/campplus", filename="campplus_cn_common.bin"
+            )
+        
         campplus_model = CAMPPlus(feat_dim=80, embedding_size=192)
         campplus_model.load_state_dict(torch.load(campplus_ckpt_path, map_location="cpu"))
         self.campplus_model = campplus_model.to(self.device)
         self.campplus_model.eval()
         print(">> campplus_model weights restored from:", campplus_ckpt_path)
 
+        # 加载 BigVGAN，离线模式下使用本地模型
         bigvgan_name = self.cfg.vocoder.name
-        self.bigvgan = bigvgan.BigVGAN.from_pretrained(bigvgan_name, use_cuda_kernel=self.use_cuda_kernel)
+        bigvgan_local = os.path.join(self.model_dir, "bigvgan")
+        
+        if os.path.exists(bigvgan_local):
+            print(f">> Loading BigVGAN from local path: {bigvgan_local}")
+            self.bigvgan = bigvgan.BigVGAN.from_pretrained(
+                bigvgan_local, 
+                use_cuda_kernel=self.use_cuda_kernel,
+                local_files_only=True
+            )
+        elif is_offline_mode():
+            # 检查是否是本地路径
+            if os.path.isdir(bigvgan_name):
+                print(f">> Loading BigVGAN from local path: {bigvgan_name}")
+                self.bigvgan = bigvgan.BigVGAN.from_pretrained(
+                    bigvgan_name, 
+                    use_cuda_kernel=self.use_cuda_kernel,
+                    local_files_only=True
+                )
+            else:
+                raise FileNotFoundError(f"Offline mode: BigVGAN model not found at {bigvgan_local} or {bigvgan_name}")
+        else:
+            print(f">> Loading BigVGAN from HuggingFace: {bigvgan_name}")
+            self.bigvgan = bigvgan.BigVGAN.from_pretrained(
+                bigvgan_name, 
+                use_cuda_kernel=self.use_cuda_kernel
+            )
+        
         self.bigvgan = self.bigvgan.to(self.device)
         self.bigvgan.remove_weight_norm()
         self.bigvgan.eval()
-        print(">> bigvgan weights restored from:", bigvgan_name)
+        print(">> bigvgan weights restored from:", bigvgan_local if os.path.exists(bigvgan_local) else bigvgan_name)
 
         self.bpe_path = os.path.join(self.model_dir, self.cfg.dataset["bpe_model"])
         self.normalizer = TextNormalizer(enable_glossary=True)

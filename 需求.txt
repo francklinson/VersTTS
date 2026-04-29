@@ -126,14 +126,28 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 更新项目文档: 在readme.md中添加VersTTS集成说明章节
 - 工作记录: records/2026-04-29_21-25-16_IndexTTS_任务完成.md
 
+[38]分析FireRedTTS2 TTS方案并适配说话人管理模块.(已完成)
+- 分析FireRedTTS2实现原理: 双Transformer架构，专为长对话设计
+- 版本: FireRedTTS2 (最新版本)
+- 模型大小: 约19.7GB (llm_pretrain.pt 7.8GB + llm_posttrain.pt 7.8GB + codec.pt 4.1GB)
+- 支持功能: 声音克隆/随机音色生成
+- 支持语言: 中文、英文、日文、韩文、法文、德文、俄文
+- 移除参考音频上传入口，改为说话人选择下拉框
+- 后端API支持clone_speaker_id参数，根据说话人ID自动获取音频路径和参考文本
+- 修复模型加载参数: gen_type="monologue" (原来是dialogue导致错误)
+- 添加参考文本检查，确保说话人有参考文本
+- 添加HTTPException特殊处理，保持原始错误状态码
+- 添加详细调试日志便于排查问题
+- 更新项目文档: 在readme.md中添加VersTTS集成说明章节
+- 更新README.md: 添加FireRedTTS2到算法列表(8种算法)
+- 更新requirements.txt和requirements_full.txt: 添加FireRedTTS2依赖
+- 工作记录: records/2026-04-29_22-30-00_FireRedTTS2_说话人模块改造完成.md
+
 
 待完成:
-[1]调试FireRedTTS2,分析其功能\特性,下载必需的模型文件, 将前端入口和后端api功能对齐.
-声音克隆使用说话人管理模块中的数据.
-
+确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署
 
 
 后续处理(暂缓):
 CosyVoice要求transformers 4.51.3, 而这个版本的transformers在其他几个项目中都无法使用
 - 状态: 已回退修改,暂缓处理,生成按钮置为无效,等待后续解决方案
-确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署

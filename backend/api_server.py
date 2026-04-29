@@ -7,9 +7,24 @@
 import os
 import sys
 
+# ========== 离线部署环境变量配置 ==========
+# 必须在导入任何依赖 HuggingFace 的库之前设置
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 检查是否启用离线模式
+if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1':
+    print("[离线部署] 检测到离线模式环境变量，禁用HuggingFace在线访问")
+    os.environ['HF_HUB_OFFLINE'] = '1'
+    os.environ['HF_DATASETS_OFFLINE'] = '1'
+    os.environ['TRANSFORMERS_OFFLINE'] = '1'
+    os.environ['HF_HUB_DISABLE_DOWNLOADS'] = '1'
+
+# 设置本地缓存目录
+if 'HF_HOME' in os.environ:
+    print(f"[离线部署] HF_HOME: {os.environ['HF_HOME']}")
+
 # ========== Transformers 兼容性补丁 ==========
 # 必须在导入 transformers 之前加载
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # 1. CosyVoice 兼容性补丁 - 为 transformers 4.51.3 添加缺失的函数
 # 注意：必须在 Qwen3-TTS 补丁之前加载，因为 Qwen3-TTS 补丁会导入 transformers
@@ -829,13 +844,25 @@ def get_voxcpm_model():
             from voxcpm import VoxCPM
 
             model_path = os.path.join(PROJECT_ROOT, "algorithms", "VoxCPM", "models", "VoxCPM2")
+            
+            # 检查是否离线模式
+            is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1'
+            
             if not os.path.exists(model_path):
+                if is_offline:
+                    raise FileNotFoundError(f"离线模式下找不到本地模型: {model_path}")
                 # 尝试HuggingFace模型ID
                 model_path = "openbmb/VoxCPM2"
+                system_logger.warning(f"【模型加载】本地模型不存在，尝试从HuggingFace加载: {model_path}")
 
             system_logger.info(f"【模型加载】VoxCPM 从路径: {model_path}")
 
-            models["voxcpm"] = VoxCPM.from_pretrained(model_path, load_denoiser=False)
+            # 离线模式下强制使用本地文件
+            models["voxcpm"] = VoxCPM.from_pretrained(
+                model_path, 
+                load_denoiser=False,
+                local_files_only=is_offline
+            )
 
             duration = time.time() - start_time
             gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0

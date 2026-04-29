@@ -12,12 +12,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PATH="$SCRIPT_DIR/.venv"
 PID_FILE="$SCRIPT_DIR/.server.pid"
 LOG_FILE="$SCRIPT_DIR/logs/server.log"
+ENV_FILE="$SCRIPT_DIR/.env.offline"
 
 # 默认配置
 HOST="0.0.0.0"
 PORT="8000"
 SKIP_CHECK=false
 RELOAD=false
+OFFLINE_MODE=false
 
 # 颜色定义
 RED='\033[0;31m'
@@ -64,11 +66,13 @@ usage() {
     echo "  --port <端口>    服务端口 (默认: 8000)"
     echo "  --skip-check     跳过环境检查"
     echo "  --reload         开发模式(自动重载)"
+    echo "  --offline        离线模式(禁用HuggingFace等外部资源访问)"
     echo ""
     echo "示例:"
     echo "  $0 start                     # 默认启动"
     echo "  $0 start --port 8080         # 指定端口启动"
     echo "  $0 start --reload            # 开发模式启动"
+    echo "  $0 start --offline           # 离线模式启动"
     echo "  $0 stop                      # 停止服务"
     echo "  $0 restart                   # 重启服务"
     echo "  $0 status                    # 查看状态"
@@ -128,6 +132,13 @@ do_start() {
     print_step "激活虚拟环境..."
     source "$VENV_PATH/bin/activate"
     print_success "虚拟环境已激活"
+
+    # 加载离线模式环境变量
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用 (HuggingFace离线)"
+    fi
 
     # 检查 Python
     PYTHON_VERSION=$(python --version 2>&1)
@@ -439,6 +450,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --reload)
             RELOAD=true
+            shift
+            ;;
+        --offline)
+            OFFLINE_MODE=true
             shift
             ;;
         *)

@@ -84,8 +84,26 @@ class JsonHParams:
         return self.__dict__.__repr__()
 
 
-def build_semantic_model(path_='./models/tts/maskgct/ckpt/wav2vec2bert_stats.pt'):
-    semantic_model = Wav2Vec2BertModel.from_pretrained("facebook/w2v-bert-2.0")
+def build_semantic_model(path_='./models/tts/maskgct/ckpt/wav2vec2bert_stats.pt', w2v_bert_local_path=None):
+    """
+    构建语义模型
+    Args:
+        path_: w2v-bert 统计文件路径
+        w2v_bert_local_path: 本地 w2v-bert-2.0 模型路径，如果提供则优先使用
+    """
+    import os
+    
+    if w2v_bert_local_path and os.path.exists(w2v_bert_local_path):
+        print(f">> Loading Wav2Vec2BertModel from local path: {w2v_bert_local_path}")
+        semantic_model = Wav2Vec2BertModel.from_pretrained(w2v_bert_local_path, local_files_only=True)
+    else:
+        # 检查是否离线模式
+        is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1'
+        if is_offline:
+            raise FileNotFoundError(f"Offline mode: w2v-bert-2.0 model not found at {w2v_bert_local_path}")
+        print(">> Loading Wav2Vec2BertModel from HuggingFace: facebook/w2v-bert-2.0")
+        semantic_model = Wav2Vec2BertModel.from_pretrained("facebook/w2v-bert-2.0")
+    
     semantic_model.eval()
     stat_mean_var = torch.load(path_)
     semantic_mean = stat_mean_var["mean"]

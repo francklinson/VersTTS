@@ -168,7 +168,7 @@ else:
     print_success "目录检查完成"
 
     # 构建启动命令
-    local cmd=(python -m uvicorn backend.api_server:app --host "$HOST" --port "$PORT")
+    local cmd=(python -m uvicorn backend.main:app --host "$HOST" --port "$PORT")
     if [ "$RELOAD" = true ]; then
         cmd+=(--reload)
         print_info "开发模式: 已启用自动重载"

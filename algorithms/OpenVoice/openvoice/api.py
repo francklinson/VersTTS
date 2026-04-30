@@ -105,7 +105,18 @@ class ToneColorConverter(OpenVoiceBaseClass):
 
         if enable_watermark:
             import wavmark
-            self.watermark_model = wavmark.load_model().to(self.device)
+            # 使用本地 wavmark 模型路径
+            wavmark_model_path = os.environ.get(
+                'WAVMARK_MODEL_PATH',
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'wavmark_model.pkl')
+            )
+            if os.path.exists(wavmark_model_path):
+                print(f"[OpenVoice] 使用本地 wavmark 模型: {wavmark_model_path}")
+                self.watermark_model = wavmark.load_model(wavmark_model_path).to(self.device)
+            else:
+                print(f"[OpenVoice] 警告: 本地 wavmark 模型不存在: {wavmark_model_path}")
+                print("[OpenVoice] 尝试从 HuggingFace Hub 下载...")
+                self.watermark_model = wavmark.load_model().to(self.device)
         else:
             self.watermark_model = None
         self.version = getattr(self.hps, '_version_', "v1")

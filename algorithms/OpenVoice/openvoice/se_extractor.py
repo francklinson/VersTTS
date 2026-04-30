@@ -13,13 +13,33 @@ import base64
 import librosa
 from whisper_timestamped.transcribe import get_audio_tensor, get_vad_segments
 
+# 模型配置 - 支持本地模型路径
 model_size = "medium"
+# 本地模型路径配置（优先级高于 HuggingFace Hub）
+# 可以通过环境变量 FASTER_WHISPER_MODEL_PATH 设置本地模型路径
+# 默认使用 OpenVoice 目录下的 faster-whisper-large-v3 模型
+local_model_path = os.environ.get(
+    'FASTER_WHISPER_MODEL_PATH',
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'faster-whisper-large-v3')
+)
+
 # Run on GPU with FP16
 model = None
 def split_audio_whisper(audio_path, audio_name, target_dir='processed'):
     global model
     if model is None:
-        model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        # 优先使用本地模型路径
+        if local_model_path and os.path.isdir(local_model_path):
+            print(f"[se_extractor] 使用本地 faster-whisper 模型: {local_model_path}")
+            model = WhisperModel(local_model_path, device="cuda", compute_type="float16")
+        else:
+            # 检查是否离线模式
+            is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1'
+            if is_offline:
+                print("[se_extractor] 警告: 离线模式但本地 faster-whisper 模型未找到")
+                print(f"[se_extractor] 请设置环境变量 FASTER_WHISPER_MODEL_PATH 指向本地模型目录")
+                print(f"[se_extractor] 或使用 huggingface-cli download Systran/faster-whisper-medium 下载模型")
+            model = WhisperModel(model_size, device="cuda", compute_type="float16", local_files_only=is_offline)
     audio = AudioSegment.from_file(audio_path)
     max_len = len(audio)
 
@@ -150,4 +170,3 @@ def get_se(audio_path, vc_model, target_dir='processed', vad=True):
         raise NotImplementedError('No audio segments found!')
     
     return vc_model.extract_se(audio_segs, se_save_path=se_path), audio_name
-

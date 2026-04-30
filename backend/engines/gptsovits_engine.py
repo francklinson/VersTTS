@@ -5,10 +5,11 @@ GPT-SoVITS 模型加载器
 
 import os
 import sys
+import time
 
 import torch
 
-from backend.logger_config import system_logger
+from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, ALGORITHM_PATHS, PROJECT_ROOT
 
 
@@ -45,24 +46,62 @@ def get_gpt_sovits_model(version: str = "v2"):
     """获取或加载GPT-SoVITS模型"""
     key = f"gpt_sovits_{version}"
     if key not in models:
-        import time
-        from backend.logger_config import OperationLogger
         start_time = time.time()
-        OperationLogger.log_model_load(f"GPT-SoVITS-{version}", "开始加载")
+        model_name = f"GPT-SoVITS-{version}"
+        
+        OperationLogger.log_model_load(model_name, "开始加载")
 
         # 设置路径并保存原工作目录
         original_cwd = _setup_gpt_sovits_path()
+        
+        # 确定设备
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # 记录配置信息
+        gpt_sovits_module = ALGORITHM_PATHS['gptsovits_module']
+        pretrained_path = os.path.join(gpt_sovits_module, "pretrained_models")
+        
+        OperationLogger.log_model_load_detail(
+            model_name,
+            "路径确认",
+            model_path=pretrained_path,
+            device=device,
+            extra_info={"版本": version, "G2PW路径": os.environ.get("g2pw_model", "")}
+        )
+        
+        # 计算预训练模型大小
+        if os.path.exists(pretrained_path):
+            total_size = 0
+            file_count = 0
+            for dirpath, dirnames, filenames in os.walk(pretrained_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    total_size += os.path.getsize(fp)
+                    file_count += 1
+            size_gb = total_size / (1024**3)
+            OperationLogger.log_model_load_detail(
+                model_name,
+                "文件检查",
+                model_path=pretrained_path,
+                model_size=f"{size_gb:.2f}GB",
+                extra_info={"文件数": file_count}
+            )
 
         try:
             from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 
             # 加载配置文件
-            config_path = os.path.join(ALGORITHM_PATHS['gptsovits_module'], "configs", "tts_infer.yaml")
+            config_path = os.path.join(gpt_sovits_module, "configs", "tts_infer.yaml")
+            OperationLogger.log_model_load_detail(
+                model_name,
+                "配置加载",
+                model_path=config_path
+            )
+            
             tts_config = TTS_Config(config_path)
 
             # 根据版本选择配置
             if version in tts_config.default_configs:
-                # 使用指定版本的配置
                 tts_config.configs = tts_config.default_configs[version].copy()
                 tts_config.version = version
 
@@ -78,7 +117,17 @@ def get_gpt_sovits_model(version: str = "v2"):
                 tts_config.device = "cpu"
                 tts_config.is_half = False
 
-            system_logger.info(f"【模型加载】GPT-SoVITS 版本: {tts_config.version}, 设备: {tts_config.device}")
+            OperationLogger.log_model_load_detail(
+                model_name,
+                "加载中",
+                device=device,
+                extra_info={
+                    "版本": tts_config.version,
+                    "半精度": tts_config.is_half,
+                    "T2S权重": tts_config.configs.get("t2s_weights_path", "默认"),
+                    "VITS权重": tts_config.configs.get("vits_weights_path", "默认")
+                }
+            )
 
             models[key] = {
                 "config": tts_config,
@@ -88,7 +137,16 @@ def get_gpt_sovits_model(version: str = "v2"):
 
             duration = time.time() - start_time
             gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0
-            OperationLogger.log_model_load(f"GPT-SoVITS-{version}", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
+            
+            OperationLogger.log_model_load_detail(
+                model_name,
+                "完成",
+                device=device,
+                memory_usage=gpu_mem,
+                extra_info={"耗时": f"{duration:.3f}s"}
+            )
+            
+            OperationLogger.log_model_load(model_name, "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
             OperationLogger.log_performance("GPT-SoVITS加载", duration, 0, gpu_mem)
         finally:
             # 恢复工作目录
@@ -101,6 +159,9 @@ def init_gpt_sovits_pipeline(model_info, ref_audio_path: str = None):
     """初始化GPT-SoVITS推理管道"""
     # 设置路径并保存原工作目录
     original_cwd = _setup_gpt_sovits_path()
+    
+    pipeline_start = time.time()
+    version = model_info.get("version", "unknown")
 
     try:
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS
@@ -119,9 +180,23 @@ def init_gpt_sovits_pipeline(model_info, ref_audio_path: str = None):
                 system_logger.info(f"【GPT-SoVITS】版本切换: {cached_version} -> {current_version}")
 
             # 创建新管道
+            OperationLogger.log_model_load_detail(
+                f"GPT-SoVITS-{version}",
+                "管道初始化",
+                extra_info={"版本": current_version}
+            )
+            
             pipeline = TTS(model_info["config"])
             model_info["pipeline"] = pipeline
             model_info["pipeline_version"] = current_version
+            
+            pipeline_duration = time.time() - pipeline_start
+            OperationLogger.log_model_load_detail(
+                f"GPT-SoVITS-{version}",
+                "管道完成",
+                extra_info={"耗时": f"{pipeline_duration:.3f}s"}
+            )
+            
             system_logger.info(f"【GPT-SoVITS】管道初始化完成 | 版本: {current_version}")
 
         if ref_audio_path and os.path.exists(ref_audio_path):

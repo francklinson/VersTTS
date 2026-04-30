@@ -9,8 +9,8 @@ import time
 import requests
 from pathlib import Path
 
-# 项目根目录
-PROJECT_ROOT = Path("/home/zhouchenghao/PycharmProjects/VersTTS")
+# 项目根目录 - 动态获取
+PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # API基础URL

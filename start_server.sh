@@ -161,7 +161,7 @@ else:
 
     # 创建必要目录
     print_step "创建必要目录..."
-    mkdir -p "$SCRIPT_DIR/output"
+    mkdir -p "$SCRIPT_DIR/outputs"
     mkdir -p "$SCRIPT_DIR/uploads"
     mkdir -p "$SCRIPT_DIR/logs"
     mkdir -p "$SCRIPT_DIR/records"

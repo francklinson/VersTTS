@@ -354,8 +354,11 @@ class HParams:
 
 
 if __name__ == "__main__":
-    print(
-        load_wav_to_torch(
-            "/home/fish/wenetspeech/dataset_vq/Y0000022499_wHFSeHEx9CM/S00261.flac",
-        )
-    )
+    # 示例用法 - 使用环境变量或命令行参数指定音频路径
+    import sys
+    if len(sys.argv) > 1:
+        audio_path = sys.argv[1]
+    else:
+        # 使用测试音频路径或当前目录下的示例文件
+        audio_path = os.environ.get("TEST_AUDIO_PATH", "test_audio.wav")
+    print(load_wav_to_torch(audio_path))

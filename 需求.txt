@@ -146,7 +146,7 @@ https://github.com/FireRedTeam/FireRedTTS2
 
 待完成:
 确保该项目在没有huggingface等外部资源的环境下可以在服务器上部署
-
+检查一下每个项目中的模型文件路径,统一转移到 models目录下
 
 后续处理(暂缓):
 CosyVoice要求transformers 4.51.3, 而这个版本的transformers在其他几个项目中都无法使用

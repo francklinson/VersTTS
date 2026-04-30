@@ -53,7 +53,7 @@ class BatchJob:
 class BatchProcessor:
     """批量处理器"""
     
-    def __init__(self, output_dir: str = "output"):
+    def __init__(self, output_dir: str = "outputs"):
         self.output_dir = output_dir
         self.jobs: Dict[str, BatchJob] = {}
         os.makedirs(output_dir, exist_ok=True)

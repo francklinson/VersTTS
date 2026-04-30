@@ -214,61 +214,64 @@ def set_seed(seed: int):
     return seed
 
 
+# 获取GPT-SoVITS模块根目录
+_GPT_SOVITS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 class TTS_Config:
     default_configs = {
         "v1": {
             "device": "cpu",
             "is_half": False,
             "version": "v1",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s2G488k.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s2G488k.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
         "v2": {
             "device": "cpu",
             "is_half": False,
             "version": "v2",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/gsv-v2final-pretrained/s2G2333k.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
         "v3": {
             "device": "cpu",
             "is_half": False,
             "version": "v3",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s1v3.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s2Gv3.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s1v3.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s2Gv3.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
         "v4": {
             "device": "cpu",
             "is_half": False,
             "version": "v4",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s1v3.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/gsv-v4-pretrained/s2Gv4.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s1v3.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/gsv-v4-pretrained/s2Gv4.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
         "v2Pro": {
             "device": "cpu",
             "is_half": False,
             "version": "v2Pro",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s1v3.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s1v3.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/v2Pro/s2Gv2Pro.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
         "v2ProPlus": {
             "device": "cpu",
             "is_half": False,
             "version": "v2ProPlus",
-            "t2s_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/s1v3.ckpt",
-            "vits_weights_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
-            "cnhuhbert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-hubert-base",
-            "bert_base_path": "/home/zhouchenghao/PycharmProjects/VersTTS/algorithms/GPT-SoVITS/GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+            "t2s_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/s1v3.ckpt"),
+            "vits_weights_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/v2Pro/s2Gv2ProPlus.pth"),
+            "cnhuhbert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-hubert-base"),
+            "bert_base_path": os.path.join(_GPT_SOVITS_ROOT, "pretrained_models/chinese-roberta-wwm-ext-large"),
         },
     }
     configs: dict = None

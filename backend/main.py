@@ -16,6 +16,15 @@ import sys
 # 必须在导入任何依赖 HuggingFace 的库之前设置
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# 设置项目内 HuggingFace 缓存目录（优先使用项目内缓存）
+HF_CACHE_PATH = os.path.join(PROJECT_ROOT, "models", "hf_cache")
+if os.path.exists(HF_CACHE_PATH):
+    # 如果项目内有缓存目录，强制使用它
+    os.environ['HF_HOME'] = HF_CACHE_PATH
+    os.environ['HUGGINGFACE_HUB_CACHE'] = HF_CACHE_PATH
+    os.environ['TRANSFORMERS_CACHE'] = os.path.join(PROJECT_ROOT, "models", "transformers_cache")
+    print(f"[配置] 使用项目内 HF 缓存: {HF_CACHE_PATH}")
+
 # 检查是否启用离线模式
 if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1':
     print("[离线部署] 检测到离线模式环境变量，禁用HuggingFace在线访问")
@@ -24,9 +33,9 @@ if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLI
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     os.environ['HF_HUB_DISABLE_DOWNLOADS'] = '1'
 
-# 设置本地缓存目录
+# 打印当前缓存配置
 if 'HF_HOME' in os.environ:
-    print(f"[离线部署] HF_HOME: {os.environ['HF_HOME']}")
+    print(f"[配置] HF_HOME: {os.environ['HF_HOME']}")
 
 # ========== Transformers 兼容性补丁 ==========
 # 必须在导入 transformers 之前加载

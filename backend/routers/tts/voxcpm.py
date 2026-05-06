@@ -17,7 +17,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_voxcpm_model
 from backend.services import get_speaker_by_id
-from backend.core import audio_to_base64
+from backend.core import audio_to_base64, cleanup_memory, log_gpu_memory_usage
 
 router = APIRouter()
 
@@ -31,6 +31,7 @@ async def tts_voxcpm(
         ref_text: Optional[str] = Form(None),
         voice_design_prompt: Optional[str] = Form(None),
         clone_speaker_id: Optional[str] = Form(None),
+        control_prompt: Optional[str] = Form(None),  # clone模式的控制指令
         cfg_value: float = Form(2.0),
         inference_timesteps: int = Form(10),
         output_format: str = Form("url")
@@ -108,17 +109,24 @@ async def tts_voxcpm(
 
         elif mode == "clone" and ref_path:
             # clone模式: 使用Reference-only mode进行声音克隆
-            generate_kwargs["text"] = text
+            # 如果有控制指令，将控制指令添加到文本前面
+            if control_prompt:
+                generate_kwargs["text"] = f"({control_prompt}){text}"
+                system_logger.info(f"【VoxCPM】声音克隆模式 | 控制指令: {control_prompt}")
+            else:
+                generate_kwargs["text"] = text
+                system_logger.info(f"【VoxCPM】声音克隆模式 (无控制指令)")
+
             if is_v2:
                 # VoxCPM2: 使用 reference_wav_path (Reference-only mode)
                 generate_kwargs["reference_wav_path"] = ref_path
-                system_logger.info(f"【VoxCPM】声音克隆模式 (Reference-only)")
+                system_logger.info(f"【VoxCPM】Reference-only mode")
             else:
                 # VoxCPM v1: 只能使用 prompt_wav_path (Continuation mode)
                 generate_kwargs["prompt_wav_path"] = ref_path
                 if speaker_ref_text:
                     generate_kwargs["prompt_text"] = speaker_ref_text
-                system_logger.info(f"【VoxCPM】声音克隆模式 (Continuation - VoxCPM v1)")
+                system_logger.info(f"【VoxCPM】Continuation mode (VoxCPM v1)")
 
         elif mode == "ultimate_clone" and ref_path:
             # ultimate_clone模式: 使用Combined mode进行极致克隆
@@ -156,6 +164,11 @@ async def tts_voxcpm(
         sf.write(audio_path, audio_data, samplerate=48000)
         file_size = os.path.getsize(audio_path)
         system_logger.info(f"【VoxCPM】音频保存完成: {audio_path} | 大小: {file_size / 1024:.2f} KB")
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            cleanup_memory()
+            log_gpu_memory_usage("VoxCPM")
 
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("VoxCPM", text, {

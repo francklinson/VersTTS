@@ -7,11 +7,12 @@ import os
 from datetime import datetime
 from typing import Optional
 
+import torch
 from fastapi import APIRouter, Form, UploadFile, File, HTTPException
 
 from backend.logger_config import system_logger
 from backend.config import models, DEFAULT_F5TTS_REF_ZH, DEFAULT_F5TTS_REF_EN, DEFAULT_F5TTS_TEXT_ZH, DEFAULT_F5TTS_TEXT_EN
-from backend.core import save_temp_audio, audio_to_base64
+from backend.core import save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 from backend.engines import get_f5tts_model
 from backend.services import load_speakers_db
 from backend.models import TTSResponse
@@ -97,6 +98,11 @@ async def tts_f5tts(
         # 清理临时参考音频
         if is_temp and os.path.exists(ref_path):
             os.remove(ref_path)
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            cleanup_memory()
+            log_gpu_memory_usage("F5-TTS")
 
         if output_format == "base64":
             audio_b64 = audio_to_base64(audio_path)

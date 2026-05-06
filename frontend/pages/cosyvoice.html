@@ -56,8 +56,8 @@
                 <div id="statusMessage" class="status-message"></div>
 
                 <div class="mode-tabs">
-                    <button class="mode-tab active" onclick="switchMode('zero_shot')">零样本克隆</button>
-                    <button class="mode-tab" onclick="switchMode('instruct')">指令控制</button>
+                    <button class="mode-tab active" onclick="switchCosyMode('zero_shot', this)">零样本克隆</button>
+                    <button class="mode-tab" onclick="switchCosyMode('instruct', this)">指令控制</button>
                 </div>
 
                 <div id="mode-zero_shot" class="mode-content active">
@@ -91,11 +91,7 @@
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本..."></textarea>
                 </div>
 
-                <div class="warning-box" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #e65100;">
-                    ⚠️ 由于环境配置冲突，当前功能不可用，待后续开放
-                </div>
-
-                <button class="btn-generate cosyvoice" id="generateBtn" onclick="generateTTS()" disabled style="opacity: 0.6; cursor: not-allowed;">
+                <button class="btn-generate cosyvoice" id="generateBtn" onclick="generateTTS()">
                     <span id="btnText">🎙️ 生成语音</span>
                 </button>
 
@@ -111,6 +107,23 @@
     <script src="../assets/js/common.js"></script>
     <script>
         let currentMode = 'zero_shot';
+
+        // 自定义模式切换函数，避免与 common.js 中的 switchMode 冲突
+        function switchCosyMode(mode, element) {
+            currentMode = mode;
+            
+            // 更新标签样式
+            document.querySelectorAll('.mode-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            element.classList.add('active');
+            
+            // 更新内容显示
+            document.querySelectorAll('.mode-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById('mode-' + mode).classList.add('active');
+        }
 
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();

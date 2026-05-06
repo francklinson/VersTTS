@@ -11,7 +11,7 @@ from fastapi import APIRouter, Form, Request, HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models
-from backend.core import preprocess_text_for_chattts, save_temp_audio, audio_to_base64
+from backend.core import preprocess_text_for_chattts, save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 from backend.engines import get_chattts_model
 from backend.models import TTSResponse
 
@@ -96,6 +96,12 @@ async def tts_chattts(
         # 保存音频
         sr = 24000
         audio_path = save_temp_audio(audio_data, sr)
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            del wavs, audio_data
+            cleanup_memory()
+            log_gpu_memory_usage("ChatTTS")
 
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("ChatTTS", text, {

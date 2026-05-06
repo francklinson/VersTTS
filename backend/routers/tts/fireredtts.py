@@ -15,7 +15,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_fireredtts2_model
 from backend.services import get_speaker_by_id
-from backend.core import audio_to_base64
+from backend.core import audio_to_base64, cleanup_memory, log_gpu_memory_usage
 
 router = APIRouter()
 
@@ -117,6 +117,12 @@ async def tts_fireredtts(
         # 清理临时文件（仅清理上传的临时文件，不清理说话人管理中的文件）
         if ref_path and ref_path.startswith("uploads/") and os.path.exists(ref_path):
             os.remove(ref_path)
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            del audio
+            cleanup_memory()
+            log_gpu_memory_usage("FireRedTTS2")
 
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("FireRedTTS2", text, {

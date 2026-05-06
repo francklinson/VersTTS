@@ -99,6 +99,13 @@
                             ⚠️ 暂无可用说话人，请先添加说话人
                         </div>
                     </div>
+                    <div class="voice-design-section" style="margin-top: 15px;">
+                        <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">
+                            🎛️ 控制指令（可选）
+                        </label>
+                        <textarea id="cloneControlPrompt" placeholder="用自然语言描述风格控制，例如：稍快一点，欢快的语气...（留空则使用参考音频原风格）"></textarea>
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">控制语速、情绪、风格等，为空则保持参考音频原风格</p>
+                    </div>
                 </div>
 
                 <div id="mode-ultimate_clone" class="mode-content">
@@ -129,20 +136,6 @@
                 <div class="input-section">
                     <label for="textInput">生成文本</label>
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本，支持30种语言..."></textarea>
-                </div>
-
-                <div class="param-section">
-                    <label style="font-weight: 600; margin-bottom: 15px; display: block;">生成参数</label>
-                    <div class="param-grid">
-                        <div class="param-item">
-                            <label for="cfgValue">CFG值</label>
-                            <input type="number" id="cfgValue" value="2.0" min="0.5" max="5.0" step="0.1">
-                        </div>
-                        <div class="param-item">
-                            <label for="timesteps">推理步数</label>
-                            <input type="number" id="timesteps" value="10" min="1" max="50" step="1">
-                        </div>
-                    </div>
                 </div>
 
                 <button class="btn-generate voxcpm" id="generateBtn" onclick="generateTTS()">
@@ -272,8 +265,9 @@
 
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
-            const cfgValue = document.getElementById('cfgValue').value;
-            const timesteps = document.getElementById('timesteps').value;
+            // 使用默认生成参数
+            const cfgValue = 2.0;
+            const timesteps = 10;
 
             if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
 
@@ -311,6 +305,12 @@
                 } else if (currentMode === 'clone') {
                     console.log('【VoxCPM调试】clone模式 - speaker_id:', selectedSpeakerId.clone);
                     formData.append('clone_speaker_id', selectedSpeakerId.clone);
+                    // 添加控制指令（可选）
+                    const controlPrompt = document.getElementById('cloneControlPrompt').value.trim();
+                    if (controlPrompt) {
+                        formData.append('control_prompt', controlPrompt);
+                        console.log('【VoxCPM调试】clone模式 - 控制指令:', controlPrompt);
+                    }
                 } else if (currentMode === 'ultimate_clone') {
                     console.log('【VoxCPM调试】ultimate_clone模式 - speaker_id:', selectedSpeakerId.ultimate);
                     formData.append('clone_speaker_id', selectedSpeakerId.ultimate);

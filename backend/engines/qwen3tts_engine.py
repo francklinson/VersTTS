@@ -18,7 +18,7 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
     """获取或加载Qwen3-TTS模型
     
     Args:
-        model_size: 模型大小 "0.6B" 或 "1.7B"
+        model_size: 模型大小，仅支持 "1.7B"（0.6B已弃用）
         model_type: 模型类型 "Base", "CustomVoice", "VoiceDesign"
     """
     # 检查 transformers 版本
@@ -38,10 +38,14 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
         OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}-{model_type}", "开始加载")
 
         from qwen_tts import Qwen3TTSModel
+        # 注：0.6B模型已弃用，仅保留1.7B支持
         size_map = {
-            "0.6B": "0___6B",
             "1.7B": "1___7B"
         }
+        # 如果传入0.6B，自动映射到1.7B（向后兼容）
+        if model_size == "0.6B":
+            system_logger.warning("0.6B模型已弃用，自动使用1.7B模型")
+            model_size = "1.7B"
         size_str = size_map.get(model_size, model_size.replace('.', '___'))
         model_path = os.path.join(ALGORITHM_PATHS['qwen3tts'], "models", "Qwen",
                                   f"Qwen3-TTS-12Hz-{size_str}-{model_type}")

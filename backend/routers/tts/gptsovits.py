@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request, HTTPException
 import torch
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models
-from backend.core import normalize_audio_volume, save_temp_audio, audio_to_base64
+from backend.core import normalize_audio_volume, save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 from backend.engines import get_gpt_sovits_model, init_gpt_sovits_pipeline
 from backend.services import get_speaker_by_id
 from backend.models import TTSResponse
@@ -115,19 +115,25 @@ async def tts_gptsovits(request: Request):
         tts_generator = pipeline.run(req)
         sr, audio_data = next(tts_generator)
         infer_duration = time.time() - infer_start
-        
+
         # 音量归一化
         audio_data = normalize_audio_volume(audio_data)
-        
+
         # 保存音频
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         audio_path = f"outputs/gptsovits_{timestamp}.wav"
         sf.write(audio_path, audio_data, sr)
-        
+
         # 清理临时参考音频
         if not clone_speaker_id and ref_path and os.path.exists(ref_path) and ref_path.startswith("uploads/"):
             os.remove(ref_path)
-        
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            del tts_generator
+            cleanup_memory()
+            log_gpu_memory_usage("GPT-SoVITS")
+
         audio_size = os.path.getsize(audio_path)
         OperationLogger.log_file_operation("保存音频", audio_path, audio_size, "成功")
         

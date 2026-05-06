@@ -7,11 +7,12 @@ import os
 import tempfile
 from typing import Optional
 
+import torch
 from fastapi import APIRouter, Form, UploadFile, File, HTTPException
 
 from backend.logger_config import system_logger
 from backend.config import models
-from backend.core import save_temp_audio, audio_to_base64
+from backend.core import save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 from backend.engines import get_cosyvoice_model
 from backend.services import load_speakers_db
 from backend.models import TTSResponse
@@ -81,13 +82,73 @@ async def tts_cosyvoice(
                         os.remove(tmp_path)
             else:
                 raise HTTPException(status_code=400, detail="zero_shot模式需要提供clone_speaker_id或上传参考音频")
+                
+        elif mode == "instruct":
+            if not instruct_text:
+                raise HTTPException(status_code=400, detail="instruct模式需要提供instruct_text指令文本")
+            
+            # CosyVoice3 需要使用 inference_instruct2 方法（基于参考音频）
+            # 而不是 inference_instruct（基于预设音色）
+            
+            # 获取参考音频路径
+            prompt_wav_path = None
+            if clone_speaker_id:
+                db = load_speakers_db()
+                speaker = None
+                for s in db.get("speakers", []):
+                    if s["id"] == clone_speaker_id:
+                        speaker = s
+                        break
+
+                if not speaker:
+                    raise HTTPException(status_code=404, detail=f"说话人不存在: {clone_speaker_id}")
+
+                audio_path = speaker.get("audio_path")
+                if not audio_path or not os.path.exists(audio_path):
+                    raise HTTPException(status_code=404, detail=f"说话人音频文件不存在")
+                prompt_wav_path = audio_path
+            elif prompt_wav:
+                # 上传的音频文件
+                file_content = prompt_wav.file.read()
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_file.write(file_content)
+                    prompt_wav_path = tmp_file.name
+            else:
+                raise HTTPException(status_code=400, detail="instruct模式需要提供clone_speaker_id或上传参考音频")
+            
+            try:
+                # 格式化指令文本
+                # 注意: <|endofprompt|> 必须在指令文本末尾，用于分隔指令和实际内容
+                formatted_instruct = f"You are a helpful assistant.{instruct_text}<|endofprompt|>"
+                system_logger.info(f"Instruct模式 - 原文: {text[:50]}... 指令: {formatted_instruct}")
+                # 使用 inference_instruct2 方法
+                model_output = cosyvoice.inference_instruct2(text, formatted_instruct, prompt_wav_path, stream=False)
+            finally:
+                # 如果是临时文件则删除
+                if prompt_wav and os.path.exists(prompt_wav_path):
+                    os.remove(prompt_wav_path)
+            
         else:
             raise HTTPException(status_code=400, detail=f"不支持的模式: {mode}")
 
-        # 保存音频
+        # 处理 generator 输出
+        # CosyVoice 返回的是 generator，需要遍历获取结果
+        output_list = list(model_output)
+        if not output_list:
+            raise HTTPException(status_code=500, detail="模型未返回音频数据")
+        
+        # 获取第一个输出结果
+        first_output = output_list[0]
         sr = 22050
-        audio_data = model_output['tts_speech'].numpy().squeeze()
+        audio_data = first_output['tts_speech'].numpy().squeeze()
         audio_path = save_temp_audio(audio_data, sr)
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            del first_output
+            del output_list
+            cleanup_memory()
+            log_gpu_memory_usage("CosyVoice")
 
         if output_format == "base64":
             audio_b64 = audio_to_base64(audio_path)

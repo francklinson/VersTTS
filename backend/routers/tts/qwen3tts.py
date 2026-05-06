@@ -5,6 +5,7 @@ Qwen3-TTS 路由
 
 import os
 import time
+import torch
 import transformers
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
@@ -13,7 +14,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse, Qwen3TTSModelStatus
 from backend.engines import get_qwen3tts_model
 from backend.services import load_speakers_db
-from backend.core import save_temp_audio, audio_to_base64
+from backend.core import save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ async def tts_qwen3tts(
         language: str = Form("zh"),
         model_size: str = Form("1.7B"),
         mode: str = Form("voice_clone"),
+        # 注意：0.6B模型已弃用，传入任意值都将使用1.7B模型
         speaker: Optional[str] = Form(None),
         clone_speaker_id: Optional[str] = Form(None),
         ref_audio: Optional[str] = Form(None),
@@ -223,6 +225,12 @@ async def tts_qwen3tts(
 
         audio_path = save_temp_audio(audio_data, sr)
 
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            del audio_data, wav
+            cleanup_memory()
+            log_gpu_memory_usage("Qwen3-TTS")
+
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("Qwen3-TTS", text, {
             "model_size": model_size,
@@ -268,8 +276,8 @@ async def qwen3tts_status():
 
         return Qwen3TTSModelStatus(
             available=meets_req,
-            model_size="1.7B",
-            model_type="Base",
+            model_size="1.7B (仅支持)",
+            model_type="Base/CustomVoice/VoiceDesign",
             transformers_version=transformers.__version__,
             meets_requirement=meets_req,
             message="模型可用" if meets_req else f"需要 transformers >= 4.57.0，当前为 {transformers.__version__}"

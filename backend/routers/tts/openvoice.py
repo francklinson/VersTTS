@@ -14,7 +14,7 @@ from typing import Optional
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_openvoice_models
-from backend.core import save_temp_audio, audio_to_base64
+from backend.core import save_temp_audio, audio_to_base64, cleanup_memory, log_gpu_memory_usage
 
 router = APIRouter()
 
@@ -103,6 +103,11 @@ async def tts_openvoice(
             os.remove(src_path)
         if is_temp and ref_path and os.path.exists(ref_path):
             os.remove(ref_path)
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            cleanup_memory()
+            log_gpu_memory_usage("OpenVoice")
 
         infer_duration = time.time() - infer_start
 

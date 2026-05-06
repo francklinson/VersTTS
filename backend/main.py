@@ -92,7 +92,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Session-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"]
 )
+
+# 并发控制中间件
+from backend.core.concurrency import concurrency_middleware
+app.middleware("http")(concurrency_middleware)
 
 # 注册 API 路由
 app.include_router(api_router)

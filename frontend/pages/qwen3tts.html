@@ -54,26 +54,25 @@
                 <div class="model-badge"><span>🐝</span><span>Qwen3-TTS</span></div>
 
                 <div class="info-box">
-                    💡 Qwen3-TTS 支持 30+ 种语言。<br>
-                    • <b>0.6B 模型</b>：声音克隆、预设音色（9种预设音色）<br>
-                    • <b>1.7B 模型</b>：声音克隆、预设音色、音色设计（支持指令控制）
+                    💡 Qwen3-TTS 支持 30+ 种语言，提供 3 种生成功能：<br>
+                    • <b>声音克隆</b>：使用说话人管理中的参考音频克隆声音<br>
+                    • <b>预设音色</b>：9 种高质量预设音色（含方言）<br>
+                    • <b>音色设计</b>：通过自然语言描述创建自定义音色（支持指令控制）
                 </div>
 
                 <div id="statusMessage" class="status-message"></div>
 
                 <div class="param-section">
-                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">模型大小</label>
+                    <label style="font-weight: 600; margin-bottom: 10px; display: block;">模型配置</label>
                     <div class="model-size-selector">
                         <label class="model-size-option">
-                            <input type="radio" name="modelSize" value="0.6B" checked onchange="updateModeTabs()">
-                            <span>0.6B (快速)</span>
-                        </label>
-                        <label class="model-size-option">
-                            <input type="radio" name="modelSize" value="1.7B" onchange="updateModeTabs()">
-                            <span>1.7B (高质量)</span>
+                            <input type="radio" name="modelSize" value="1.7B" checked onchange="updateModeTabs()">
+                            <span>1.7B 模型（推荐）</span>
                         </label>
                     </div>
-                    <p id="modelCapability" style="font-size: 0.85rem; color: #666; margin-top: 8px;"></p>
+                    <p id="modelCapability" style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+                        1.7B 模型支持：声音克隆、预设音色、音色设计（支持指令控制）
+                    </p>
                 </div>
 
                 <div class="mode-tabs" id="modeTabs">
@@ -146,17 +145,8 @@
         let currentMode = 'voice_clone';
         let selectedSpeaker = null;
 
-        // 模型能力配置
+        // 模型能力配置（仅支持1.7B模型）
         const modelCapabilities = {
-            '0.6B': {
-                modes: ['voice_clone', 'custom_voice'],
-                modesDisplay: {
-                    'voice_clone': '声音克隆 (Base)',
-                    'custom_voice': '预设音色 (CustomVoice)'
-                },
-                instruct: false,
-                description: '0.6B 模型支持：声音克隆、预设音色（不支持指令控制）'
-            },
             '1.7B': {
                 modes: ['voice_clone', 'custom_voice', 'voice_design'],
                 modesDisplay: {
@@ -200,7 +190,11 @@
             }
 
             // 显示/隐藏指令控制区域
-            if (capability.instruct) {
+            // 注意：只有 custom_voice 模式支持额外的指令控制
+            // voice_design 模式的音色描述本身就是指令，不需要额外的指令控制
+            // voice_clone 模式使用 Base 模型，不支持指令控制
+            const instructSupportedModes = ['custom_voice'];
+            if (capability.instruct && instructSupportedModes.includes(currentMode)) {
                 instructSection.style.cssText = 'display: block !important;';
             } else {
                 instructSection.style.cssText = 'display: none !important;';
@@ -224,6 +218,27 @@
                 // 切换到其他模式时，保留 selectedSpeaker 以便切换回来时使用
                 // 但清除选中状态显示
                 document.querySelectorAll('.speaker-card').forEach(c => c.classList.remove('selected'));
+            }
+            
+            // 更新指令控制区域的显示状态
+            updateInstructSection();
+        }
+        
+        // 更新指令控制区域显示
+        function updateInstructSection() {
+            const modelSize = document.querySelector('input[name="modelSize"]:checked').value;
+            const capability = modelCapabilities[modelSize];
+            const instructSection = document.getElementById('instructSection');
+            
+            // 只有 custom_voice 模式支持额外的指令控制
+            // voice_design 模式的音色描述本身就是指令，不需要额外的指令控制
+            // voice_clone 模式使用 Base 模型，不支持指令控制
+            const instructSupportedModes = ['custom_voice'];
+            if (capability.instruct && instructSupportedModes.includes(currentMode)) {
+                instructSection.style.cssText = 'display: block !important;';
+            } else {
+                instructSection.style.cssText = 'display: none !important;';
+                document.getElementById('instructText').value = '';
             }
         }
 

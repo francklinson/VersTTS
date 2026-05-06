@@ -11,6 +11,8 @@ from .tts import router as tts_router
 from .batch import router as batch_router
 from .reference_voices import router as reference_voices_router
 from .recording_scripts import router as recording_scripts_router
+from .system import router as system_router
+from .concurrency import router as concurrency_router
 
 # 主路由
 router = APIRouter()
@@ -22,5 +24,7 @@ router.include_router(tts_router, prefix="/tts", tags=["TTS"])
 router.include_router(batch_router, prefix="/tts/batch", tags=["Batch"])
 router.include_router(reference_voices_router, prefix="/reference_voices", tags=["Reference Voices"])
 router.include_router(recording_scripts_router, prefix="/recording_scripts", tags=["Recording Scripts"])
+router.include_router(system_router, prefix="/system", tags=["System"])
+router.include_router(concurrency_router, prefix="/concurrency", tags=["Concurrency"])
 
 __all__ = ['router']

@@ -14,7 +14,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_indextts_model
 from backend.services import get_speaker_by_id
-from backend.core import audio_to_base64
+from backend.core import audio_to_base64, cleanup_memory, log_gpu_memory_usage
 
 router = APIRouter()
 
@@ -109,6 +109,11 @@ async def tts_indextts(
         if is_temp and ref_path and os.path.exists(ref_path):
             os.remove(ref_path)
             system_logger.info(f"【IndexTTS2】清理临时文件: {ref_path}")
+
+        # 清理显存 - 防止内存泄漏
+        if torch.cuda.is_available():
+            cleanup_memory()
+            log_gpu_memory_usage("IndexTTS2")
 
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("IndexTTS", text, {

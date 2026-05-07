@@ -258,8 +258,16 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 累计释放: ~7.5GB
 - 工作记录: records/2026-05-07_00-05-00_彻底清理GPT-SoVITS所有模型文件.md
 
+[54]VoxCPM的音色克隆和极致克隆功能在各自的页面上描述 - 已完成
+- 声音克隆模式: 添加Reference-only模式说明，绿色信息框
+- 极致克隆模式: 添加Combined模式说明，橙色信息框
+- 修改文件: frontend/pages/voxcpm.html
+- 工作记录: records/2026-05-07_10-30-00_VoxCPM_添加克隆模式功能描述.md
+
 
 待办
+无
+
 
 
 其他:

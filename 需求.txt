@@ -264,6 +264,12 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 修改文件: frontend/pages/voxcpm.html
 - 工作记录: records/2026-05-07_10-30-00_VoxCPM_添加克隆模式功能描述.md
 
+[55]更新项目文档 README.md requirements.txt requirements_full.txt - 已完成
+- README.md: 全面更新，反映当前前端可用算法(Qwen3-TTS/VoxCPM)，添加并发控制等功能说明
+- requirements.txt: 更新transformers版本为4.51.3
+- requirements_full.txt: 更新transformers版本为4.51.3
+- 工作记录: records/2026-05-07_10-35-00_更新项目文档.md
+
 
 待办
 无

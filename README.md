@@ -3,11 +3,11 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/CUDA-支持-green.svg" alt="CUDA Support">
-  <img src="https://img.shields.io/badge/支持-8种TTS算法-orange.svg" alt="8 TTS Algorithms">
+  <img src="https://img.shields.io/badge/支持-9种TTS算法-orange.svg" alt="9 TTS Algorithms">
   <img src="https://img.shields.io/badge/许可-Apache%202.0-yellow.svg" alt="License">
 </p>
 
-VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 8 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
+VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 9 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
 
 ---
 
@@ -39,6 +39,7 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 - **Web界面**: 美观的现代化 Web 交互界面
 - **统一API**: RESTful API 设计，易于集成
 - **说话人管理**: 统一管理参考人声，多算法共享音色库
+- **并发控制**: GPU 资源锁 + 速率限制 + 任务队列
 
 ### 技术特点
 
@@ -47,31 +48,40 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 - 模型文件本地化管理（非 .cache 目录）
 - 完善的日志系统
 - 内置登录认证（默认: admin / tp123456）
+- 内存泄漏防护与显存自动释放
+- 多用户并发访问支持
 
 ---
 
 ## 🎙️ 支持的TTS算法
 
-| 算法 | 能力 | 音色克隆 | 预设音色 | 指令控制 | 流式 | 中文效果 |
-|------|------|----------|----------|----------|------|----------|
-| **Qwen3-TTS** | 全功能 | ✅ (3秒) | 9种 | ✅ | ✅ (97ms) | 优秀 |
-| **GPT-SoVITS** | 克隆专用 | ✅ 优秀 | ❌ | ❌ | ❌ | 优秀 |
-| **CosyVoice** | 全功能 | ✅ | ✅ | 有限 | ✅ | 优秀 |
-| **ChatTTS** | 对话优化 | ✅ | ❌ | 有限 | ❌ | 优秀 |
-| **F5-TTS** | 克隆专用 | ✅ | ❌ | 有限 | ❌ | 良好 |
-| **OpenVoice** | 克隆专用 | ✅ | ❌ | ❌ | ❌ | 良好 |
-| **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 |
-| **IndexTTS** | 全功能 | ✅ | ❌ | 有限 | ❌ | 优秀 |
-| **FireRedTTS2** | 对话优化 | ✅ | ❌ | ❌ | ❌ | 优秀 |
+### 当前前端可用算法
+
+| 算法 | 能力 | 音色克隆 | 预设音色 | 指令控制 | 流式 | 中文效果 | 状态 |
+|------|------|----------|----------|----------|------|----------|------|
+| **Qwen3-TTS** | 全功能 | ✅ (3秒) | 9种 | ✅ | ✅ (97ms) | 优秀 | 🟢 前端可用 |
+| **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 | 🟢 前端可用 |
+
+### 后端API可用算法（前端已隐藏）
+
+| 算法 | 能力 | 音色克隆 | 预设音色 | 状态 |
+|------|------|----------|----------|------|
+| **GPT-SoVITS** | 克隆专用 | ✅ 优秀 | ❌ | 🔴 前端已屏蔽 |
+| **CosyVoice** | 全功能 | ✅ | ✅ | 🔴 前端已隐藏 |
+| **ChatTTS** | 对话优化 | ✅ | ❌ | 🔴 前端已屏蔽 |
+| **F5-TTS** | 克隆专用 | ✅ | ❌ | 🔴 前端已屏蔽 |
+| **OpenVoice** | 克隆专用 | ✅ | ❌ | 🔴 前端已屏蔽 |
+| **IndexTTS** | 全功能 | ✅ | ❌ | 🔴 前端已屏蔽 |
+| **FireRedTTS2** | 对话优化 | ✅ | ❌ | 🔴 前端已屏蔽 |
+
+> **说明**: 被屏蔽的算法仍可通过后端 API 调用，前端界面暂时隐藏以优化用户体验。
 
 ### 算法选择建议
 
-- **需要流式低延迟**: 选择 Qwen3-TTS、CosyVoice
+- **需要流式低延迟**: 选择 Qwen3-TTS
 - **需要音色设计**: 选择 Qwen3-TTS (VoiceDesign)、VoxCPM
-- **最佳克隆效果**: 选择 GPT-SoVITS、VoxCPM
-- **对话场景**: 选择 ChatTTS、FireRedTTS2
-- **轻量部署**: 选择 F5-TTS、OpenVoice
-- **极致克隆**: 选择 VoxCPM (Ultimate Clone)
+- **最佳克隆效果**: 选择 VoxCPM (Ultimate Clone)
+- **方言支持**: Qwen3-TTS (北京话、四川话)、VoxCPM (30种语言+9种方言)
 
 ---
 
@@ -79,7 +89,7 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ```
 VersTTS/
-├── algorithms/              # 八种TTS算法目录
+├── algorithms/              # 九种TTS算法目录
 │   ├── ChatTTS/            # ChatTTS 项目
 │   ├── CosyVoice/          # CosyVoice 项目
 │   ├── F5-TTS/             # F5-TTS 项目
@@ -92,31 +102,31 @@ VersTTS/
 │
 ├── backend/                 # 后端服务
 │   ├── api_server.py       # 统一API服务主文件
-│   ├── logger_config.py    # 日志配置
+│   ├── core/               # 核心模块
+│   │   ├── concurrency.py  # 并发控制
+│   │   └── memory_utils.py # 内存管理
+│   ├── routers/            # API路由
 │   └── ...
 │
 ├── frontend/                # 前端界面
-│   ├── app.html            # 主应用页面
 │   ├── login.html          # 登录页面
-│   └── ...
+│   ├── index.html          # 主页面
+│   └── pages/              # 各算法页面
 │
 ├── test_scripts/            # 测试脚本
 │   ├── test_all_tts.py     # 统一测试入口
-│   ├── test_chattts.py
-│   ├── test_cosyvoice.py
-│   ├── test_f5_tts.py
-│   ├── test_fireredtts2.py
-│   ├── test_gpt_sovits.py
-│   ├── test_indextts.py
-│   ├── test_openvoice.py
-│   ├── test_qwen3_tts.py
-│   └── test_voxcpm.py
+│   └── ...
+│
+├── scripts/                 # 工具脚本
+│   ├── batch_tts_client.py # 批量TTS客户端
+│   └── examples/           # 示例文件
 │
 ├── logs/                    # 日志文件目录
 ├── records/                 # 工作记录文档
+├── outputs/                 # 音频输出目录
 ├── models/                  # 模型文件存放目录
 ├── requirements.txt         # Python依赖
-└── readme.md               # 项目说明文档
+└── README.md               # 项目说明文档
 ```
 
 ---
@@ -167,21 +177,28 @@ pip install flash-attn --no-build-isolation
 # Qwen3-TTS 模型下载示例
 modelscope download --model Qwen/Qwen3-TTS-12Hz-1.7B-Base --local_dir ./models/Qwen3-TTS-12Hz-1.7B-Base
 
+# VoxCPM 模型下载示例
+modelscope download --model OpenBMB/VoxCPM-2B --local_dir ./models/VoxCPM-2B
+
 # 其他模型请参考各算法目录下的 readme.md
 ```
 
 ### 5. 启动服务
 
 ```bash
-# 启动后端API服务
-python backend/api_server.py
+# 使用启动脚本
+./start_server.sh start    # 启动服务
+./start_server.sh stop     # 停止服务
+./start_server.sh restart  # 重启服务
+./start_server.sh status   # 查看状态
 
-# 或启动前端页面 (直接打开 frontend/login.html 或 frontend/app.html)
+# 或手动启动
+python backend/api_server.py
 ```
 
 ### 6. 访问系统
 
-- 前端界面: 打开 `frontend/login.html`
+- 前端界面: http://localhost:8000/static/login.html
 - 默认账号: `admin` / `tp123456`
 - API文档: http://localhost:8000/docs
 
@@ -237,12 +254,12 @@ python test_scripts/test_all_tts.py
 
 ### Web界面使用
 
-1. **登录系统**: 访问 `frontend/login.html`，使用默认账号登录
+1. **登录系统**: 访问 `http://localhost:8000/static/login.html`，使用默认账号登录
 2. **选择算法**: 在主页面选择想要使用的 TTS 算法
 3. **输入文本**: 在文本框中输入要合成的内容
 4. **配置参数**:
    - 选择预设音色（如支持）
-   - 上传参考音频进行克隆（如支持）
+   - 选择说话人进行克隆（如支持）
    - 调整生成参数
 5. **生成语音**: 点击生成按钮，等待结果
 6. **批量处理**: 支持批量上传文本文件，批量下载生成的音频
@@ -253,14 +270,13 @@ python test_scripts/test_all_tts.py
 import requests
 
 # API端点
-url = "http://localhost:8000/tts"
+url = "http://localhost:8000/tts/qwen3-tts"
 
 # 请求参数
 data = {
-    "algorithm": "qwen3-tts",
     "text": "你好，这是语音合成测试。",
-    "speaker": "Vivian",  # 预设音色
-    "language": "Chinese"
+    "speaker_id": "Vivian",  # 预设音色
+    "mode": "sft"
 }
 
 # 发送请求
@@ -276,19 +292,26 @@ with open("output.wav", "wb") as f:
 ```python
 import requests
 
-url = "http://localhost:8000/tts/clone"
+url = "http://localhost:8000/tts/voxcpm"
 
-# 上传参考音频进行克隆
-files = {
-    "ref_audio": open("reference.wav", "rb")
-}
+# 使用说话人ID进行克隆
 data = {
-    "algorithm": "gpt-sovits",
     "text": "使用参考音频的声音说这句话。",
-    "ref_text": "参考音频对应的文本内容"
+    "mode": "clone",
+    "clone_speaker_id": "speaker_001"
 }
 
-response = requests.post(url, files=files, data=data)
+response = requests.post(url, data=data)
+```
+
+### 批量TTS生成
+
+```bash
+# 使用批量TTS客户端
+python scripts/batch_tts_client.py \
+    --input scripts/examples/sample_texts.csv \
+    --algorithm qwen3-tts \
+    --output ./batch_output/
 ```
 
 ---
@@ -300,40 +323,15 @@ response = requests.post(url, files=files, data=data)
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/` | GET | 服务状态检查 |
-| `/tts` | POST | 文本转语音（预设音色） |
-| `/tts/clone` | POST | 音色克隆 |
+| `/tts/{algorithm}` | POST | 文本转语音（各算法端点） |
 | `/algorithms` | GET | 获取支持的算法列表 |
-| `/speakers/{algorithm}` | GET | 获取指定算法的预设音色 |
+| `/speakers` | GET/POST | 说话人管理 |
+| `/system/gpu-memory` | GET | GPU显存状态 |
+| `/concurrency/status` | GET | 并发状态查询 |
 
-### 请求参数说明
+### 完整API文档
 
-#### TTS请求 (POST /tts)
-
-```json
-{
-  "algorithm": "qwen3-tts",      // 算法名称
-  "text": "要合成的文本",         // 必填
-  "speaker": "Vivian",           // 预设音色（可选）
-  "language": "Chinese",         // 语言（可选，默认Auto）
-  "instruct": "语气描述",         // 指令控制（可选）
-  "speed": 1.0,                  // 语速（可选）
-  "temperature": 0.9             // 随机性（可选）
-}
-```
-
-#### 音色克隆请求 (POST /tts/clone)
-
-```json
-{
-  "algorithm": "gpt-sovits",
-  "text": "要合成的文本",
-  "ref_text": "参考音频的文本内容"  // 部分算法需要
-}
-```
-
-同时需要在 FormData 中上传 `ref_audio` 文件。
-
-完整 API 文档可在启动服务后访问: http://localhost:8000/docs
+启动服务后访问: http://localhost:8000/docs
 
 ---
 
@@ -375,71 +373,40 @@ response = requests.post(url, files=files, data=data)
 
 ## 🖥️ 前端功能
 
-### 各算法前端功能实现状态
+### 当前前端可用算法功能
 
-| 算法 | 功能 | 实现状态 | 完整度 |
-|------|------|----------|--------|
-| **CosyVoice** | SFT模式(预训练音色) | ✅ 已实现 | 95% |
-| | Zero-shot克隆 | ✅ 已实现 | |
-| | Cross-lingual跨语言 | ✅ 已实现 | |
-| | Instruct指令控制 | ✅ 已实现 | |
-| | 流式生成开关 | ⚠️ 后端支持，待添加 | |
-| | 方言选择(18+种) | ⚠️ 后端支持，待添加 | |
-| **F5-TTS** | 参考音频克隆 | ✅ 已实现 | 100% |
-| | NFE步数调节 | ✅ 已实现 | |
-| | CFG强度调节 | ✅ 已实现 | |
-| | 语速控制 | ✅ 已实现 | |
-| **OpenVoice** | 音色克隆 | ✅ 已实现 | 100% |
-| | 语速控制 | ✅ 已实现 | |
-| | 风格选择 | ✅ 已实现 | |
-| | 多语言支持 | ✅ 已实现 | |
-| **GPT-SoVITS** | 零样本克隆 | ✅ 已实现 | 90% |
-| | 多语言支持(5种) | ✅ 已实现 | |
-| | 版本选择(v1-v4/Pro) | ✅ 已实现 | |
-| | 采样参数调节 | ✅ 已实现 | |
-| | 语速控制 | ✅ 已实现 | |
-| | 文本切分方法 | ⚠️ 待添加 | |
-| | 批处理大小 | ⚠️ 待添加 | |
-| **VoxCPM** | 基础生成(Base) | ✅ 已实现 | 100% |
-| | 声音设计(VoiceDesign) | ✅ 已实现 | |
-| | 声音克隆(Clone) | ✅ 已实现 | |
-| | 极致克隆(UltimateClone) | ✅ 已实现 | |
-| | 说话人管理集成 | ✅ 已实现 | |
-| **IndexTTS** | 自由生成(Free) | ✅ 已实现 | 100% |
-| | 可控生成(Controlled) | ✅ 已实现 | |
-| | 说话人管理集成 | ✅ 已实现 | |
-| **FireRedTTS2** | 声音克隆(Clone) | ✅ 已实现 | 100% |
-| | 随机音色(Random) | ✅ 已实现 | |
-| | 参数调节(Temperature/TopK) | ✅ 已实现 | |
-| | 说话人管理集成 | ✅ 已实现 | |
+#### Qwen3-TTS
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| SFT模式(预设音色) | ✅ | 9种预设音色 |
+| 声音克隆 | ✅ | 3秒参考音频克隆 |
+| 音色设计 | ✅ | 自然语言描述生成音色 |
+| 流式生成 | ✅ | 97ms低延迟 |
+| 模型选择 | ✅ | 仅支持1.7B模型 |
+
+#### VoxCPM
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| 基础生成 | ✅ | 默认音色生成 |
+| 声音设计 | ✅ | 自然语言描述音色 |
+| 声音克隆 | ✅ | Reference-only模式 |
+| 极致克隆 | ✅ | Combined模式，需参考文本 |
+| 控制指令 | ✅ | 支持语速/情绪控制 |
+| 方言支持 | ✅ | 30种语言+9种方言 |
 
 ### 通用功能
 
 - ✅ 算法选择卡片界面
 - ✅ 文本输入与预览
-- ✅ 参考人声选择与管理
-- ✅ 参考音频上传与试听
+- ✅ 说话人选择与管理
 - ✅ 生成结果播放与下载
 - ✅ 批量文本处理
-- ✅ 录音功能(ChatTTS)
+- ✅ 登录认证
+- ✅ 服务状态监控
 
 ---
-
-## 📝 开发记录
-
-所有工作记录已按时间戳整理在 `records/` 目录：
-
-- 项目结构整理记录
-- 各算法部署调试记录
-- API开发记录
-- 前端开发记录
-- 问题排查记录
-- 功能验证记录
-
-查看记录文件：
-```bash
-ls -la records/
-```
 
 ## 🔧 系统架构
 
@@ -447,7 +414,7 @@ ls -la records/
 ┌─────────────────────────────────────────────────────────────┐
 │                        前端界面                              │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  登录页面    │  │  主应用页面  │  │    Web录音功能      │ │
+│  │  登录页面    │  │  主应用页面  │  │    算法选择页面     │ │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘ │
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP/WebSocket
@@ -455,21 +422,41 @@ ls -la records/
 │                    FastAPI 后端服务                          │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │              统一API接口层                           │   │
-│  │   /tts  /tts/clone  /algorithms  /speakers/...     │   │
+│  │   /tts/*  /speakers  /system  /concurrency         │   │
 │  └────────────────────┬────────────────────────────────┘   │
-│                       │ 算法调度层                          │
-│  ┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐      │
-│  │ChatTTS  │CosyVoice│ F5-TTS  │GPT-SoVITS│OpenVoice│ VoxCPM │FireRed │      │
-│  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │TTS2适配│      │
-│  └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┴────┬────┴────┬───┘      │
-│       │         │         │         │         │         │         │            │
-└───────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼────────────┘
-        │         │         │         │         │         │         │
-   ┌────┴────┐ ┌─┴────┐ ┌──┴───┐ ┌───┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴────┐
-   │ ChatTTS │ │CosyVo│ │F5-TTS│ │GPT-SoV│ │OpenVoic│ │VoxCPM│ │FireRed │
-   │  模型   │ │模型  │ │ 模型 │ │模型   │ │模型    │ │模型  │ │TTS2模型│
-   └─────────┘ └──────┘ └──────┘ └───────┘ └────────┘ └──────┘ └────────┘
+│                       │ 算法调度层 + 并发控制                │
+│  ┌─────────┬─────────┬─────────┬─────────┬─────────┐       │
+│  │ChatTTS  │CosyVoice│ F5-TTS  │GPT-SoVITS│OpenVoice│      │
+│  │ VoxCPM  │IndexTTS │FireRed  │ Qwen3   │         │      │
+│  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │       │
+│  └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┘       │
+│       │         │         │         │         │             │
+└───────┼─────────┼─────────┼─────────┼─────────┼─────────────┘
+        │         │         │         │         │
+   ┌────┴────┐ ┌─┴────┐ ┌──┴───┐ ┌───┴───┐ ┌───┴────┐
+   │ ChatTTS │ │CosyVo│ │F5-TTS│ │GPT-SoV│ │OpenVoic│
+   │  模型   │ │模型  │ │ 模型 │ │模型   │ │模型    │
+   └─────────┘ └──────┘ └──────┘ └───────┘ └────────┘
 ```
+
+---
+
+## 📝 开发记录
+
+所有工作记录已按时间戳整理在 `records/` 目录：
+
+```bash
+# 查看最新记录
+ls -lt records/ | head -20
+```
+
+主要记录类型：
+- 项目结构整理记录
+- 各算法部署调试记录
+- API开发记录
+- 前端开发记录
+- 问题排查记录
+- 功能验证记录
 
 ---
 
@@ -499,3 +486,16 @@ ls -la records/
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
 4. 推送分支 (`git push origin feature/AmazingFeature`)
 5. 创建 Pull Request
+
+---
+
+## 📞 联系方式
+
+如有问题或建议，欢迎通过以下方式联系：
+
+- 提交 GitHub Issue
+- 查看工作记录: `records/` 目录
+
+---
+
+**更新时间**: 2026-05-07

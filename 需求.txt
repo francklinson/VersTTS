@@ -270,9 +270,23 @@ https://github.com/FireRedTeam/FireRedTTS2
 - requirements_full.txt: 更新transformers版本为4.51.3
 - 工作记录: records/2026-05-07_10-35-00_更新项目文档.md
 
+[56]优化删除说话人后的弹窗 - 已完成
+- 添加自定义删除确认弹窗，替换浏览器原生confirm
+- 弹窗特点: 红色主题、垃圾桶图标动画、显示说话人名称、提示不可撤销
+- 交互优化: 支持点击遮罩层关闭、ESC键关闭、动画效果
+- 修改文件: speaker_modal.html、speaker.js、common.css
+- 工作记录: records/2026-05-07_11-00-00_优化删除说话人弹窗.md
+
 
 待办
-无
+[1]部署omnivoice:https://github.com/k2-fsa/OmniVoice/
+分析一下其具备的tts能力,
+支持的模式,
+参照已有的项目格式,
+确认一下需要的transformers版本
+将模型文件下载到本地,
+根据支持的功能适配后端api与前端页面,
+与现有的说话人模块适配.
 
 
 

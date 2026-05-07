@@ -490,6 +490,45 @@
         </div>
     </div>
 
+    <!-- ==================== 确认删除弹窗 ==================== -->
+    <div id="deleteConfirmModal" class="modal-overlay" style="z-index: 2000;">
+        <div class="delete-modal-content">
+            <!-- 装饰性顶部渐变条 -->
+            <div class="delete-modal-header-bar"></div>
+
+            <!-- 图标区域 -->
+            <div class="delete-modal-icon-wrapper">
+                <div class="delete-icon">🗑️</div>
+            </div>
+
+            <!-- 标题 -->
+            <h3 class="delete-modal-title">确认删除</h3>
+
+            <!-- 提示文本 -->
+            <p id="deleteConfirmText" class="delete-modal-text">
+                确定要删除说话人吗？
+            </p>
+
+            <!-- 警告提示 -->
+            <div class="delete-modal-warning">
+                <span class="warning-icon">⚠️</span>
+                <span>此操作不可撤销</span>
+            </div>
+
+            <!-- 按钮区域 -->
+            <div class="delete-modal-actions">
+                <button class="btn-cancel" onclick="closeDeleteConfirm()">
+                    <span class="btn-icon">✕</span>
+                    <span>取消</span>
+                </button>
+                <button class="btn-confirm-delete" onclick="confirmDelete()">
+                    <span class="btn-icon">🗑️</span>
+                    <span>确认删除</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ==================== 基础功能 ====================
         
@@ -1283,20 +1322,43 @@
             }, 1000);
         }
         
-        // 删除说话人
-        async function deleteSpeaker(speakerId) {
+        // 待删除的说话人ID
+        let pendingDeleteSpeakerId = null;
+
+        // 显示删除确认弹窗
+        function showDeleteConfirm(speakerId) {
             const speaker = savedSpeakers.find(s => s.id === speakerId);
-            if (!confirm(`确定要删除说话人 "${speaker?.name || ''}" 吗？`)) {
-                return;
-            }
-            
+            if (!speaker) return;
+
+            pendingDeleteSpeakerId = speakerId;
+            const confirmText = document.getElementById('deleteConfirmText');
+            confirmText.innerHTML = `确定要删除说话人 <strong style="color: #1e293b;">"${escapeHtml(speaker.name)}"</strong> 吗？`;
+
+            const modal = document.getElementById('deleteConfirmModal');
+            modal.classList.add('active');
+        }
+
+        // 关闭删除确认弹窗
+        function closeDeleteConfirm() {
+            const modal = document.getElementById('deleteConfirmModal');
+            modal.classList.remove('active');
+            pendingDeleteSpeakerId = null;
+        }
+
+        // 确认删除
+        async function confirmDelete() {
+            if (!pendingDeleteSpeakerId) return;
+
+            const speakerId = pendingDeleteSpeakerId;
+            closeDeleteConfirm();
+
             try {
                 const response = await fetch(`${API_BASE}/speakers/${speakerId}`, {
                     method: 'DELETE'
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     showSpeakerStatus('说话人已删除', 'success');
                     loadSpeakersList();
@@ -1307,6 +1369,11 @@
                 console.error('删除说话人失败:', error);
                 showSpeakerStatus('删除失败: ' + error.message, 'error');
             }
+        }
+
+        // 删除说话人（显示确认弹窗）
+        async function deleteSpeaker(speakerId) {
+            showDeleteConfirm(speakerId);
         }
         
         // 工具函数
@@ -1331,13 +1398,33 @@
                 window.location.href = 'login.html';
                 return;
             }
-            
+
             checkHealth();
             // 只在页面加载时检查一次，之后不再定时检查
             // 切换页面时会从 localStorage 读取缓存的状态
-            
+
             const username = localStorage.getItem('versTTS_username') || '用户';
             document.getElementById('userName').textContent = username;
+
+            // ESC 键关闭删除确认弹窗
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    const deleteModal = document.getElementById('deleteConfirmModal');
+                    if (deleteModal && deleteModal.classList.contains('active')) {
+                        closeDeleteConfirm();
+                    }
+                }
+            });
+
+            // 点击删除确认弹窗遮罩层关闭
+            const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+            if (deleteConfirmModal) {
+                deleteConfirmModal.addEventListener('click', (e) => {
+                    if (e.target.id === 'deleteConfirmModal') {
+                        closeDeleteConfirm();
+                    }
+                });
+            }
         });
     </script>
 </body>

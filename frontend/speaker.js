@@ -934,12 +934,52 @@
             updateChatTTSSpeakerDisplay(speaker.name);
         }
 
-        // 删除说话人
-        async function deleteSpeaker(speakerId) {
+        // 待删除的说话人ID
+        let pendingDeleteSpeakerId = null;
+
+        // 显示删除确认弹窗
+        function showDeleteConfirm(speakerId) {
             const speaker = savedSpeakers.find(s => s.id === speakerId);
-            if (!confirm(`确定要删除说话人 "${speaker?.name || ''}" 吗？`)) {
-                return;
-            }
+            if (!speaker) return;
+
+            pendingDeleteSpeakerId = speakerId;
+            const confirmText = document.getElementById('deleteConfirmText');
+            confirmText.innerHTML = `确定要删除说话人 <strong style="color: #1e293b;">"${speaker.name}"</strong> 吗？<br><span style="font-size: 0.85rem; color: #94a3b8;">此操作不可撤销</span>`;
+
+            const modal = document.getElementById('deleteConfirmModal');
+            modal.classList.add('active');
+
+            // 添加动画效果
+            const content = modal.querySelector('.modal-content');
+            content.style.transform = 'scale(0.9)';
+            content.style.opacity = '0';
+            setTimeout(() => {
+                content.style.transition = 'all 0.3s ease';
+                content.style.transform = 'scale(1)';
+                content.style.opacity = '1';
+            }, 10);
+        }
+
+        // 关闭删除确认弹窗
+        function closeDeleteConfirm() {
+            const modal = document.getElementById('deleteConfirmModal');
+            const content = modal.querySelector('.modal-content');
+
+            content.style.transform = 'scale(0.9)';
+            content.style.opacity = '0';
+
+            setTimeout(() => {
+                modal.classList.remove('active');
+                pendingDeleteSpeakerId = null;
+            }, 200);
+        }
+
+        // 确认删除
+        async function confirmDelete() {
+            if (!pendingDeleteSpeakerId) return;
+
+            const speakerId = pendingDeleteSpeakerId;
+            closeDeleteConfirm();
 
             try {
                 const response = await fetch(`${API_BASE}/speakers/${speakerId}`, {
@@ -967,6 +1007,11 @@
                 console.error('删除说话人失败:', error);
                 showSpeakerStatus('删除失败: ' + error.message, 'error');
             }
+        }
+
+        // 删除说话人（显示确认弹窗）
+        function deleteSpeaker(speakerId) {
+            showDeleteConfirm(speakerId);
         }
 
         // 更新 ChatTTS 的说话人选择下拉框
@@ -1046,6 +1091,13 @@
             // ESC 键关闭模态框
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
+                    // 优先关闭删除确认弹窗
+                    const deleteModal = document.getElementById('deleteConfirmModal');
+                    if (deleteModal && deleteModal.classList.contains('active')) {
+                        closeDeleteConfirm();
+                        return;
+                    }
+
                     const modal = document.getElementById('speakerModal');
                     if (modal && modal.classList.contains('active')) {
                         closeSpeakerManager();
@@ -1059,6 +1111,16 @@
                     closeSpeakerManager();
                 }
             });
+
+            // 点击删除确认弹窗外部关闭
+            const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+            if (deleteConfirmModal) {
+                deleteConfirmModal.addEventListener('click', (e) => {
+                    if (e.target.id === 'deleteConfirmModal') {
+                        closeDeleteConfirm();
+                    }
+                });
+            }
 
             // 初始化用户信息
             const username = localStorage.getItem('versTTS_username') || 'admin';

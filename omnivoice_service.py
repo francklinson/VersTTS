@@ -115,6 +115,18 @@ async def tts(
         # 返回音频文件路径
         return {"success": True, "audio_path": output_path, "sample_rate": 24000}
         
+    except ValueError as e:
+        error_msg = str(e)
+        if "Conflicting instruct" in error_msg:
+            logger.error(f"【OmniVoice TTS错误】音色描述参数冲突: {error_msg}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"音色描述参数冲突：每个类别（性别、年龄、音调、风格、口音、方言）只能指定一个值。例如：'男，儿童，低音调'，不要在同一类别中指定多个值。"
+            )
+        else:
+            logger.error(f"【OmniVoice TTS错误】参数错误: {error_msg}")
+            logger.error(f"【错误堆栈】\n{traceback.format_exc()}")
+            raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"【OmniVoice TTS错误】异常类型: {type(e).__name__}, 错误信息: {str(e)}")
         logger.error(f"【错误堆栈】\n{traceback.format_exc()}")

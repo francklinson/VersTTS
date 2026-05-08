@@ -55,11 +55,11 @@
                 <div class="model-badge"><span>🐝</span><span>Qwen3-TTS</span></div>
 
                 <div class="info-box">
-                    💡 Qwen3-TTS 支持 30+ 种语言，提供 3 种生成功能：<br>
-                    • <b>声音克隆</b>：使用说话人管理中的参考音频克隆声音<br>
-                    • <b>预设音色</b>：9 种高质量预设音色（含方言）<br>
-                    • <b>音色设计</b>：通过自然语言描述创建自定义音色（支持指令控制）
-                </div>
+                        💡 Qwen3-TTS 支持 30+ 种语言，提供 3 种生成功能：<br>
+                        • <b>声音克隆</b>：使用说话人管理中的参考音频克隆声音<br>
+                        • <b>预设音色</b>：9 种高质量预设音色（含北京方言、四川方言）<br>
+                        • <b>音色设计</b>：通过自然语言描述创建自定义音色（仅支持音色特征控制，不支持方言）
+                    </div>
 
                 <div id="statusMessage" class="status-message"></div>
 
@@ -113,8 +113,8 @@
                 <div id="mode-voice_design" class="mode-content">
                     <div class="param-section">
                         <label style="font-weight: 600; margin-bottom: 10px; display: block;">音色描述</label>
-                        <input type="text" id="voiceDesignPrompt" placeholder="例如：一个温柔的女声，说话缓慢清晰" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
-                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">用自然语言描述你想要的音色特征</p>
+                        <input type="text" id="voiceDesignPrompt" placeholder="例如：一个温柔的女声，说话缓慢清晰（仅支持音色特征描述，不支持方言控制，方言请使用预设音色模式）" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">通过自然语言描述想要的音色特征。如需方言，请使用"预设音色"模式选择Dylan（北京男声）或Eric（成都男声）。</p>
                     </div>
                 </div>
 

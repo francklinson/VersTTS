@@ -726,17 +726,27 @@ do_stop_omnivoice() {
     echo "      OmniVoice 独立服务停止"
     echo "----------------------------------------"
 
-    if ! is_omnivoice_running; then
-        print_info "OmniVoice 服务未运行"
-        # 清理残留 PID 文件
-        if [ -f "$OMNIVOICE_PID_FILE" ]; then
-            rm -f "$OMNIVOICE_PID_FILE"
+    local pid=""
+    
+    # 先尝试从 PID 文件获取 PID
+    if is_omnivoice_running; then
+        pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+        print_info "发现运行中的 OmniVoice 服务 (PID: $pid)"
+    else
+        # PID 文件不存在或进程已失效，尝试查找实际运行的进程
+        pid=$(pgrep -f "python.*omnivoice_service.py" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            print_warn "PID 文件不存在，但找到运行中的 OmniVoice 进程 (PID: $pid)"
+        else
+            print_info "OmniVoice 服务未运行"
+            # 清理残留 PID 文件
+            if [ -f "$OMNIVOICE_PID_FILE" ]; then
+                rm -f "$OMNIVOICE_PID_FILE"
+            fi
+            return 0
         fi
-        return 0
     fi
 
-    local pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
-    print_info "发现运行中的 OmniVoice 服务 (PID: $pid)"
     print_step "正在停止服务..."
 
     # 优雅终止
@@ -745,6 +755,7 @@ do_stop_omnivoice() {
     local count=0
     while [ $count -lt 10 ]; do
         if ! kill -0 "$pid" 2>/dev/null; then
+            echo ""
             print_success "OmniVoice 服务已停止"
             rm -f "$OMNIVOICE_PID_FILE"
             return 0

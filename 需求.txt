@@ -296,11 +296,38 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 
 [59]给浏览器上增加logo
 
+[60]修复OmniVoice stop命令失效问题 - 已完成
+- 问题: stop命令无法停止OmniVoice服务(PID文件丢失但进程仍在运行)
+- 修复: 在do_stop_omnivoice函数中添加pgrep fallback机制
+- 当PID文件不存在时,使用pgrep -f "python.*omnivoice_service.py"查找实际运行进程
+- 工作记录: records/2026-05-08_22-30-00_OmniVoice服务修复与方言问题优化.md
+
+[61]优化Qwen3-TTS和VoxCPM方言功能提示 - 已完成
+- Qwen3-TTS: 明确voice_design模式不支持方言,引导用户使用预设音色模式(Dylan/Eric)
+- VoxCPM: 更新音色描述提示,明确支持30种语言+9种方言,提供方言示例
+- 工作记录: records/2026-05-08_22-30-00_OmniVoice服务修复与方言问题优化.md
 
 待办
-[2]OmniVoice 服务报错,见logs
-[2]统一一下生成音频的文件名称
-[3]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言
+[1]OmniVoice 服务报错,见logs - 已修复
+- 问题: stop命令无法停止OmniVoice服务(PID文件丢失但进程仍在运行)
+- 修复: 在do_stop_omnivoice函数中添加pgrep fallback机制
+- 当PID文件不存在时,使用pgrep -f "python.*omnivoice_service.py"查找实际运行进程
+- 成功停止旧进程后重启服务
+- 服务现在正常运行在 127.0.0.1:8001
+
+
+[2]统一一下生成音频的文件名称 - 已验证
+- 各TTS模块已使用统一格式: {model}_{timestamp}.wav
+- 所有模块都调用save_temp_audio()函数保存音频
+
+[3]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言 - 已优化提示
+- Qwen3-TTS: voice_design模式的instruct参数用于音色描述,方言需要通过CustomVoice预设音色(Dylan/Eric)
+- 已更新前端提示,明确告知用户voice_design模式不支持方言
+- VoxCPM: voice_design模式支持方言,需要在音色描述中明确指定方言
+- 已更新前端提示,提供方言使用示例
+
+[4]支持批量生成(抽卡10次)\批量下载 - 待实现
+
 
 
 
@@ -310,3 +337,4 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 修复transformers版本兼容性问题
 transformers==4.51.3
 transformers==4.57.3
+transformers==5.6.2

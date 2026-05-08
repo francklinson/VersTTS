@@ -66,7 +66,7 @@
 
                 <div class="info-box">
                     💡 OmniVoice 支持 <strong>600+种语言</strong> 的零样本语音合成，支持声音克隆、声音设计等多种模式。<br>
-                    <span class="lang-badge">中文</span><span class="lang-badge">英语</span><span class="lang-badge">四川话</span><span class="lang-badge">粤语</span><span class="lang-badge">+600种语言</span>
+                    <span class="lang-badge">中文</span><span class="lang-badge">英语</span><span class="lang-badge">四川话</span><span class="lang-badge">东北话</span><span class="lang-badge">+600种语言</span>
                 </div>
 
                 <div id="statusMessage" class="status-message"></div>
@@ -116,7 +116,7 @@
                             🎛️ 声音属性描述
                         </label>
                         <div style="background: #fff5f5; border-left: 3px solid #ff6b6b; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; font-size: 0.85rem; color: #c53030;">
-                            <strong>💡 提示:</strong> 点击下方属性快速添加，属性之间使用全角逗号（，）分隔<br>
+                            <strong>💡 提示:</strong> 点击下方属性快速添加，<b>同类别只能选择一个</b><br>
                             示例：<code>男，四川话，高音调</code>
                         </div>
                         <textarea id="voiceDesignPrompt" placeholder="例如：男，四川话，高音调"></textarea>
@@ -125,42 +125,43 @@
                             <div class="dialect-title">常用属性（点击添加）：</div>
                             <div style="margin-bottom: 8px; font-size: 0.85rem; color: #666;">性别</div>
                             <div class="attribute-grid">
-                                <span class="attribute-chip" onclick="addAttribute('男')">男声</span>
-                                <span class="attribute-chip" onclick="addAttribute('女')">女声</span>
+                                <span class="attribute-chip" data-category="gender" data-value="男" onclick="onToggleChip(this)">男声</span>
+                                 <span class="attribute-chip" data-category="gender" data-value="女" onclick="onToggleChip(this)">女声</span>
                             </div>
                             
                             <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">年龄</div>
                             <div class="attribute-grid">
-                                <span class="attribute-chip" onclick="addAttribute('儿童')">儿童</span>
-                                <span class="attribute-chip" onclick="addAttribute('少年')">少年</span>
-                                <span class="attribute-chip" onclick="addAttribute('青年')">青年</span>
-                                <span class="attribute-chip" onclick="addAttribute('中年')">中年</span>
-                                <span class="attribute-chip" onclick="addAttribute('老年')">老年</span>
+                                <span class="attribute-chip" data-category="age" data-value="儿童" onclick="onToggleChip(this)">儿童</span>
+                                <span class="attribute-chip" data-category="age" data-value="少年" onclick="onToggleChip(this)">少年</span>
+                                <span class="attribute-chip" data-category="age" data-value="青年" onclick="onToggleChip(this)">青年</span>
+                                <span class="attribute-chip" data-category="age" data-value="中年" onclick="onToggleChip(this)">中年</span>
+                                <span class="attribute-chip" data-category="age" data-value="老年" onclick="onToggleChip(this)">老年</span>
                             </div>
                             
-                            <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">音调</div>
+                            <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">音调/情绪</div>
                             <div class="attribute-grid">
-                                <span class="attribute-chip" onclick="addAttribute('极低音调')">极低</span>
-                                <span class="attribute-chip" onclick="addAttribute('低音调')">低音</span>
-                                <span class="attribute-chip" onclick="addAttribute('中音调')">中音</span>
-                                <span class="attribute-chip" onclick="addAttribute('高音调')">高音</span>
-                                <span class="attribute-chip" onclick="addAttribute('极高音调')">极高</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="极低音调" onclick="onToggleChip(this)">极低</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="低音调" onclick="onToggleChip(this)">低音</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="中音调" onclick="onToggleChip(this)">中音</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="高音调" onclick="onToggleChip(this)">高音</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="极高音调" onclick="onToggleChip(this)">极高</span>
+                                <span class="attribute-chip" data-category="pitch" data-value="耳语" onclick="onToggleChip(this)">耳语</span>
                             </div>
                             
                             <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">中文方言</div>
                             <div class="attribute-grid">
-                                <span class="attribute-chip" onclick="addAttribute('四川话')">四川话</span>
-                                <span class="attribute-chip" onclick="addAttribute('东北话')">东北话</span>
-                                <span class="attribute-chip" onclick="addAttribute('河南话')">河南话</span>
-                                <span class="attribute-chip" onclick="addAttribute('陕西话')">陕西话</span>
-                                <span class="attribute-chip" onclick="addAttribute('云南话')">云南话</span>
-                                <span class="attribute-chip" onclick="addAttribute('贵州话')">贵州话</span>
-                                <span class="attribute-chip" onclick="addAttribute('桂林话')">桂林话</span>
-                                <span class="attribute-chip" onclick="addAttribute('甘肃话')">甘肃话</span>
-                                <span class="attribute-chip" onclick="addAttribute('宁夏话')">宁夏话</span>
-                                <span class="attribute-chip" onclick="addAttribute('济南话')">济南话</span>
-                                <span class="attribute-chip" onclick="addAttribute('青岛话')">青岛话</span>
-                                <span class="attribute-chip" onclick="addAttribute('石家庄话')">石家庄话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="四川话" onclick="onToggleChip(this)">四川话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="东北话" onclick="onToggleChip(this)">东北话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="河南话" onclick="onToggleChip(this)">河南话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="陕西话" onclick="onToggleChip(this)">陕西话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="云南话" onclick="onToggleChip(this)">云南话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="贵州话" onclick="onToggleChip(this)">贵州话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="桂林话" onclick="onToggleChip(this)">桂林话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="甘肃话" onclick="onToggleChip(this)">甘肃话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="宁夏话" onclick="onToggleChip(this)">宁夏话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="济南话" onclick="onToggleChip(this)">济南话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="青岛话" onclick="onToggleChip(this)">青岛话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="石家庄话" onclick="onToggleChip(this)">石家庄话</span>
                             </div>
                         </div>
                     </div>
@@ -278,17 +279,54 @@
             return date.toLocaleDateString('zh-CN');
         }
 
-        // 添加声音设计属性（全中文模式，使用全角逗号分隔）
-        function addAttribute(attr) {
+        // 切换属性（同类别只能选一个）
+        function onToggleChip(chip) {
+            const category = chip.dataset.category;
+            const value = chip.dataset.value;
+            const textarea = document.getElementById('voiceDesignPrompt');
+            
+            // 如果当前chip已选中，则取消选中
+            if (chip.classList.contains('selected')) {
+                chip.classList.remove('selected');
+                // 从textarea中移除该属性
+                removeAttributeValue(value);
+                return;
+            }
+            
+            // 先取消同类别其他chip的选中状态
+            document.querySelectorAll(`.attribute-chip[data-category="${category}"]`).forEach(c => {
+                if (c.classList.contains('selected') && c !== chip) {
+                    c.classList.remove('selected');
+                    const oldValue = c.dataset.value;
+                    removeAttributeValue(oldValue);
+                }
+            });
+            
+            // 添加新属性
+            chip.classList.add('selected');
+            addAttributeValue(value);
+        }
+        
+        // 添加属性值到textarea
+        function addAttributeValue(value) {
             const textarea = document.getElementById('voiceDesignPrompt');
             const current = textarea.value.trim();
             
-            // 中文使用全角逗号分隔
             if (current) {
-                textarea.value = current + '，' + attr;
+                textarea.value = current + '，' + value;
             } else {
-                textarea.value = attr;
+                textarea.value = value;
             }
+        }
+        
+        // 从textarea中移除属性值
+        function removeAttributeValue(value) {
+            const textarea = document.getElementById('voiceDesignPrompt');
+            let current = textarea.value.trim();
+            
+            // 移除 "值" 或 "，值" 或 "值，"
+            current = current.replace(new RegExp('，?' + value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(，)?', 'g'), '');
+            textarea.value = current.trim();
         }
 
         // 切换模式

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniVoice - VersTTS</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/logo.svg">
+    <link rel="stylesheet" href="../assets/css/common.css?v=7">
+    <style>
+        .omnivoice-theme { --primary-color: #ff6b6b; }
+        .btn-generate.omnivoice { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%); }
+        .btn-generate.omnivoice:hover { box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4); }
+        .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
+        .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
+        .mode-tab.active { color: #ff6b6b; border-bottom-color: #ff6b6b; font-weight: 600; }
+        .mode-content { display: none; }
+        .mode-content.active { display: block; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #fff5f5; border-radius: 8px; border-left: 4px solid #ff6b6b; }
+        .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
+        .param-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
+        .param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .param-item { display: flex; flex-direction: column; }
+        .param-item label { font-size: 0.9rem; color: #666; margin-bottom: 5px; font-weight: 500; }
+        .param-item input, .param-item select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .info-box { background: #fff5f5; border-left: 4px solid #ff6b6b; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #c53030; }
+        .lang-badge { display: inline-block; background: #ffe0e0; color: #c53030; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin: 2px; }
+        .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
+        .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+        .voice-design-section { margin-bottom: 20px; padding: 15px; background: #fff5f5; border-radius: 8px; border-left: 4px solid #ff6b6b; }
+        .attribute-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+        .attribute-chip { padding: 6px 10px; background: #ffe0e0; border-radius: 4px; font-size: 0.8rem; color: #c53030; cursor: pointer; text-align: center; transition: all 0.2s; }
+        .attribute-chip:hover { background: #ff6b6b; color: white; }
+        .attribute-chip.selected { background: #ff6b6b; color: white; }
+        .dialect-section { margin-top: 15px; }
+        .dialect-title { font-weight: 600; color: #c53030; margin-bottom: 8px; font-size: 0.9rem; }
+    </style>
+</head>
+<body class="omnivoice-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝎼</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>🌍 OmniVoice</h1>
+                <p>k2-fsa - 600+语言零样本TTS</p>
+            </header>
+            <div class="main-interface">
+                <div class="model-badge"><span>🌍</span><span>OmniVoice</span></div>
+
+                <div class="info-box">
+                    💡 OmniVoice 支持 <strong>600+种语言</strong> 的零样本语音合成，支持声音克隆、声音设计等多种模式。<br>
+                    <span class="lang-badge">中文</span><span class="lang-badge">英语</span><span class="lang-badge">四川话</span><span class="lang-badge">粤语</span><span class="lang-badge">+600种语言</span>
+                </div>
+
+                <div id="statusMessage" class="status-message"></div>
+
+                <div class="mode-tabs">
+                    <button class="mode-tab active" onclick="switchOmniVoiceMode('auto_voice')">随机音色</button>
+                    <button class="mode-tab" onclick="switchOmniVoiceMode('voice_clone')">声音克隆</button>
+                    <button class="mode-tab" onclick="switchOmniVoiceMode('voice_design')">声音设计</button>
+                </div>
+
+                <div id="mode-auto_voice" class="mode-content active">
+                    <p style="color: #666; font-size: 0.9rem;">使用随机音色生成语音</p>
+                </div>
+
+                <div id="mode-voice_clone" class="mode-content">
+                    <div class="info-box" style="background: #fff5f5; border-left-color: #ff6b6b;">
+                        <strong>🎭 声音克隆模式</strong><br>
+                        使用参考音频克隆说话人音色，支持自动转录参考文本。<br>
+                        <small>适用于：克隆已有说话人的声音特征</small>
+                    </div>
+                    <div class="speaker-section">
+                        <label style="font-weight: 600; color: #c53030; display: block; margin-bottom: 10px;">
+                            🎙️ 选择说话人
+                        </label>
+                        <div class="speaker-select-wrapper">
+                            <select id="speakerSelect" class="speaker-select" onchange="onSpeakerChange()">
+                                <option value="">-- 请选择说话人 --</option>
+                            </select>
+                        </div>
+                        <div id="speakerInfo" class="speaker-info-display" style="display: none;">
+                            <!-- 动态显示说话人信息 -->
+                        </div>
+                        <div id="noSpeakerWarning" class="no-speaker-warning" style="display: none;">
+                            ⚠️ 暂无可用说话人，请先添加说话人
+                        </div>
+                    </div>
+                </div>
+
+                <div id="mode-voice_design" class="mode-content">
+                    <div class="info-box" style="background: #fff5f5; border-left-color: #ff6b6b;">
+                        <strong>🎨 声音设计模式</strong><br>
+                        通过描述声音属性（性别、年龄、音调、方言等）来设计音色，无需参考音频。<br>
+                        <small>适用于：创建新的虚拟音色</small>
+                    </div>
+                    <div class="voice-design-section">
+                        <label style="font-weight: 600; color: #c53030; display: block; margin-bottom: 10px;">
+                            🎛️ 声音属性描述
+                        </label>
+                        <div style="background: #fff5f5; border-left: 3px solid #ff6b6b; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; font-size: 0.85rem; color: #c53030;">
+                            <strong>💡 提示:</strong> 点击下方属性快速添加，属性之间使用全角逗号（，）分隔<br>
+                            示例：<code>男，四川话，高音调</code>
+                        </div>
+                        <textarea id="voiceDesignPrompt" placeholder="例如：男，四川话，高音调"></textarea>
+                        
+                        <div class="dialect-section">
+                            <div class="dialect-title">常用属性（点击添加）：</div>
+                            <div style="margin-bottom: 8px; font-size: 0.85rem; color: #666;">性别</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" onclick="addAttribute('男')">男声</span>
+                                <span class="attribute-chip" onclick="addAttribute('女')">女声</span>
+                            </div>
+                            
+                            <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">年龄</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" onclick="addAttribute('儿童')">儿童</span>
+                                <span class="attribute-chip" onclick="addAttribute('少年')">少年</span>
+                                <span class="attribute-chip" onclick="addAttribute('青年')">青年</span>
+                                <span class="attribute-chip" onclick="addAttribute('中年')">中年</span>
+                                <span class="attribute-chip" onclick="addAttribute('老年')">老年</span>
+                            </div>
+                            
+                            <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">音调</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" onclick="addAttribute('极低音调')">极低</span>
+                                <span class="attribute-chip" onclick="addAttribute('低音调')">低音</span>
+                                <span class="attribute-chip" onclick="addAttribute('中音调')">中音</span>
+                                <span class="attribute-chip" onclick="addAttribute('高音调')">高音</span>
+                                <span class="attribute-chip" onclick="addAttribute('极高音调')">极高</span>
+                            </div>
+                            
+                            <div style="margin: 10px 0 8px 0; font-size: 0.85rem; color: #666;">中文方言</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" onclick="addAttribute('四川话')">四川话</span>
+                                <span class="attribute-chip" onclick="addAttribute('东北话')">东北话</span>
+                                <span class="attribute-chip" onclick="addAttribute('河南话')">河南话</span>
+                                <span class="attribute-chip" onclick="addAttribute('陕西话')">陕西话</span>
+                                <span class="attribute-chip" onclick="addAttribute('云南话')">云南话</span>
+                                <span class="attribute-chip" onclick="addAttribute('贵州话')">贵州话</span>
+                                <span class="attribute-chip" onclick="addAttribute('桂林话')">桂林话</span>
+                                <span class="attribute-chip" onclick="addAttribute('甘肃话')">甘肃话</span>
+                                <span class="attribute-chip" onclick="addAttribute('宁夏话')">宁夏话</span>
+                                <span class="attribute-chip" onclick="addAttribute('济南话')">济南话</span>
+                                <span class="attribute-chip" onclick="addAttribute('青岛话')">青岛话</span>
+                                <span class="attribute-chip" onclick="addAttribute('石家庄话')">石家庄话</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-section">
+                    <label for="textInput">生成文本</label>
+                    <textarea id="textInput" placeholder="请输入要转换为语音的文本，支持600+种语言..."></textarea>
+                </div>
+
+                <div class="param-section">
+                    <div class="param-grid">
+                        <div class="param-item">
+                            <label for="numSteps">扩散步数</label>
+                            <select id="numSteps">
+                                <option value="16">16步 (快速)</option>
+                                <option value="32" selected>32步 (高质量)</option>
+                            </select>
+                        </div>
+                        <div class="param-item">
+                            <label for="speed">语速</label>
+                            <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.1">
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn-generate omnivoice" id="generateBtn" onclick="generateTTS()">
+                    <span id="btnText">🎙️ 生成语音</span>
+                </button>
+
+                <div id="resultSection" class="result-section" style="display: none;">
+                    <h3>🎵 生成结果</h3>
+                    <audio id="audioPlayer" class="audio-player" controls></audio>
+                    <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/js/common.js?v=8"></script>
+    <script>
+        let currentMode = 'auto_voice';
+        let savedSpeakers = [];
+        let selectedSpeakerId = null;
+
+        // 加载说话人列表
+        async function loadSpeakers() {
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/speakers`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        savedSpeakers = data.speakers || [];
+                        renderSpeakerSelect();
+                    }
+                }
+            } catch (error) {
+                console.error('加载说话人列表失败:', error);
+            }
+        }
+
+        // 渲染说话人选择下拉框
+        function renderSpeakerSelect() {
+            const select = document.getElementById('speakerSelect');
+            const warning = document.getElementById('noSpeakerWarning');
+
+            // 保留第一个选项
+            select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
+
+            if (savedSpeakers.length === 0) {
+                warning.style.display = 'block';
+                return;
+            }
+
+            warning.style.display = 'none';
+
+            savedSpeakers.forEach(speaker => {
+                const option = document.createElement('option');
+                option.value = speaker.id;
+                option.textContent = speaker.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 说话人选择变化处理
+        function onSpeakerChange() {
+            const select = document.getElementById('speakerSelect');
+            const speakerInfo = document.getElementById('speakerInfo');
+
+            selectedSpeakerId = select.value;
+
+            if (selectedSpeakerId) {
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId);
+                if (speaker) {
+                    let infoHtml = `<strong>已选择:</strong> ${speaker.name}<br>`;
+                    infoHtml += `<small>创建于: ${formatDate(speaker.created_at)}</small>`;
+
+                    if (speaker.reference_text) {
+                        const refTextPreview = speaker.reference_text.substring(0, 50) + (speaker.reference_text.length > 50 ? '...' : '');
+                        infoHtml += `<br><small>参考文本: ${refTextPreview}</small>`;
+                    }
+
+                    speakerInfo.innerHTML = infoHtml;
+                    speakerInfo.style.display = 'block';
+                }
+            } else {
+                speakerInfo.style.display = 'none';
+            }
+        }
+
+        // 格式化日期
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN');
+        }
+
+        // 添加声音设计属性（全中文模式，使用全角逗号分隔）
+        function addAttribute(attr) {
+            const textarea = document.getElementById('voiceDesignPrompt');
+            const current = textarea.value.trim();
+            
+            // 中文使用全角逗号分隔
+            if (current) {
+                textarea.value = current + '，' + attr;
+            } else {
+                textarea.value = attr;
+            }
+        }
+
+        // 切换模式
+        function switchOmniVoiceMode(mode) {
+            currentMode = mode;
+
+            // 更新选项卡
+            document.querySelectorAll('.mode-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // 更新内容
+            document.querySelectorAll('.mode-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`mode-${mode}`).classList.add('active');
+        }
+
+        async function generateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            const numSteps = document.getElementById('numSteps').value;
+            const speed = document.getElementById('speed').value;
+
+            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+
+            if (currentMode === 'voice_clone') {
+                if (!selectedSpeakerId) { VersTTS.showStatus('请选择说话人', true); return; }
+            } else if (currentMode === 'voice_design') {
+                const prompt = document.getElementById('voiceDesignPrompt').value.trim();
+                if (!prompt) { VersTTS.showStatus('请输入声音属性描述', true); return; }
+            }
+
+            const btn = document.getElementById('generateBtn');
+            const btnText = document.getElementById('btnText');
+            VersTTS.setButtonLoading(btn, btnText, true);
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('mode', currentMode);
+                formData.append('num_steps', numSteps);
+                formData.append('speed', speed);
+
+                console.log('【OmniVoice调试】当前模式:', currentMode);
+
+                if (currentMode === 'voice_design') {
+                    formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
+                } else if (currentMode === 'voice_clone') {
+                    console.log('【OmniVoice调试】clone模式 - speaker_id:', selectedSpeakerId);
+                    formData.append('clone_speaker_id', selectedSpeakerId);
+                }
+
+                // 打印FormData内容用于调试
+                console.log('【OmniVoice调试】发送的FormData:');
+                for (let [key, value] of formData.entries()) {
+                    console.log(`  ${key}:`, value);
+                }
+
+                const data = await VersTTS.postForm('/tts/omnivoice', formData);
+
+                if (data.success) {
+                    VersTTS.showResult(data, { filename: `omnivoice_${Date.now()}.wav` });
+                    VersTTS.showStatus('语音生成成功！');
+                } else {
+                    throw new Error(data.message || '生成失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        // 初始化
+        console.log('【OmniVoice】页面加载完成');
+        console.log('【OmniVoice】VersTTS 对象存在:', typeof VersTTS !== 'undefined');
+        console.log('【OmniVoice】addAttribute 函数存在:', typeof addAttribute === 'function');
+        loadSpeakers();
+    </script>
+</body>
+</html>

@@ -290,19 +290,23 @@ https://github.com/FireRedTeam/FireRedTTS2
 根据支持的功能适配后端api与前端页面,
 与现有的说话人模块适配.
 
-待办
-[1]生产环境服务器部署时出现了录音启动失败报错:
+[58]生产环境服务器部署时出现了录音启动失败报错:
 TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 排查一下原因并解决
 
-[2]给浏览器上增加logo
+[59]给浏览器上增加logo
+
+
+待办
+[2]OmniVoice 服务报错,见logs
+[2]统一一下生成音频的文件名称
 [3]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言
-[4]统一一下生成音频的文件名称
-[5]修复transformers版本兼容性问题
+
 
 
 
 
 其他:
+修复transformers版本兼容性问题
 transformers==4.51.3
 transformers==4.57.3

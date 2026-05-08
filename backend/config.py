@@ -1,25 +1,50 @@
 #!/usr/bin/env python3
 """
 VersTTS 全局配置
+所有配置项可通过环境变量覆盖（由 start_server.sh 导出）
 """
 
 import os
 import sys
 
+# ========== 服务配置 ==========
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "8000"))
+
+# OmniVoice 独立服务配置
+OMNIVOICE_HOST = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
+OMNIVOICE_PORT = int(os.environ.get("OMNIVOICE_PORT", "8001"))
+
+# 日志配置
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+LOG_MAX_SIZE = int(os.environ.get("LOG_MAX_SIZE", "50"))
+LOG_BACKUP_COUNT = int(os.environ.get("LOG_BACKUP_COUNT", "5"))
+
 # ========== 路径配置 ==========
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 项目根目录（可通过环境变量覆盖）
+PROJECT_ROOT = os.environ.get("PROJECT_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# ========== 离线部署环境变量配置 ==========
-# 设置项目内 HuggingFace 缓存目录（优先使用项目内缓存）
-HF_CACHE_PATH = os.path.join(PROJECT_ROOT, "models", "hf_cache")
-if os.path.exists(HF_CACHE_PATH):
-    # 如果项目内有缓存目录，强制使用它
+def get_env_path(key, default_relative):
+    """获取路径配置：优先使用环境变量，否则使用相对于 PROJECT_ROOT 的路径"""
+    env_val = os.environ.get(key)
+    if env_val:
+        return env_val if os.path.isabs(env_val) else os.path.join(PROJECT_ROOT, env_val)
+    return os.path.join(PROJECT_ROOT, default_relative)
+
+# ========== HuggingFace 缓存配置 ==========
+# 可通过环境变量 HF_HOME / HUGGINGFACE_HUB_CACHE 覆盖
+HF_CACHE_PATH = get_env_path("HF_HOME", "models/hf_cache")
+if not os.environ.get("HF_HOME"):
     os.environ['HF_HOME'] = HF_CACHE_PATH
+if not os.environ.get("HUGGINGFACE_HUB_CACHE"):
     os.environ['HUGGINGFACE_HUB_CACHE'] = HF_CACHE_PATH
-    os.environ['TRANSFORMERS_CACHE'] = os.path.join(PROJECT_ROOT, "models", "transformers_cache")
-    print(f"[配置] 使用项目内 HF 缓存: {HF_CACHE_PATH}")
+if not os.environ.get("TRANSFORMERS_CACHE"):
+    os.environ['TRANSFORMERS_CACHE'] = get_env_path("TRANSFORMERS_CACHE", "models/transformers_cache")
 
-# 检查是否启用离线模式
+if os.path.exists(os.environ.get('HF_HOME', '')):
+    print(f"[配置] 使用 HF 缓存: {os.environ['HF_HOME']}")
+
+# 离线模式
 if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1':
     print("[离线部署] 检测到离线模式环境变量，禁用HuggingFace在线访问")
     os.environ['HF_HUB_OFFLINE'] = '1'
@@ -27,17 +52,23 @@ if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLI
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     os.environ['HF_HUB_DISABLE_DOWNLOADS'] = '1'
 
-# 打印当前缓存配置
-if 'HF_HOME' in os.environ:
-    print(f"[配置] HF_HOME: {os.environ['HF_HOME']}")
-
 # ========== 目录配置 ==========
-SPEAKERS_DIR = os.path.join(PROJECT_ROOT, "speakers")
+MODELS_DIR = get_env_path("MODELS_DIR", "models")
+OUTPUTS_DIR = get_env_path("OUTPUTS_DIR", "outputs")
+LOGS_DIR = get_env_path("LOGS_DIR", "logs")
+SPEAKERS_DIR = get_env_path("SPEAKERS_DIR", "speakers")
+UPLOADS_DIR = get_env_path("UPLOADS_DIR", "uploads")
+ALGORITHMS_DIR = get_env_path("ALGORITHMS_DIR", "algorithms")
+
 SPEAKERS_DB_FILE = os.path.join(SPEAKERS_DIR, "speakers_db.json")
-OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "outputs")
-UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
-LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")
-ALGORITHMS_DIR = os.path.join(PROJECT_ROOT, "algorithms")
+
+# ========== 模型文件路径配置 ==========
+MODEL_PATHS = {
+    'qwen3tts': os.path.join(MODELS_DIR, 'Qwen3-TTS'),
+    'voxcpm': os.path.join(MODELS_DIR, 'VoxCPM'),
+    'omnivoice': os.path.join(MODELS_DIR, 'OmniVoice'),
+    'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2', 'pretrained_models'),
+}
 
 # ========== 算法路径配置 ==========
 ALGORITHM_PATHS = {
@@ -52,6 +83,7 @@ ALGORITHM_PATHS = {
     'voxcpm': os.path.join(ALGORITHMS_DIR, 'VoxCPM', 'src'),
     'indextts': os.path.join(ALGORITHMS_DIR, 'IndexTTS'),
     'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2'),
+    'omnivoice': os.path.join(ALGORITHMS_DIR, 'OmniVoice'),
 }
 
 # ========== F5-TTS 默认参考音频 ==========
@@ -78,7 +110,6 @@ def setup_algorithm_paths():
         if path not in sys.path:
             sys.path.insert(0, path)
     
-    # F5-TTS 路径必须最后插入，避免与 GPT-SoVITS 的 f5_tts 冲突
     f5tts_path = ALGORITHM_PATHS['f5tts']
     if f5tts_path not in sys.path:
         sys.path.insert(0, f5tts_path)
@@ -86,5 +117,5 @@ def setup_algorithm_paths():
 
 def ensure_directories():
     """确保必要的目录存在"""
-    for dir_path in [SPEAKERS_DIR, OUTPUTS_DIR, UPLOADS_DIR, LOGS_DIR]:
+    for dir_path in [SPEAKERS_DIR, OUTPUTS_DIR, UPLOADS_DIR, LOGS_DIR, MODELS_DIR]:
         os.makedirs(dir_path, exist_ok=True)

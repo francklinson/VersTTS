@@ -11,6 +11,9 @@
 音频输出存放在 outputs 目录下
 使用/home/zhouchenghao/PycharmProjects/VersTTS/start_server.sh脚本开关服务
 确认完成任务后更新本文档
+项目需要部署到服务器上,防止硬编码
+
+
 
 
 已完成:
@@ -278,8 +281,7 @@ https://github.com/FireRedTeam/FireRedTTS2
 - 工作记录: records/2026-05-07_11-00-00_优化删除说话人弹窗.md
 
 
-待办
-[1]部署omnivoice:https://github.com/k2-fsa/OmniVoice/
+[57]部署omnivoice:https://github.com/k2-fsa/OmniVoice/
 分析一下其具备的tts能力,
 支持的模式,
 参照已有的项目格式,
@@ -287,6 +289,17 @@ https://github.com/FireRedTeam/FireRedTTS2
 将模型文件下载到本地,
 根据支持的功能适配后端api与前端页面,
 与现有的说话人模块适配.
+
+待办
+[1]生产环境服务器部署时出现了录音启动失败报错:
+TypeError:Cannot read properties of undefined (reading 'getUserMedia')
+排查一下原因并解决
+
+[2]给浏览器上增加logo
+[3]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言
+[4]统一一下生成音频的文件名称
+[5]修复transformers版本兼容性问题
+
 
 
 

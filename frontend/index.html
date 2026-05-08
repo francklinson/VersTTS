@@ -7,7 +7,8 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>VersTTS - 多模型语音合成平台</title>
-    <link rel="stylesheet" href="assets/css/common.css?v=6">
+    <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+    <link rel="stylesheet" href="assets/css/common.css?v=7">
 </head>
 <body>
     <!-- 动态背景效果 -->
@@ -93,7 +94,10 @@
         
         <div class="container">
             <header>
-                <h1>🎙️ VersTTS</h1>
+                <div class="header-logo">
+                    <img src="assets/logo.svg" alt="VersTTS" class="logo-icon">
+                </div>
+                <h1>VersTTS</h1>
                 <p>选择您需要的TTS模型</p>
             </header>
             
@@ -247,7 +251,27 @@
                     </div>
                     <button class="btn-select">进入</button>
                 </a>
-                
+
+                <!-- OmniVoice -->
+                <a href="pages/omnivoice.html" class="model-card" data-model="omnivoice">
+                    <div class="model-header">
+                        <div class="model-icon" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);">🌍</div>
+                        <div class="model-info">
+                            <h3>OmniVoice</h3>
+                            <p>600+语言零样本TTS</p>
+                        </div>
+                    </div>
+                    <div class="model-desc">
+                        <ul>
+                            <li>600+种语言支持</li>
+                            <li>声音克隆/声音设计</li>
+                            <li>RTF低至0.025 (40x实时)</li>
+                            <li>扩散语言模型架构</li>
+                        </ul>
+                    </div>
+                    <button class="btn-select">进入</button>
+                </a>
+
                 <!-- IndexTTS - 已屏蔽 -->
                 <!--
                 <a href="pages/indextts.html" class="model-card" data-model="indextts">

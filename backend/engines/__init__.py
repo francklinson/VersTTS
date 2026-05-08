@@ -12,6 +12,7 @@ from .gptsovits_engine import get_gpt_sovits_model, init_gpt_sovits_pipeline
 from .voxcpm_engine import get_voxcpm_model
 from .indextts_engine import get_indextts_model
 from .fireredtts2_engine import get_fireredtts2_model
+from .omnivoice_engine import get_omnivoice_model
 
 __all__ = [
     'get_chattts_model',
@@ -24,4 +25,5 @@ __all__ = [
     'get_voxcpm_model',
     'get_indextts_model',
     'get_fireredtts2_model',
+    'get_omnivoice_model',
 ]

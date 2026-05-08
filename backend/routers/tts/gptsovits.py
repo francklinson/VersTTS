@@ -120,7 +120,7 @@ async def tts_gptsovits(request: Request):
         audio_data = normalize_audio_volume(audio_data)
 
         # 保存音频
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         audio_path = f"outputs/gptsovits_{timestamp}.wav"
         sf.write(audio_path, audio_data, sr)
 

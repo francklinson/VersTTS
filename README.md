@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/CUDA-支持-green.svg" alt="CUDA Support">
-  <img src="https://img.shields.io/badge/支持-9种TTS算法-orange.svg" alt="9 TTS Algorithms">
+  <img src="https://img.shields.io/badge/支持-10种TTS算法-orange.svg" alt="10 TTS Algorithms">
   <img src="https://img.shields.io/badge/许可-Apache%202.0-yellow.svg" alt="License">
 </p>
 
@@ -31,7 +31,7 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ### 核心功能
 
-- **多算法集成**: 一键切换 9 种主流 TTS 算法
+- **多算法集成**: 一键切换 10 种主流 TTS 算法
 - **音色克隆**: 支持使用参考音频进行声音克隆
 - **预设音色**: 提供多种优质预设人声
 - **语音设计**: 通过自然语言描述生成特定音色
@@ -61,6 +61,7 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 |------|------|----------|----------|----------|------|----------|------|
 | **Qwen3-TTS** | 全功能 | ✅ (3秒) | 9种 | ✅ | ✅ (97ms) | 优秀 | 🟢 前端可用 |
 | **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 | 🟢 前端可用 |
+| **OmniVoice** | 全功能 | ✅ | 12种方言 | ✅ | ❌ | 优秀 | 🟢 前端可用 |
 
 ### 后端API可用算法（前端已隐藏）
 
@@ -79,9 +80,9 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 ### 算法选择建议
 
 - **需要流式低延迟**: 选择 Qwen3-TTS
-- **需要音色设计**: 选择 Qwen3-TTS (VoiceDesign)、VoxCPM
-- **最佳克隆效果**: 选择 VoxCPM (Ultimate Clone)
-- **方言支持**: Qwen3-TTS (北京话、四川话)、VoxCPM (30种语言+9种方言)
+- **需要音色设计**: 选择 OmniVoice (12种方言)
+- **最佳克隆效果**: 选择 VoxCPM
+- **方言支持**: OmniVoice (四川话、东北话、粤语等12种)，Qwen3-TTS (北京话、四川话)，VoxCPM (30种语言+9种方言)
 
 ---
 
@@ -89,13 +90,14 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ```
 VersTTS/
-├── algorithms/              # 九种TTS算法目录
+├── algorithms/              # TTS算法目录
 │   ├── ChatTTS/            # ChatTTS 项目
 │   ├── CosyVoice/          # CosyVoice 项目
 │   ├── F5-TTS/             # F5-TTS 项目
 │   ├── FireRedTTS2/        # FireRedTTS2 项目
 │   ├── GPT-SoVITS/         # GPT-SoVITS 项目
 │   ├── IndexTTS/           # IndexTTS 项目
+│   ├── OmniVoice/          # OmniVoice 项目
 │   ├── OpenVoice/          # OpenVoice 项目
 │   ├── Qwen3-TTS/          # Qwen3-TTS 项目
 │   └── VoxCPM/             # VoxCPM 项目
@@ -113,18 +115,21 @@ VersTTS/
 │   ├── index.html          # 主页面
 │   └── pages/              # 各算法页面
 │
+├── lib/                     # 独立依赖库
+│   └── transformers5/      # OmniVoice 专用 transformers 5.x
+│
+├── models/                  # 模型文件存放目录
+│   ├── OmniVoice/          # OmniVoice 模型 (~2.3GB)
+│   ├── Qwen3-TTS/          # Qwen3-TTS 模型 (~18GB)
+│   └── VoxCPM/             # VoxCPM 模型 (~4.7GB)
+│
+├── omnivoice_service.py     # OmniVoice 独立服务脚本
+├── start_server.sh          # 统一启动脚本
 ├── test_scripts/            # 测试脚本
-│   ├── test_all_tts.py     # 统一测试入口
-│   └── ...
-│
 ├── scripts/                 # 工具脚本
-│   ├── batch_tts_client.py # 批量TTS客户端
-│   └── examples/           # 示例文件
-│
 ├── logs/                    # 日志文件目录
 ├── records/                 # 工作记录文档
 ├── outputs/                 # 音频输出目录
-├── models/                  # 模型文件存放目录
 ├── requirements.txt         # Python依赖
 └── README.md               # 项目说明文档
 ```
@@ -187,14 +192,29 @@ modelscope download --model OpenBMB/VoxCPM-2B --local_dir ./models/VoxCPM-2B
 
 ```bash
 # 使用启动脚本
-./start_server.sh start    # 启动服务
-./start_server.sh stop     # 停止服务
-./start_server.sh restart  # 重启服务
-./start_server.sh status   # 查看状态
+./start_server.sh start                    # 启动主服务
+./start_server.sh start --offline          # 离线模式启动（推荐）
+./start_server.sh stop                     # 停止主服务
+./start_server.sh restart                  # 重启主服务
+./start_server.sh status                   # 查看主服务状态
+
+# OmniVoice 独立服务（需要 transformers 5.x）
+./start_server.sh start-omnivoice          # 启动 OmniVoice 独立服务
+./start_server.sh start-omnivoice --offline  # 离线模式启动 OmniVoice
+./start_server.sh stop-omnivoice           # 停止 OmniVoice 独立服务
+./start_server.sh restart-omnivoice        # 重启 OmniVoice 独立服务
+./start_server.sh status-omnivoice         # 查看 OmniVoice 服务状态
+
+# 查看日志
+tail -f logs/server.log                    # 主服务日志
+tail -f logs/omnivoice_service.log         # OmniVoice 服务日志
 
 # 或手动启动
-python backend/api_server.py
+python backend/api_server.py               # 手动启动主服务
+python omnivoice_service.py                # 手动启动 OmniVoice 服务
 ```
+
+> **注意**: OmniVoice 需要独立的 transformers 5.x 版本，因此运行在独立进程（端口 8001）。其他 TTS 算法（Qwen3-TTS、VoxCPM 等）运行在主服务（端口 8000）。
 
 ### 6. 访问系统
 
@@ -205,6 +225,44 @@ python backend/api_server.py
 ---
 
 ## 📖 安装部署
+
+### 环境配置
+
+所有配置项集中在 `start_server.sh` 脚本顶部，部署到服务器时直接修改脚本中的变量即可：
+
+```bash
+# 编辑启动脚本，修改配置项
+nano start_server.sh
+```
+
+**可配置项说明（位于 start_server.sh 顶部）：**
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `HOST` | `0.0.0.0` | 主服务监听地址 |
+| `PORT` | `8000` | 主服务端口 |
+| `OMNIVOICE_HOST` | `127.0.0.1` | OmniVoice 服务地址 |
+| `OMNIVOICE_PORT` | `8001` | OmniVoice 服务端口 |
+| `MODELS_DIR` | `models` | 模型文件目录 |
+| `OUTPUTS_DIR` | `outputs` | 音频输出目录 |
+| `LOGS_DIR` | `logs` | 日志目录 |
+| `SPEAKERS_DIR` | `speakers` | 说话人数据库目录 |
+| `TRANSFORMERS_OFFLINE` | `1` | 离线模式（1=启用） |
+| `HF_HUB_OFFLINE` | `1` | HuggingFace 离线模式 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+
+**服务器部署示例：**
+
+```bash
+# 编辑 start_server.sh，修改顶部配置变量
+# 例如修改端口：
+PORT="8888"
+OMNIVOICE_PORT="9001"
+
+# 修改模型目录到外部存储：
+MODELS_DIR="/data/models"
+OUTPUTS_DIR="/data/outputs"
+```
 
 ### 详细安装步骤
 
@@ -348,6 +406,7 @@ python scripts/batch_tts_client.py \
 | **OpenVoice** | [algorithms/OpenVoice/readme.md](algorithms/OpenVoice/readme.md) | VAE+VITS，音色风格解耦 |
 | **GPT-SoVITS** | [algorithms/GPT-SoVITS/readme.md](algorithms/GPT-SoVITS/readme.md) | VQ+GPT+VITS，最佳克隆效果 |
 | **VoxCPM** | [algorithms/VoxCPM/readme.md](algorithms/VoxCPM/readme.md) | 无Tokenizer扩散自回归，30语言支持 |
+| **OmniVoice** | [algorithms/OmniVoice/readme.md](algorithms/OmniVoice/readme.md) | 扩散语言模型，600+语言，12种方言 |
 | **IndexTTS** | [algorithms/IndexTTS/readme.md](algorithms/IndexTTS/readme.md) | 自回归GPT架构，哔哩哔哩开源 |
 | **FireRedTTS2** | [algorithms/FireRedTTS2/readme.md](algorithms/FireRedTTS2/readme.md) | 双Transformer，长对话优化 |
 
@@ -357,6 +416,7 @@ python scripts/batch_tts_client.py \
 ┌─────────────┬────────────┬──────────┬──────────┬──────────┐
 │   算法      │  架构类型   │ 克隆质量  │ 生成速度  │ 内存占用  │
 ├─────────────┼────────────┼──────────┼──────────┼──────────┤
+│ OmniVoice   │ 扩散LM     │    ★★★★  │   ★★★★  │   高     │
 │ Qwen3-TTS   │ 多码本LM   │    ★★★   │   ★★★   │   高     │
 │ GPT-SoVITS  │ VQ+GPT     │    ★★★★  │   ★★    │   中     │
 │ CosyVoice   │ 流匹配+LM  │    ★★★   │   ★★★   │   高     │
@@ -460,6 +520,61 @@ ls -lt records/ | head -20
 
 ---
 
+## ❓ 常见问题
+
+### Q1: 为什么需要启动两个服务？
+
+OmniVoice 需要 transformers 5.x 版本，而其他 TTS 算法（Qwen3-TTS、VoxCPM 等）使用 transformers 4.57.3。
+由于 Python 无法在同一进程中加载两个不同版本的 transformers，因此 OmniVoice 运行在独立进程（端口 8001）。
+
+### Q2: 如何启动完整服务？
+
+```bash
+# 主服务
+./start_server.sh start                    # 启动主服务
+./start_server.sh start --offline          # 离线模式启动
+./start_server.sh stop                     # 停止主服务
+./start_server.sh restart                  # 重启主服务
+./start_server.sh status                   # 查看主服务状态
+
+# OmniVoice 独立服务
+./start_server.sh start-omnivoice          # 启动 OmniVoice 服务
+./start_server.sh start-omnivoice --offline  # 离线模式启动
+./start_server.sh stop-omnivoice           # 停止服务
+./start_server.sh restart-omnivoice        # 重启服务
+./start_server.sh status-omnivoice         # 查看状态
+
+# 查看日志
+tail -f logs/server.log                    # 主服务日志
+tail -f logs/omnivoice_service.log         # OmniVoice 服务日志
+```
+
+### Q3: 模型文件存放位置
+
+所有模型文件统一存放在 `models/` 目录下：
+
+```
+models/
+├── OmniVoice/          # OmniVoice 模型 (~2.3GB)
+├── Qwen3-TTS/          # Qwen3-TTS 模型 (~18GB)
+└── VoxCPM/             # VoxCPM 模型 (~4.7GB)
+```
+
+### Q4: OmniVoice 支持哪些方言？
+
+OmniVoice 声音设计模式支持以下 12 种中文方言：
+- 四川话、东北话、河南话、陕西话、云南话
+- 贵州话、桂林话、甘肃话、宁夏话、济南话
+- 青岛话、石家庄话
+
+### Q5: 录音功能无法使用？
+
+录音功能需要 HTTPS 安全连接或 localhost 访问。
+- 使用 `http://localhost:8000` 访问（支持录音）
+- 使用 `http://192.168.x.x:8000` 访问（不支持录音，浏览器安全限制）
+
+---
+
 ## 📄 许可证
 
 本项目采用 Apache 2.0 许可证。
@@ -474,6 +589,7 @@ ls -lt records/ | head -20
 - OpenVoice: MIT
 - Qwen3-TTS: Apache 2.0
 - VoxCPM: Apache 2.0
+- OmniVoice: Apache 2.0
 
 ---
 

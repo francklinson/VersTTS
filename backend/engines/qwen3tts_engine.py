@@ -11,8 +11,7 @@ import transformers
 from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
-from backend.config import models, ALGORITHM_PATHS
-
+from backend.config import models, MODEL_PATHS
 
 def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
     """获取或加载Qwen3-TTS模型
@@ -47,14 +46,14 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
             system_logger.warning("0.6B模型已弃用，自动使用1.7B模型")
             model_size = "1.7B"
         size_str = size_map.get(model_size, model_size.replace('.', '___'))
-        model_path = os.path.join(ALGORITHM_PATHS['qwen3tts'], "models", "Qwen",
+        model_path = os.path.join(MODEL_PATHS['qwen3tts'], "Qwen",
                                   f"Qwen3-TTS-12Hz-{size_str}-{model_type}")
 
         # 如果指定类型模型不存在，尝试加载 Base 模型
         if not os.path.exists(model_path):
             if model_type != "Base":
                 system_logger.warning(f"【模型加载】{model_type} 模型不存在，尝试加载 Base 模型")
-                model_path = os.path.join(ALGORITHM_PATHS['qwen3tts'], "models", "Qwen",
+                model_path = os.path.join(MODEL_PATHS['qwen3tts'], "Qwen",
                                           f"Qwen3-TTS-12Hz-{size_str}-Base")
             if not os.path.exists(model_path):
                 raise HTTPException(status_code=500, detail=f"Qwen3-TTS 模型不存在: {model_path}")

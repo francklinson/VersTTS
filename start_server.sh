@@ -14,9 +14,34 @@ PID_FILE="$SCRIPT_DIR/.server.pid"
 LOG_FILE="$SCRIPT_DIR/logs/server.log"
 ENV_FILE="$SCRIPT_DIR/.env.offline"
 
-# 默认配置
+# OmniVoice 独立服务配置
+OMNIVOICE_PID_FILE="$SCRIPT_DIR/.omnivoice.pid"
+OMNIVOICE_LOG_FILE="$SCRIPT_DIR/logs/omnivoice_service.log"
+OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
+OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
+
+# 服务配置
 HOST="0.0.0.0"
 PORT="8000"
+
+# OmniVoice 独立服务配置
+OMNIVOICE_HOST="0.0.0.0"
+OMNIVOICE_PORT="8001"
+
+# 路径配置
+MODELS_DIR="models"
+OUTPUTS_DIR="outputs"
+LOGS_DIR="logs"
+SPEAKERS_DIR="speakers"
+
+# 日志配置
+LOG_LEVEL="INFO"
+LOG_MAX_SIZE="50"
+LOG_BACKUP_COUNT="5"
+
+# 离线模式（1=启用，0=禁用）
+TRANSFORMERS_OFFLINE="1"
+HF_HUB_OFFLINE="1"
 SKIP_CHECK=false
 RELOAD=false
 OFFLINE_MODE=false
@@ -60,6 +85,12 @@ usage() {
     echo "  restart    重启服务"
     echo "  status     查看服务状态"
     echo ""
+    echo "OmniVoice 独立服务命令:"
+    echo "  start-omnivoice      启动 OmniVoice 独立服务"
+    echo "  stop-omnivoice       停止 OmniVoice 独立服务"
+    echo "  restart-omnivoice    重启 OmniVoice 独立服务"
+    echo "  status-omnivoice     查看 OmniVoice 服务状态"
+    echo ""
     echo "选项 (仅 start/restart 有效):"
     echo "  -h, --help       显示帮助信息"
     echo "  --host <地址>    服务主机地址 (默认: 0.0.0.0)"
@@ -76,6 +107,9 @@ usage() {
     echo "  $0 stop                      # 停止服务"
     echo "  $0 restart                   # 重启服务"
     echo "  $0 status                    # 查看状态"
+    echo "  $0 start-omnivoice           # 启动 OmniVoice 服务"
+    echo "  $0 stop-omnivoice            # 停止 OmniVoice 服务"
+    echo "  $0 status-omnivoice          # 查看 OmniVoice 状态"
     exit 0
 }
 
@@ -140,6 +174,21 @@ do_start() {
         print_success "离线模式已启用 (HuggingFace离线)"
     fi
 
+    # 导出环境变量供 Python 后端使用
+    export HOST
+    export PORT
+    export OMNIVOICE_HOST
+    export OMNIVOICE_PORT
+    export MODELS_DIR
+    export OUTPUTS_DIR
+    export LOGS_DIR
+    export SPEAKERS_DIR
+    export LOG_LEVEL
+    export LOG_MAX_SIZE
+    export LOG_BACKUP_COUNT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+
     # 检查 Python
     PYTHON_VERSION=$(python --version 2>&1)
     print_info "Python 版本: $PYTHON_VERSION"
@@ -200,17 +249,70 @@ else:
                 echo "========================================"
                 echo "      服务启动成功"
                 echo "========================================"
-                print_success "服务状态: 运行中"
-                print_info "进程PID:  $new_pid"
+                print_success "主服务状态: 运行中 (PID: $new_pid)"
                 print_info "服务地址: http://$HOST:$PORT"
                 print_info "API文档:  http://$HOST:$PORT/docs"
                 print_info "前端页面: http://$HOST:$PORT"
                 print_info "日志文件: $LOG_FILE"
                 echo ""
+
+                # 自动启动 OmniVoice 独立服务
+                echo "----------------------------------------"
+                print_step "正在检查 OmniVoice 独立服务..."
+                
+                if is_omnivoice_running; then
+                    local ov_pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+                    print_success "OmniVoice 已在运行 (PID: $ov_pid)"
+                else
+                    if [ ! -f "$OMNIVOICE_SCRIPT" ]; then
+                        print_warn "OmniVoice 服务脚本不存在，跳过"
+                    else
+                        print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT)..."
+                        
+                        cd "$SCRIPT_DIR"
+                        nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+                        local ov_pid=$!
+                        echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
+                        
+                        local ov_count=0
+                        local ov_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        while [ $ov_count -lt 90 ]; do
+                            if kill -0 "$ov_pid" 2>/dev/null; then
+                                if curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" >/dev/null 2>&1; then
+                                    print_success "OmniVoice 已启动 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
+                                    break
+                                fi
+                            else
+                                print_warn "OmniVoice 启动失败，请检查日志: $OMNIVOICE_LOG_FILE"
+                                rm -f "$OMNIVOICE_PID_FILE"
+                                break
+                            fi
+                            sleep 1
+                            ov_count=$((ov_count + 1))
+                            printf "\r  %s  OmniVoice 启动中... %d/90 秒" "${ov_spin:$((ov_count % 10)):1}" "$ov_count"
+                        done
+                    fi
+                fi
+
+                echo ""
+                echo "========================================"
+                echo "      全部服务启动成功"
+                echo "========================================"
+                print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT)"
+                print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
+                print_info "前端页面: http://$HOST:$PORT"
+                print_info "API文档:  http://$HOST:$PORT/docs"
+                echo ""
                 print_info "常用命令:"
                 echo "  查看状态: $0 status"
                 echo "  查看日志: tail -f $LOG_FILE"
                 echo "  停止服务: $0 stop"
+                echo ""
+                print_info "OmniVoice 独立服务:"
+                echo "  单独启动: $0 start-omnivoice"
+                echo "  单独停止: $0 stop-omnivoice"
+                echo "  查看状态: $0 status-omnivoice"
+                echo "  查看日志: tail -f $OMNIVOICE_LOG_FILE"
                 echo "========================================"
                 exit 0
             fi
@@ -240,8 +342,6 @@ else:
     echo "  tail -n 100 $LOG_FILE"
     exit 1
 }
-
-# 停止服务
 do_stop() {
     echo ""
     echo "========================================"
@@ -249,58 +349,50 @@ do_stop() {
     echo "========================================"
     echo ""
 
+    # 停止主服务
     local pid
     pid=$(get_pid)
 
     if [ -z "$pid" ]; then
-        print_warn "服务未运行 (PID 文件不存在)"
-        print_info "可能情况:"
-        echo "  1. 服务从未启动过"
-        echo "  2. 服务异常退出，PID文件被清理"
-        exit 0
-    fi
-
-    if ! kill -0 "$pid" 2>/dev/null; then
-        print_warn "服务未运行 (PID: $pid 已失效)"
-        print_step "清理残留的PID文件..."
-        rm -f "$PID_FILE"
-        print_success "清理完成"
-        exit 0
-    fi
-
-    print_info "发现运行中的服务 (PID: $pid)"
-    print_step "正在停止服务 (优雅终止)..."
-
-    # 先尝试优雅终止
-    kill "$pid" 2>/dev/null || true
-
-    local count=0
-    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 10 ]; do
+        print_info "主服务未运行"
+    else
         if ! kill -0 "$pid" 2>/dev/null; then
-            echo ""
-            print_success "服务已停止"
+            print_warn "主服务未运行 (PID: $pid 已失效)"
             rm -f "$PID_FILE"
-            exit 0
+        else
+            print_info "发现主服务运行中 (PID: $pid)"
+            print_step "正在停止主服务..."
+
+            kill "$pid" 2>/dev/null || true
+
+            local count=0
+            local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+            while [ $count -lt 10 ]; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                    echo ""
+                    print_success "主服务已停止"
+                    rm -f "$PID_FILE"
+                    break
+                fi
+                sleep 1
+                count=$((count + 1))
+                printf "\r  %s  等待中... %d/10 秒" "${spin:$((count % 10)):1}" "$count"
+            done
+
+            if kill -0 "$pid" 2>/dev/null; then
+                echo ""
+                print_warn "优雅终止超时，执行强制停止..."
+                kill -9 "$pid" 2>/dev/null || true
+                sleep 1
+                print_success "主服务已强制停止"
+                rm -f "$PID_FILE"
+            fi
         fi
-        sleep 1
-        count=$((count + 1))
-        printf "\r  %s  等待中... %d/10 秒" "${spin:$((count % 10)):1}" "$count"
-    done
+    fi
 
     echo ""
-    print_warn "优雅终止超时，执行强制停止..."
-    kill -9 "$pid" 2>/dev/null || true
-    sleep 1
-
-    if ! kill -0 "$pid" 2>/dev/null; then
-        print_success "服务已强制停止"
-        rm -f "$PID_FILE"
-    else
-        print_error "无法停止服务 (PID: $pid)"
-        print_info "请手动终止: kill -9 $pid"
-        exit 1
-    fi
+    # 停止 OmniVoice 独立服务
+    do_stop_omnivoice
 }
 
 # 重启服务
@@ -314,19 +406,18 @@ do_restart() {
     local pid
     pid=$(get_pid)
 
-    # 阶段1: 停止服务
-    echo "【阶段 1/2】停止现有服务"
+    echo "【阶段 1/3】停止主服务"
     echo "----------------------------------------"
 
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-        print_info "发现运行中的服务 (PID: $pid)"
-        print_step "正在停止服务..."
+        print_info "发现运行中的主服务 (PID: $pid)"
+        print_step "正在停止主服务..."
         kill "$pid" 2>/dev/null || true
 
         local count=0
         while [ $count -lt 10 ]; do
             if ! kill -0 "$pid" 2>/dev/null; then
-                print_success "服务已停止"
+                print_success "主服务已停止"
                 break
             fi
             sleep 1
@@ -338,7 +429,7 @@ do_restart() {
             echo ""
             print_warn "执行强制停止..."
             kill -9 "$pid" 2>/dev/null || true
-            print_success "服务已强制停止"
+            print_success "主服务已强制停止"
         fi
 
         rm -f "$PID_FILE"
@@ -350,15 +441,24 @@ do_restart() {
             print_warn "发现残留PID文件 (PID: $pid)，进程已不存在"
             rm -f "$PID_FILE"
         else
-            print_info "没有运行中的服务"
+            print_info "没有运行中的主服务"
         fi
     fi
 
-    print_success "停止阶段完成"
+    print_success "主服务停止完成"
     echo ""
 
-    # 阶段2: 启动服务
-    echo "【阶段 2/2】启动新服务"
+    # 阶段1.5: 停止 OmniVoice
+    echo "【阶段 2/3】停止 OmniVoice 服务"
+    echo "----------------------------------------"
+    do_stop_omnivoice
+
+    echo ""
+    print_success "全部服务停止完成"
+    echo ""
+
+    # 阶段2: 启动服务（会自动启动 OmniVoice）
+    echo "【阶段 3/3】启动全部服务"
     echo "----------------------------------------"
     do_start
 }
@@ -384,39 +484,282 @@ do_status() {
     fi
 
     if kill -0 "$pid" 2>/dev/null; then
-        print_success "服务运行中"
+        print_success "主服务运行中"
         print_info "进程PID:  $pid"
         print_info "启动时间: $(ps -o lstart= -p "$pid" 2>/dev/null || echo "未知")"
         print_info "运行时长: $(ps -o etime= -p "$pid" 2>/dev/null || echo "未知")"
         echo ""
 
-        print_step "执行健康检查..."
+        print_step "执行主服务健康检查..."
         local health
         health=$(curl -s "http://$HOST:$PORT/health" 2>/dev/null || echo "")
         if [ -n "$health" ]; then
-            print_success "健康检查通过"
+            print_success "主服务健康检查通过"
             echo ""
             echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
         else
-            print_error "健康检查失败"
+            print_error "主服务健康检查失败"
             print_info "服务进程存在但无法响应请求"
         fi
         echo ""
-        print_info "访问地址:"
+        print_info "主服务地址:"
         echo "  前端页面: http://$HOST:$PORT"
         echo "  API文档:  http://$HOST:$PORT/docs"
         echo "  健康检查: http://$HOST:$PORT/health"
-        print_info "日志文件: $LOG_FILE"
+        print_info "主服务日志: $LOG_FILE"
+        echo ""
     else
-        print_error "服务未运行 (PID 文件残留)"
+        print_error "主服务未运行 (PID 文件残留)"
         print_warn "PID 文件中记录的进程已失效: $pid"
         print_step "清理残留的PID文件..."
         rm -f "$PID_FILE"
         print_success "清理完成"
         echo ""
-        print_info "启动服务:"
+        print_info "启动主服务:"
         echo "  $0 start"
     fi
+
+    # 检查 OmniVoice 服务状态
+    echo "----------------------------------------"
+    print_step "OmniVoice 独立服务状态:"
+    echo "----------------------------------------"
+    if is_omnivoice_running; then
+        local ov_pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+        print_success "OmniVoice 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
+        
+        local ov_health
+        ov_health=$(curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" 2>/dev/null || echo "")
+        if [ -n "$ov_health" ]; then
+            print_success "OmniVoice 健康检查通过"
+            echo "$ov_health" | python -m json.tool 2>/dev/null || echo "$ov_health"
+        else
+            print_error "OmniVoice 健康检查失败"
+        fi
+        print_info "OmniVoice 日志: $OMNIVOICE_LOG_FILE"
+    else
+        print_warn "OmniVoice 未运行"
+    fi
+}
+
+# ============ OmniVoice 独立服务管理 ============
+
+# 检查 OmniVoice 服务是否运行
+is_omnivoice_running() {
+    if [ -f "$OMNIVOICE_PID_FILE" ]; then
+        local pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 启动 OmniVoice 独立服务
+do_start_omnivoice() {
+    echo ""
+    echo "========================================"
+    echo "      OmniVoice 独立服务启动"
+    echo "========================================"
+    echo ""
+
+    # 检查是否已在运行
+    if is_omnivoice_running; then
+        local current_pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+        print_warn "OmniVoice 服务已在运行中"
+        print_info "当前PID: $current_pid"
+        print_info "服务端口: $OMNIVOICE_PORT"
+        print_info "健康检查: http://127.0.0.1:$OMNIVOICE_PORT/health"
+        exit 0
+    fi
+
+    # 检查服务脚本是否存在
+    if [ ! -f "$OMNIVOICE_SCRIPT" ]; then
+        print_error "OmniVoice 服务脚本不存在: $OMNIVOICE_SCRIPT"
+        exit 1
+    fi
+
+    # 检查 transformers5 目录
+    if [ ! -d "$SCRIPT_DIR/lib/transformers5" ]; then
+        print_error "transformers5 目录不存在: $SCRIPT_DIR/lib/transformers5"
+        print_info "请先安装: pip install --target $SCRIPT_DIR/lib/transformers5 transformers>=5.3.0"
+        exit 1
+    fi
+
+    print_step "激活虚拟环境..."
+    source "$VENV_PATH/bin/activate"
+    print_success "虚拟环境已激活"
+
+    # 加载离线模式环境变量
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用"
+    fi
+
+    # 导出环境变量供 OmniVoice 服务使用
+    export OMNIVOICE_HOST
+    export OMNIVOICE_PORT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+    export HF_HOME
+    export HUGGINGFACE_HUB_CACHE
+    export TRANSFORMERS_CACHE
+
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    print_info "Python 版本: $(python --version 2>&1)"
+    echo ""
+    print_step "启动 OmniVoice 独立服务..."
+    print_info "服务端口: $OMNIVOICE_PORT"
+    print_info "日志文件: $OMNIVOICE_LOG_FILE"
+    echo ""
+
+    # 后台启动
+    cd "$SCRIPT_DIR"
+    nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$OMNIVOICE_PID_FILE"
+
+    print_step "等待服务启动 (PID: $new_pid)..."
+    echo ""
+
+    # 等待服务启动
+    local count=0
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while [ $count -lt 60 ]; do
+        if kill -0 "$new_pid" 2>/dev/null; then
+            if curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" >/dev/null 2>&1; then
+                echo ""
+                echo ""
+                echo "========================================"
+                echo "      OmniVoice 服务启动成功"
+                echo "========================================"
+                print_success "服务状态: 运行中"
+                print_info "进程PID:  $new_pid"
+                print_info "服务端口: $OMNIVOICE_PORT"
+                print_info "健康检查: http://127.0.0.1:$OMNIVOICE_PORT/health"
+                print_info "日志文件: $OMNIVOICE_LOG_FILE"
+                echo ""
+                print_info "常用命令:"
+                echo "  查看状态: $0 status-omnivoice"
+                echo "  查看日志: tail -f $OMNIVOICE_LOG_FILE"
+                echo "  停止服务: $0 stop-omnivoice"
+                echo "========================================"
+                exit 0
+            fi
+        else
+            echo ""
+            echo ""
+            print_error "OmniVoice 服务启动失败 - 进程已退出"
+            print_info "查看错误日志:"
+            echo "  tail -n 50 $OMNIVOICE_LOG_FILE"
+            rm -f "$OMNIVOICE_PID_FILE"
+            exit 1
+        fi
+        sleep 1
+        count=$((count + 1))
+        printf "\r  %s  等待中... %d/60 秒" "${spin:$((count % 10)):1}" "$count"
+    done
+
+    echo ""
+    echo ""
+    print_warn "OmniVoice 服务启动超时 (60秒)"
+    print_info "可能原因:"
+    echo "  1. 模型加载时间较长 (OmniVoice 模型约 2.3GB)"
+    echo "  2. 端口被占用: $OMNIVOICE_PORT"
+    echo "  3. transformers5 依赖不完整"
+    echo ""
+    print_info "查看详细日志:"
+    echo "  tail -n 100 $OMNIVOICE_LOG_FILE"
+    exit 1
+}
+
+# 停止 OmniVoice 独立服务
+do_stop_omnivoice() {
+    echo "----------------------------------------"
+    echo "      OmniVoice 独立服务停止"
+    echo "----------------------------------------"
+
+    if ! is_omnivoice_running; then
+        print_info "OmniVoice 服务未运行"
+        # 清理残留 PID 文件
+        if [ -f "$OMNIVOICE_PID_FILE" ]; then
+            rm -f "$OMNIVOICE_PID_FILE"
+        fi
+        return 0
+    fi
+
+    local pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+    print_info "发现运行中的 OmniVoice 服务 (PID: $pid)"
+    print_step "正在停止服务..."
+
+    # 优雅终止
+    kill "$pid" 2>/dev/null || true
+
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            print_success "OmniVoice 服务已停止"
+            rm -f "$OMNIVOICE_PID_FILE"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        echo -n "."
+    done
+
+    echo ""
+    print_warn "优雅终止超时，执行强制停止..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_success "OmniVoice 服务已强制停止"
+        rm -f "$OMNIVOICE_PID_FILE"
+    else
+        print_error "无法停止 OmniVoice 服务 (PID: $pid)"
+    fi
+}
+
+# 查看 OmniVoice 服务状态
+do_status_omnivoice() {
+    echo ""
+    echo "========================================"
+    echo "      OmniVoice 独立服务状态"
+    echo "========================================"
+    echo ""
+
+    if ! is_omnivoice_running; then
+        print_warn "OmniVoice 服务未运行"
+        if [ -f "$OMNIVOICE_PID_FILE" ]; then
+            rm -f "$OMNIVOICE_PID_FILE"
+        fi
+        echo ""
+        print_info "启动服务:"
+        echo "  $0 start-omnivoice"
+        exit 0
+    fi
+
+    local pid=$(cat "$OMNIVOICE_PID_FILE" 2>/dev/null)
+    print_success "OmniVoice 服务运行中"
+    print_info "进程PID:  $pid"
+    print_info "服务端口: $OMNIVOICE_PORT"
+    echo ""
+
+    print_step "执行健康检查..."
+    local health
+    health=$(curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" 2>/dev/null || echo "")
+    if [ -n "$health" ]; then
+        print_success "健康检查通过"
+        echo ""
+        echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
+    else
+        print_error "健康检查失败"
+        print_info "服务进程存在但无法响应请求"
+    fi
+    echo ""
+    print_info "日志文件: $OMNIVOICE_LOG_FILE"
+    print_info "查看日志: tail -f $OMNIVOICE_LOG_FILE"
 }
 
 # ============ 主逻辑 ============
@@ -476,6 +819,20 @@ case "$COMMAND" in
         ;;
     status)
         do_status
+        ;;
+    start-omnivoice)
+        do_start_omnivoice
+        ;;
+    stop-omnivoice)
+        do_stop_omnivoice
+        ;;
+    restart-omnivoice)
+        do_stop_omnivoice
+        sleep 2
+        do_start_omnivoice
+        ;;
+    status-omnivoice)
+        do_status_omnivoice
         ;;
     *)
         print_error "未知命令: $COMMAND"

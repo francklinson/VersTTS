@@ -84,11 +84,12 @@ async def tts_openvoice(
             target_se = source_se.get("zh", source_se.get("en"))
 
         # 生成音频
-        src_path = f"outputs/openvoice_tmp_{int(time.time())}.wav"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        src_path = f"outputs/openvoice_tmp_{timestamp}.wav"
         tts_model.tts(text, src_path, speaker=speaker, language='Chinese', speed=speed)
 
         # 音色转换
-        save_path = f"outputs/openvoice_{int(time.time())}.wav"
+        save_path = f"outputs/openvoice_{timestamp}.wav"
         encode_message = "@MyShell"
         converter.convert(
             audio_src_path=src_path,

@@ -11,7 +11,7 @@ import torch
 from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
-from backend.config import models, ALGORITHM_PATHS
+from backend.config import models, ALGORITHM_PATHS, MODEL_PATHS
 
 
 def get_voxcpm_model():
@@ -28,7 +28,7 @@ def get_voxcpm_model():
 
             from voxcpm import VoxCPM
 
-            model_path = os.path.join(os.path.dirname(ALGORITHM_PATHS['voxcpm']), "models", "VoxCPM2")
+            model_path = os.path.join(MODEL_PATHS['voxcpm'], "VoxCPM2")
             
             # 检查是否离线模式
             is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLINE') == '1'

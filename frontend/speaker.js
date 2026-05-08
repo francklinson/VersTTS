@@ -290,6 +290,27 @@
         // 开始录音
         async function startRecording() {
             try {
+                // 检查是否支持 getUserMedia
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    // 检查是否是 HTTPS 或 localhost
+                    const isSecureContext = window.isSecureContext || 
+                                           location.protocol === 'https:' || 
+                                           location.hostname === 'localhost' || 
+                                           location.hostname === '127.0.0.1';
+                    
+                    if (!isSecureContext) {
+                        showSpeakerStatus('录音需要 HTTPS 安全连接。请使用 localhost 或配置 HTTPS 访问。', 'error');
+                        console.error('当前环境不支持录音:', {
+                            protocol: location.protocol,
+                            hostname: location.hostname,
+                            isSecureContext: window.isSecureContext
+                        });
+                    } else {
+                        showSpeakerStatus('当前浏览器不支持录音功能，请尝试使用 Chrome 或 Edge 浏览器。', 'error');
+                    }
+                    return;
+                }
+                
                 // 请求麦克风权限 - 使用基本配置确保兼容性
                 console.log('请求麦克风权限...');
                 const stream = await navigator.mediaDevices.getUserMedia({

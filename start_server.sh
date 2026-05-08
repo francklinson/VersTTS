@@ -24,8 +24,13 @@ OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
 HOST="0.0.0.0"
 PORT="8000"
 
+# HTTPS 配置（留空则使用 HTTP）
+# 生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
+SSL_CERT="ssl/cert.pem"  # SSL 证书路径，如 "ssl/cert.pem"
+SSL_KEY="ssl/key.pem"   # SSL 私钥路径，如 "ssl/key.pem"
+
 # OmniVoice 独立服务配置
-OMNIVOICE_HOST="0.0.0.0"
+OMNIVOICE_HOST="127.0.0.1"
 OMNIVOICE_PORT="8001"
 
 # 路径配置
@@ -217,11 +222,33 @@ else:
     print_success "目录检查完成"
 
     # 构建启动命令
+    local protocol="http"
     local cmd=(python -m uvicorn backend.main:app --host "$HOST" --port "$PORT")
+    
+    # HTTPS 配置
+    if [ -n "$SSL_CERT" ] && [ -n "$SSL_KEY" ]; then
+        if [ ! -f "$SSL_CERT" ]; then
+            print_error "SSL 证书不存在: $SSL_CERT"
+            print_info "生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout $SSL_KEY -out $SSL_CERT -days 365 -nodes"
+            exit 1
+        fi
+        if [ ! -f "$SSL_KEY" ]; then
+            print_error "SSL 私钥不存在: $SSL_KEY"
+            exit 1
+        fi
+        cmd+=(--ssl-certfile "$SSL_CERT" --ssl-keyfile "$SSL_KEY")
+        protocol="https"
+        print_info "HTTPS 模式: 已启用"
+        print_info "证书文件: $SSL_CERT"
+    fi
+    
     if [ "$RELOAD" = true ]; then
         cmd+=(--reload)
         print_info "开发模式: 已启用自动重载"
     fi
+    
+    # 导出协议变量
+    export SERVER_PROTOCOL="$protocol"
 
     echo ""
     print_step "启动 Uvicorn 服务..."
@@ -238,21 +265,28 @@ else:
     print_step "等待服务启动 (PID: $new_pid)..."
     echo ""
 
+    # 构建健康检查 URL
+    local health_url="${protocol}://$HOST:$PORT/health"
+    local curl_opts="-s"
+    if [ "$protocol" = "https" ]; then
+        curl_opts="-sk"  # -k: 跳过 SSL 证书验证（自签名证书）
+    fi
+
     # 等待服务启动
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     while [ $count -lt 30 ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
-            if curl -s "http://$HOST:$PORT/health" >/dev/null 2>&1; then
+            if curl $curl_opts "$health_url" >/dev/null 2>&1; then
                 echo ""
                 echo ""
                 echo "========================================"
                 echo "      服务启动成功"
                 echo "========================================"
                 print_success "主服务状态: 运行中 (PID: $new_pid)"
-                print_info "服务地址: http://$HOST:$PORT"
-                print_info "API文档:  http://$HOST:$PORT/docs"
-                print_info "前端页面: http://$HOST:$PORT"
+                print_info "服务地址: ${protocol}://$HOST:$PORT"
+                print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
+                print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "日志文件: $LOG_FILE"
                 echo ""
 
@@ -300,8 +334,8 @@ else:
                 echo "========================================"
                 print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT)"
                 print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
-                print_info "前端页面: http://$HOST:$PORT"
-                print_info "API文档:  http://$HOST:$PORT/docs"
+                print_info "前端页面: ${protocol}://$HOST:$PORT"
+                print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
                 echo ""
                 print_info "常用命令:"
                 echo "  查看状态: $0 status"
@@ -484,6 +518,18 @@ do_status() {
     fi
 
     if kill -0 "$pid" 2>/dev/null; then
+        # 检测是否启用 HTTPS（检查 uvicorn 进程参数）
+        local proc_protocol="http"
+        if ps -p "$pid" -o args= | grep -q "\-\-ssl"; then
+            proc_protocol="https"
+        fi
+        
+        local status_curl_opts="-s"
+        if [ "$proc_protocol" = "https" ]; then
+            status_curl_opts="-sk"
+        fi
+        local status_health_url="${proc_protocol}://$HOST:$PORT/health"
+
         print_success "主服务运行中"
         print_info "进程PID:  $pid"
         print_info "启动时间: $(ps -o lstart= -p "$pid" 2>/dev/null || echo "未知")"
@@ -492,7 +538,7 @@ do_status() {
 
         print_step "执行主服务健康检查..."
         local health
-        health=$(curl -s "http://$HOST:$PORT/health" 2>/dev/null || echo "")
+        health=$(curl $status_curl_opts "$status_health_url" 2>/dev/null || echo "")
         if [ -n "$health" ]; then
             print_success "主服务健康检查通过"
             echo ""

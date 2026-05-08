@@ -31,7 +31,10 @@ app = FastAPI(title="OmniVoice 独立服务")
 # 全局模型
 model = None
 
-MODEL_PATH = "/home/zhouchenghao/PycharmProjects/VersTTS/models/OmniVoice"
+# 模型路径：优先使用环境变量 MODELS_DIR，否则使用相对于脚本的路径
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
+MODEL_PATH = os.path.join(MODELS_DIR, "OmniVoice")
 
 
 def load_model():
@@ -99,5 +102,6 @@ async def tts(
 
 if __name__ == "__main__":
     port = int(os.environ.get("OMNIVOICE_PORT", 8001))
-    print(f"【OmniVoice服务】启动服务，端口: {port}")
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
+    print(f"【OmniVoice服务】启动服务，地址: {host}:{port}")
+    uvicorn.run(app, host=host, port=port)

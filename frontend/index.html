@@ -906,6 +906,21 @@
         // 开始录音
         async function startRecording() {
             try {
+                // 检查浏览器是否支持 getUserMedia
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    // 检查是否是安全上下文
+                    const isSecureContext = window.isSecureContext || 
+                                           location.protocol === 'https:' || 
+                                           location.hostname === 'localhost' || 
+                                           location.hostname === '127.0.0.1';
+                    
+                    if (!isSecureContext) {
+                        throw new Error('录音功能需要在安全环境下使用。请使用 http://localhost:8000 访问，或配置 HTTPS。当前访问地址: ' + location.protocol + '//' + location.host);
+                    } else {
+                        throw new Error('当前浏览器不支持录音功能，请尝试使用 Chrome、Edge 或 Firefox 浏览器。');
+                    }
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,

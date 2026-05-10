@@ -164,7 +164,7 @@
                 <!-- 批量生成数量设置 -->
                 <div class="batch-count-section">
                     <label>🎲 批量生成数量</label>
-                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20">
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20" onblur="validateBatchCount()">
                     <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-20个）</p>
                 </div>
 
@@ -356,14 +356,37 @@
             }
         }
 
+        // 验证批量生成数量（自动纠正）
+        function validateBatchCount() {
+            const input = document.getElementById('batchCount');
+            let value = parseInt(input.value);
+
+            // 如果不是有效数字，默认为10
+            if (isNaN(value)) {
+                value = 10;
+            }
+
+            // 限制范围 2-20
+            if (value < 2) {
+                value = 2;
+            } else if (value > 20) {
+                value = 20;
+            }
+
+            // 更新输入框值
+            input.value = value;
+        }
+
         // 批量生成
         async function batchGenerateTTS() {
             const genText = document.getElementById('genText').value.trim();
-            const count = parseInt(document.getElementById('batchCount').value) || 10;
             const modelSize = document.querySelector('input[name="modelSize"]:checked').value;
 
+            // 先验证数量
+            validateBatchCount();
+            const count = parseInt(document.getElementById('batchCount').value);
+
             if (!genText) { VersTTS.showStatus('请输入生成文本', true); return; }
-            if (count < 2 || count > 20) { VersTTS.showStatus('生成数量必须在2-20之间', true); return; }
 
             if (currentMode === 'voice_clone' && !document.getElementById('speakerSelect').value) {
                 VersTTS.showStatus('请从说话人管理中选择一个说话人', true);

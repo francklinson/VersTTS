@@ -25,13 +25,15 @@ from backend.config import OUTPUTS_DIR
 router = APIRouter()
 
 # 并发控制配置
-# OmniVoice是独立HTTP服务，可以有限并行（2个并发）
+# OmniVoice和CosyVoice是独立HTTP服务，可以有限并行（2个并发）
 OMNIVOICE_CONCURRENCY = 2
+COSYVOICE_CONCURRENCY = 2
 # 本地GPU模型保持顺序执行（避免爆显存）
 GPU_MODEL_CONCURRENCY = 1
 
 # 创建信号量控制并发
 omnivoice_semaphore = asyncio.Semaphore(OMNIVOICE_CONCURRENCY)
+cosyvoice_semaphore = asyncio.Semaphore(COSYVOICE_CONCURRENCY)
 
 
 class BatchTTSRequest(BaseModel):
@@ -143,6 +145,8 @@ async def batch_generate(
     支持模型:
     - voxcpm: 基础生成、音色设计、声音克隆、极致克隆
     - qwen3tts: base, voice_clone, custom_voice, voice_design
+    - omnivoice: voice_clone, voice_design
+    - cosyvoice: zero_shot, instruct, cross_lingual
     """
     try:
         # 验证参数
@@ -194,6 +198,16 @@ async def batch_generate(
                 speaker_id=speaker_id,
                 voice_design_prompt=voice_design_prompt,
                 speed=speed
+            )
+            audio_urls = result["audio_urls"]
+            audio_files = result["audio_files"]
+        elif model == "cosyvoice":
+            result = await _batch_generate_cosyvoice(
+                text=text,
+                mode=mode,
+                count=count,
+                speaker_id=speaker_id,
+                control_prompt=control_prompt
             )
             audio_urls = result["audio_urls"]
             audio_files = result["audio_files"]
@@ -671,6 +685,153 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
     system_logger.info(f"【批量生成】OmniVoice 完成 | 成功: {success_count}/{count}")
     
     return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
+                                    speaker_id: str = None,
+                                    control_prompt: str = None) -> Dict:
+    """
+    批量生成CosyVoice音频（并行版本）
+    
+    使用异步并行生成，并发数由 COSYVOICE_CONCURRENCY 控制（默认2）
+    注意：由于CosyVoice是独立HTTP服务，并行请求受服务端处理能力限制
+    """
+    from backend.services import get_speaker_by_id
+    from backend.config import COSYVOICE_HOST, COSYVOICE_PORT
+    
+    audio_urls = []
+    audio_files = []
+    
+    COSYVOICE_SERVICE_URL = f"http://{COSYVOICE_HOST}:{COSYVOICE_PORT}/tts"
+    
+    # 获取说话人信息（如果需要）
+    ref_path = None
+    prompt_text = None
+    if speaker_id:
+        speaker = get_speaker_by_id(speaker_id)
+        if speaker:
+            ref_path = speaker.get("audio_path")
+            prompt_text = speaker.get("reference_text")
+    
+    system_logger.info(f"【批量生成】CosyVoice 开始并行生成 | 数量: {count} | 并发度: {COSYVOICE_CONCURRENCY} | 模式: {mode}")
+    
+    # 创建异步HTTP会话
+    timeout = aiohttp.ClientTimeout(total=120)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        # 创建所有任务
+        tasks = []
+        for i in range(count):
+            task = _generate_single_cosyvoice(
+                session=session,
+                text=text,
+                mode=mode,
+                index=i,
+                ref_path=ref_path,
+                prompt_text=prompt_text,
+                instruct_text=control_prompt,
+                cosyvoice_url=COSYVOICE_SERVICE_URL
+            )
+            tasks.append(task)
+        
+        # 并行执行所有任务（受信号量控制实际并发数）
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # 处理结果
+    success_count = 0
+    for result in results:
+        if isinstance(result, Exception):
+            system_logger.error(f"【批量生成】CosyVoice 任务异常: {result}")
+            continue
+        if result.get("success"):
+            audio_urls.append(result["audio_url"])
+            audio_files.append(result["audio_file"])
+            success_count += 1
+    
+    system_logger.info(f"【批量生成】CosyVoice 完成 | 成功: {success_count}/{count}")
+    
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _generate_single_cosyvoice(
+    session: aiohttp.ClientSession,
+    text: str,
+    mode: str,
+    index: int,
+    ref_path: str = None,
+    prompt_text: str = None,
+    instruct_text: str = None,
+    cosyvoice_url: str = ""
+) -> Dict:
+    """单个CosyVoice生成任务（受信号量控制）"""
+    import soundfile as sf
+    
+    async with cosyvoice_semaphore:  # 限制并发数
+        try:
+            # 构建请求数据
+            data = {
+                "text": text,
+                "mode": mode,
+                "output_format": "url"
+            }
+            
+            if mode == "zero_shot":
+                if ref_path:
+                    data["prompt_wav_path"] = ref_path
+                if prompt_text:
+                    data["prompt_text"] = prompt_text
+            elif mode == "instruct":
+                if ref_path:
+                    data["prompt_wav_path"] = ref_path
+                if instruct_text:
+                    data["instruct_text"] = instruct_text
+            elif mode == "cross_lingual":
+                if ref_path:
+                    data["prompt_wav_path"] = ref_path
+            
+            # 异步HTTP请求（超时120秒）
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with session.post(cosyvoice_url, data=data, timeout=timeout) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个失败: {error_text}")
+                    return {"success": False, "index": index}
+                
+                result = await response.json()
+                if not result.get("success"):
+                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个合成失败")
+                    return {"success": False, "index": index}
+                
+                temp_audio_path = result.get("audio_path")
+                if not temp_audio_path or not os.path.exists(temp_audio_path):
+                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个音频文件未生成")
+                    return {"success": False, "index": index}
+                
+                # 保存音频到 outputs 目录
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                output_path = os.path.join(OUTPUTS_DIR, f"cosyvoice_{timestamp}.wav")
+                audio_data, sample_rate = sf.read(temp_audio_path)
+                sf.write(output_path, audio_data, samplerate=sample_rate)
+                
+                # 清理临时文件
+                try:
+                    os.remove(temp_audio_path)
+                except:
+                    pass
+                
+                system_logger.info(f"【批量生成】CosyVoice 第 {index+1} 个完成")
+                return {
+                    "success": True,
+                    "index": index,
+                    "audio_url": f"/audio/{os.path.basename(output_path)}",
+                    "audio_file": os.path.basename(output_path)
+                }
+                
+        except asyncio.TimeoutError:
+            system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个超时")
+            return {"success": False, "index": index, "error": "timeout"}
+        except Exception as e:
+            system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个失败: {e}")
+            return {"success": False, "index": index, "error": str(e)}
 
 
 @router.post("/download-zip")

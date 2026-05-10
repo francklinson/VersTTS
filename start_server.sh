@@ -18,6 +18,15 @@ ENV_FILE="$SCRIPT_DIR/.env.offline"
 HOST="0.0.0.0"
 PORT="8000"
 
+# GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
+# 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
+# 主服务 GPU 配置
+MAIN_GPU="${MAIN_GPU:-0}"
+# OmniVoice 独立服务 GPU 配置
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
+# CosyVoice 独立服务 GPU 配置
+COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
+
 # OmniVoice 独立服务配置
 OMNIVOICE_HOST="127.0.0.1"
 OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
@@ -265,12 +274,13 @@ else:
     echo ""
     print_step "启动 Uvicorn 服务..."
     print_info "命令: ${cmd[*]}"
+    print_info "GPU设备: $MAIN_GPU"
     print_info "日志文件: $LOG_FILE"
     echo ""
 
     # 后台启动并记录 PID
     cd "$SCRIPT_DIR"
-    nohup "${cmd[@]}" >> "$LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$MAIN_GPU" nohup "${cmd[@]}" >> "$LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$PID_FILE"
 
@@ -313,10 +323,10 @@ else:
                     if [ ! -f "$OMNIVOICE_SCRIPT" ]; then
                         print_warn "OmniVoice 服务脚本不存在，跳过"
                     else
-                        print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT)..."
+                        print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)..."
                         
                         cd "$SCRIPT_DIR"
-                        nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
                         local ov_pid=$!
                         echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
                         
@@ -351,10 +361,10 @@ else:
                     if [ ! -f "$COSYVOICE_SCRIPT" ]; then
                         print_warn "CosyVoice 服务脚本不存在，跳过"
                     else
-                        print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT)..."
+                        print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)..."
 
                         cd "$SCRIPT_DIR"
-                        nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
                         local cv_pid=$!
                         echo "$cv_pid" > "$COSYVOICE_PID_FILE"
 
@@ -382,9 +392,9 @@ else:
                 echo "========================================"
                 echo "      全部服务启动成功"
                 echo "========================================"
-                print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT)"
-                print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
-                print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
+                print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT, GPU: $MAIN_GPU)"
+                print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)"
+                print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)"
                 print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
                 echo ""
@@ -744,12 +754,13 @@ do_start_omnivoice() {
     echo ""
     print_step "启动 OmniVoice 独立服务..."
     print_info "服务端口: $OMNIVOICE_PORT"
+    print_info "GPU设备: $OMNIVOICE_GPU"
     print_info "日志文件: $OMNIVOICE_LOG_FILE"
     echo ""
 
     # 后台启动
     cd "$SCRIPT_DIR"
-    nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$OMNIVOICE_PID_FILE"
 
@@ -976,12 +987,13 @@ do_start_cosyvoice() {
     echo ""
     print_step "启动 CosyVoice 独立服务..."
     print_info "服务端口: $COSYVOICE_PORT"
+    print_info "GPU设备: $COSYVOICE_GPU"
     print_info "日志文件: $COSYVOICE_LOG_FILE"
     echo ""
 
     # 后台启动
     cd "$SCRIPT_DIR"
-    nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$COSYVOICE_PID_FILE"
 

@@ -18,6 +18,7 @@ import torch
 import soundfile as sf
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException
+from contextlib import asynccontextmanager
 from typing import Optional
 import logging
 
@@ -34,7 +35,24 @@ if ALGORITHMS_PATH not in sys.path:
 
 from omnivoice import OmniVoice
 
-app = FastAPI(title="OmniVoice 独立服务")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动时加载模型
+    load_model()
+    yield
+    # 关闭时清理资源
+    global model
+    if model is not None:
+        print("【OmniVoice服务】正在卸载模型...")
+        model = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print("【OmniVoice服务】GPU缓存已清理")
+
+
+app = FastAPI(title="OmniVoice 独立服务", lifespan=lifespan)
 
 # 全局模型
 model = None
@@ -46,23 +64,41 @@ MODEL_PATH = os.path.join(MODELS_DIR, "OmniVoice")
 
 
 def load_model():
-    """加载 OmniVoice 模型"""
+    """加载 OmniVoice 模型，带重试机制"""
     global model
-    if model is None:
-        print(f"【OmniVoice服务】正在加载模型: {MODEL_PATH}")
-        is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1'
-        model = OmniVoice.from_pretrained(
-            MODEL_PATH,
-            device_map="cuda:0" if torch.cuda.is_available() else "cpu",
-            dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            local_files_only=is_offline
-        )
-        print("【OmniVoice服务】模型加载完成")
-
-
-@app.on_event("startup")
-async def startup():
-    load_model()
+    if model is not None:
+        return
+    
+    print(f"【OmniVoice服务】正在加载模型: {MODEL_PATH}")
+    is_offline = os.environ.get('TRANSFORMERS_OFFLINE') == '1'
+    
+    # 尝试加载模型，如果GPU被占用则等待重试
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # 在加载前清理显存
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                print(f"【OmniVoice服务】已清理GPU缓存，尝试 {attempt + 1}/{max_retries}")
+            
+            model = OmniVoice.from_pretrained(
+                MODEL_PATH,
+                device_map="cuda:0" if torch.cuda.is_available() else "cpu",
+                dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                local_files_only=is_offline
+            )
+            print("【OmniVoice服务】模型加载完成")
+            return
+            
+        except RuntimeError as e:
+            if "CUDA" in str(e) and attempt < max_retries - 1:
+                print(f"【OmniVoice服务】GPU繁忙，等待5秒后重试... ({attempt + 1}/{max_retries})")
+                time.sleep(5)
+            else:
+                raise
+    
+    raise RuntimeError(f"模型加载失败，已重试 {max_retries} 次")
 
 
 @app.get("/health")

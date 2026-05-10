@@ -155,12 +155,15 @@ async def tts_omnivoice(
             speaker_ref_text = speaker.get("reference_text")
             system_logger.info(f"【OmniVoice】找到说话人 | 名称: {speaker.get('name')}")
 
-        # 语速参数校验
+        # 语速参数自动矫正
+        original_speed = speed
         if speed < 0.5 or speed > 2.0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"语速参数必须在 0.5-2.0 之间，当前值: {speed}"
-            )
+            speed = max(0.5, min(2.0, speed))
+            speed = round(speed, 1)  # 保留一位小数
+            system_logger.warning(f"【OmniVoice】语速参数 {original_speed} 超出范围，已自动矫正为 {speed}")
+        elif speed != round(speed, 1):
+            # 确保只有一位小数
+            speed = round(speed, 1)
 
         # 声音设计模式校验和格式修正
         if mode == "voice_design" and voice_design_prompt:

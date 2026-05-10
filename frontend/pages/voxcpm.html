@@ -187,7 +187,7 @@
                 <div id="progressBar" class="progress-bar">
                     <div id="progressBarFill" class="progress-bar-fill"></div>
                 </div>
-                <div id="progressText" class="progress-text">正在生成... 0/10</div>
+                <div id="progressText" class="progress-text">准备生成...</div>
 
                 <!-- 按钮组 -->
                 <div class="button-group">
@@ -418,13 +418,13 @@
             VersTTS.setButtonLoading(btn, btnText, true);
 
             // 显示进度条
-            const progressBar = document.getElementById('progressBar');
-            const progressBarFill = document.getElementById('progressBarFill');
-            const progressText = document.getElementById('progressText');
-            progressBar.classList.add('active');
-            progressText.classList.add('active');
-            progressText.textContent = `正在生成... 0/${count}`;
-            progressBarFill.style.width = '0%';
+                const progressBar = document.getElementById('progressBar');
+                const progressBarFill = document.getElementById('progressBarFill');
+                const progressText = document.getElementById('progressText');
+                progressBar.classList.add('active');
+                progressText.classList.add('active');
+                progressText.textContent = `正在生成 ${count} 个音频，请稍候...`;
+                progressBarFill.style.width = '30%';  // 显示进行中动画
 
             try {
                 const formData = new FormData();
@@ -494,14 +494,11 @@
                 item.innerHTML = `
                     <div class="result-header">
                         <span class="result-number">#${index + 1}</span>
-                        <input type="checkbox" class="select-checkbox" 
+                        <input type="checkbox" class="select-checkbox"
                                ${selectedFiles.has(result.filename) ? 'checked' : ''}
                                onchange="toggleSelect('${result.filename}')">
                     </div>
                     <audio controls src="${result.url}"></audio>
-                    <div class="result-actions">
-                        <a href="${result.url}" download="${result.filename}" class="btn-small btn-download-small">⬇️ 下载</a>
-                    </div>
                 `;
                 container.appendChild(item);
             });

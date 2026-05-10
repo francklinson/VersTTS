@@ -214,7 +214,9 @@
                         </div>
                         <div class="param-item">
                             <label for="speed">语速</label>
-                            <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.1">
+                            <input type="number" id="speed" value="1.0" min="0.5" max="2.0" step="0.1"
+                                   oninput="validateSpeed(this)" onblur="clampSpeed(this)">
+                            <small id="speedHint" style="color: #666; font-size: 0.8rem; margin-top: 4px; display: block;">范围: 0.5 - 2.0</small>
                         </div>
                     </div>
                 </div>
@@ -481,13 +483,14 @@
             const btnText = document.getElementById('batchBtnText');
             VersTTS.setButtonLoading(btn, btnText, true);
 
+            // 显示进度条
             const progressBar = document.getElementById('progressBar');
             const progressBarFill = document.getElementById('progressBarFill');
             const progressText = document.getElementById('progressText');
             progressBar.classList.add('active');
             progressText.classList.add('active');
-            progressText.textContent = `正在生成... 0/${count}`;
-            progressBarFill.style.width = '0%';
+            progressText.textContent = `正在生成 ${count} 个音频，请稍候...`;
+            progressBarFill.style.width = '30%';
 
             try {
                 const formData = new FormData();
@@ -495,6 +498,7 @@
                 formData.append('model', 'omnivoice');
                 formData.append('mode', currentMode);
                 formData.append('count', count);
+                formData.append('speed', document.getElementById('speed').value);
 
                 if (currentMode === 'voice_design') {
                     formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
@@ -549,14 +553,11 @@
                 item.innerHTML = `
                     <div class="result-header">
                         <span class="result-number">#${index + 1}</span>
-                        <input type="checkbox" class="select-checkbox" 
+                        <input type="checkbox" class="select-checkbox"
                                ${selectedFiles.has(result.filename) ? 'checked' : ''}
                                onchange="toggleSelect('${result.filename}')">
                     </div>
                     <audio controls src="${result.url}"></audio>
-                    <div class="result-actions">
-                        <a href="${result.url}" download="${result.filename}" class="btn-small btn-download-small">⬇️ 下载</a>
-                    </div>
                 `;
                 container.appendChild(item);
             });
@@ -619,6 +620,57 @@
                 }
             } catch (error) {
                 VersTTS.showStatus('批量下载失败: ' + error.message, true);
+            }
+        }
+
+        // 语速输入实时校验
+        function validateSpeed(input) {
+            const value = parseFloat(input.value);
+            const hint = document.getElementById('speedHint');
+
+            if (isNaN(value)) {
+                hint.textContent = '请输入有效数字';
+                hint.style.color = '#f44336';
+                return;
+            }
+
+            if (value < 0.5 || value > 2.0) {
+                hint.textContent = `⚠️ 值 ${value} 超出范围，将自动矫正为 ${Math.max(0.5, Math.min(2.0, value))}`;
+                hint.style.color = '#ff9800';
+            } else {
+                hint.textContent = '✓ 范围: 0.5 - 2.0';
+                hint.style.color = '#4caf50';
+            }
+        }
+
+        // 语速失焦时自动矫正
+        function clampSpeed(input) {
+            let value = parseFloat(input.value);
+            const hint = document.getElementById('speedHint');
+
+            if (isNaN(value)) {
+                value = 1.0;  // 默认值
+            }
+
+            // 限制范围
+            const originalValue = value;
+            value = Math.max(0.5, Math.min(2.0, value));
+
+            // 保留一位小数
+            value = Math.round(value * 10) / 10;
+
+            input.value = value;
+
+            if (originalValue !== value) {
+                hint.textContent = `已自动矫正为 ${value}`;
+                hint.style.color = '#2196f3';
+                setTimeout(() => {
+                    hint.textContent = '范围: 0.5 - 2.0';
+                    hint.style.color = '#666';
+                }, 2000);
+            } else {
+                hint.textContent = '范围: 0.5 - 2.0';
+                hint.style.color = '#666';
             }
         }
 

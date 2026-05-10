@@ -134,7 +134,8 @@ async def batch_generate(
     count: int = Form(10, description="生成数量(2-20)"),
     speaker_id: str = Form(None, description="说话人ID"),
     voice_design_prompt: str = Form(None, description="音色设计描述"),
-    control_prompt: str = Form(None, description="控制指令")
+    control_prompt: str = Form(None, description="控制指令"),
+    speed: float = Form(1.0, description="语速(0.5-2.0)")
 ):
     """
     批量生成（抽卡模式）- 一次生成多个音频变体
@@ -179,12 +180,20 @@ async def batch_generate(
             audio_urls = result["audio_urls"]
             audio_files = result["audio_files"]
         elif model == "omnivoice":
+            # 语速自动矫正
+            original_speed = speed
+            if speed < 0.5 or speed > 2.0:
+                speed = max(0.5, min(2.0, speed))
+                speed = round(speed, 1)
+                system_logger.warning(f"【批量生成】语速参数 {original_speed} 超出范围，已自动矫正为 {speed}")
+            
             result = await _batch_generate_omnivoice(
                 text=text,
                 mode=mode,
                 count=count,
                 speaker_id=speaker_id,
-                voice_design_prompt=voice_design_prompt
+                voice_design_prompt=voice_design_prompt,
+                speed=speed
             )
             audio_urls = result["audio_urls"]
             audio_files = result["audio_files"]
@@ -459,7 +468,8 @@ async def _generate_single_omnivoice(
     ref_path: str = None,
     speaker_ref_text: str = None,
     voice_design_prompt: str = None,
-    omnivoice_url: str = ""
+    omnivoice_url: str = "",
+    speed: float = 1.0
 ) -> Dict:
     """单个OmniVoice生成任务（受信号量控制）"""
     import soundfile as sf
@@ -471,7 +481,7 @@ async def _generate_single_omnivoice(
                 "text": text,
                 "mode": mode,
                 "num_steps": 32,
-                "speed": 1.0
+                "speed": speed
             }
             if mode == "voice_clone" and ref_path:
                 data["ref_audio"] = ref_path
@@ -594,7 +604,8 @@ def _fix_voice_design_format(prompt: str) -> str:
 
 async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                                     speaker_id: str = None,
-                                    voice_design_prompt: str = None) -> Dict:
+                                    voice_design_prompt: str = None,
+                                    speed: float = 1.0) -> Dict:
     """
     批量生成OmniVoice音频（并行版本）
     
@@ -638,7 +649,8 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                 ref_path=ref_path,
                 speaker_ref_text=speaker_ref_text,
                 voice_design_prompt=voice_design_prompt,
-                omnivoice_url=OMNIVOICE_SERVICE_URL
+                omnivoice_url=OMNIVOICE_SERVICE_URL,
+                speed=speed
             )
             tasks.append(task)
         

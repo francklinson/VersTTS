@@ -15,6 +15,10 @@ PORT = int(os.environ.get("PORT", "8000"))
 OMNIVOICE_HOST = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
 OMNIVOICE_PORT = int(os.environ.get("OMNIVOICE_PORT", "8001"))
 
+# CosyVoice 独立服务配置
+COSYVOICE_HOST = os.environ.get("COSYVOICE_HOST", "127.0.0.1")
+COSYVOICE_PORT = int(os.environ.get("COSYVOICE_PORT", "8002"))
+
 # 日志配置
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOG_MAX_SIZE = int(os.environ.get("LOG_MAX_SIZE", "50"))

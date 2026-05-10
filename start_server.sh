@@ -20,6 +20,12 @@ OMNIVOICE_LOG_FILE="$SCRIPT_DIR/logs/omnivoice_service.log"
 OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
 OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
 
+# CosyVoice 独立服务配置
+COSYVOICE_PID_FILE="$SCRIPT_DIR/.cosyvoice.pid"
+COSYVOICE_LOG_FILE="$SCRIPT_DIR/logs/cosyvoice_service.log"
+COSYVOICE_PORT="${COSYVOICE_PORT:-8002}"
+COSYVOICE_SCRIPT="$SCRIPT_DIR/cosyvoice_service.py"
+
 # 服务配置
 HOST="0.0.0.0"
 PORT="8000"
@@ -95,6 +101,12 @@ usage() {
     echo "  stop-omnivoice       停止 OmniVoice 独立服务"
     echo "  restart-omnivoice    重启 OmniVoice 独立服务"
     echo "  status-omnivoice     查看 OmniVoice 服务状态"
+    echo ""
+    echo "CosyVoice 独立服务命令:"
+    echo "  start-cosyvoice      启动 CosyVoice 独立服务"
+    echo "  stop-cosyvoice       停止 CosyVoice 独立服务"
+    echo "  restart-cosyvoice    重启 CosyVoice 独立服务"
+    echo "  status-cosyvoice     查看 CosyVoice 服务状态"
     echo ""
     echo "选项 (仅 start/restart 有效):"
     echo "  -h, --help       显示帮助信息"
@@ -184,6 +196,8 @@ do_start() {
     export PORT
     export OMNIVOICE_HOST
     export OMNIVOICE_PORT
+    export COSYVOICE_HOST
+    export COSYVOICE_PORT
     export MODELS_DIR
     export OUTPUTS_DIR
     export LOGS_DIR
@@ -328,12 +342,51 @@ else:
                     fi
                 fi
 
+                # 自动启动 CosyVoice 独立服务
+                echo "----------------------------------------"
+                print_step "正在检查 CosyVoice 独立服务..."
+
+                if is_cosyvoice_running; then
+                    local cv_pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+                    print_success "CosyVoice 已在运行 (PID: $cv_pid)"
+                else
+                    if [ ! -f "$COSYVOICE_SCRIPT" ]; then
+                        print_warn "CosyVoice 服务脚本不存在，跳过"
+                    else
+                        print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT)..."
+
+                        cd "$SCRIPT_DIR"
+                        nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+                        local cv_pid=$!
+                        echo "$cv_pid" > "$COSYVOICE_PID_FILE"
+
+                        local cv_count=0
+                        local cv_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        while [ $cv_count -lt 120 ]; do
+                            if kill -0 "$cv_pid" 2>/dev/null; then
+                                if curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" >/dev/null 2>&1; then
+                                    print_success "CosyVoice 已启动 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
+                                    break
+                                fi
+                            else
+                                print_warn "CosyVoice 启动失败，请检查日志: $COSYVOICE_LOG_FILE"
+                                rm -f "$COSYVOICE_PID_FILE"
+                                break
+                            fi
+                            sleep 1
+                            cv_count=$((cv_count + 1))
+                            printf "\r  %s  CosyVoice 启动中... %d/120 秒" "${cv_spin:$((cv_count % 10)):1}" "$cv_count"
+                        done
+                    fi
+                fi
+
                 echo ""
                 echo "========================================"
                 echo "      全部服务启动成功"
                 echo "========================================"
                 print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT)"
                 print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
+                print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
                 print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
                 echo ""
@@ -347,6 +400,12 @@ else:
                 echo "  单独停止: $0 stop-omnivoice"
                 echo "  查看状态: $0 status-omnivoice"
                 echo "  查看日志: tail -f $OMNIVOICE_LOG_FILE"
+                echo ""
+                print_info "CosyVoice 独立服务:"
+                echo "  单独启动: $0 start-cosyvoice"
+                echo "  单独停止: $0 stop-cosyvoice"
+                echo "  查看状态: $0 status-cosyvoice"
+                echo "  查看日志: tail -f $COSYVOICE_LOG_FILE"
                 echo "========================================"
                 exit 0
             fi
@@ -427,6 +486,10 @@ do_stop() {
     echo ""
     # 停止 OmniVoice 独立服务
     do_stop_omnivoice
+
+    echo ""
+    # 停止 CosyVoice 独立服务
+    do_stop_cosyvoice
 }
 
 # 重启服务
@@ -483,16 +546,21 @@ do_restart() {
     echo ""
 
     # 阶段1.5: 停止 OmniVoice
-    echo "【阶段 2/3】停止 OmniVoice 服务"
+    echo "【阶段 2/4】停止 OmniVoice 服务"
     echo "----------------------------------------"
     do_stop_omnivoice
+
+    # 阶段1.6: 停止 CosyVoice
+    echo "【阶段 3/4】停止 CosyVoice 服务"
+    echo "----------------------------------------"
+    do_stop_cosyvoice
 
     echo ""
     print_success "全部服务停止完成"
     echo ""
 
-    # 阶段2: 启动服务（会自动启动 OmniVoice）
-    echo "【阶段 3/3】启动全部服务"
+    # 阶段2: 启动服务（会自动启动 OmniVoice 和 CosyVoice）
+    echo "【阶段 4/4】启动全部服务"
     echo "----------------------------------------"
     do_start
 }
@@ -584,6 +652,27 @@ do_status() {
         print_info "OmniVoice 日志: $OMNIVOICE_LOG_FILE"
     else
         print_warn "OmniVoice 未运行"
+    fi
+
+    # 检查 CosyVoice 服务状态
+    echo "----------------------------------------"
+    print_step "CosyVoice 独立服务状态:"
+    echo "----------------------------------------"
+    if is_cosyvoice_running; then
+        local cv_pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+        print_success "CosyVoice 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
+        
+        local cv_health
+        cv_health=$(curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" 2>/dev/null || echo "")
+        if [ -n "$cv_health" ]; then
+            print_success "CosyVoice 健康检查通过"
+            echo "$cv_health" | python -m json.tool 2>/dev/null || echo "$cv_health"
+        else
+            print_error "CosyVoice 健康检查失败"
+        fi
+        print_info "CosyVoice 日志: $COSYVOICE_LOG_FILE"
+    else
+        print_warn "CosyVoice 未运行"
     fi
 }
 
@@ -819,6 +908,238 @@ do_status_omnivoice() {
     print_info "查看日志: tail -f $OMNIVOICE_LOG_FILE"
 }
 
+# ============ CosyVoice 独立服务管理 ============
+
+# 检查 CosyVoice 服务是否运行
+is_cosyvoice_running() {
+    if [ -f "$COSYVOICE_PID_FILE" ]; then
+        local pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 启动 CosyVoice 独立服务
+do_start_cosyvoice() {
+    echo ""
+    echo "========================================"
+    echo "      CosyVoice 独立服务启动"
+    echo "========================================"
+    echo ""
+
+    # 检查是否已在运行
+    if is_cosyvoice_running; then
+        local current_pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+        print_warn "CosyVoice 服务已在运行中"
+        print_info "当前PID: $current_pid"
+        print_info "服务端口: $COSYVOICE_PORT"
+        print_info "健康检查: http://127.0.0.1:$COSYVOICE_PORT/health"
+        exit 0
+    fi
+
+    # 检查服务脚本是否存在
+    if [ ! -f "$COSYVOICE_SCRIPT" ]; then
+        print_error "CosyVoice 服务脚本不存在: $COSYVOICE_SCRIPT"
+        exit 1
+    fi
+
+    # 检查 transformers4 目录
+    if [ ! -d "$SCRIPT_DIR/lib/transformers4" ]; then
+        print_error "transformers4 目录不存在: $SCRIPT_DIR/lib/transformers4"
+        print_info "请先安装: pip install --target $SCRIPT_DIR/lib/transformers4 transformers==4.51.3"
+        exit 1
+    fi
+
+    print_step "激活虚拟环境..."
+    source "$VENV_PATH/bin/activate"
+    print_success "虚拟环境已激活"
+
+    # 加载离线模式环境变量
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用"
+    fi
+
+    # 导出环境变量供 CosyVoice 服务使用
+    export COSYVOICE_HOST
+    export COSYVOICE_PORT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+    export HF_HOME
+    export HUGGINGFACE_HUB_CACHE
+    export TRANSFORMERS_CACHE
+
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    print_info "Python 版本: $(python --version 2>&1)"
+    echo ""
+    print_step "启动 CosyVoice 独立服务..."
+    print_info "服务端口: $COSYVOICE_PORT"
+    print_info "日志文件: $COSYVOICE_LOG_FILE"
+    echo ""
+
+    # 后台启动
+    cd "$SCRIPT_DIR"
+    nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$COSYVOICE_PID_FILE"
+
+    print_step "等待服务启动 (PID: $new_pid)..."
+    echo ""
+
+    # 等待服务启动
+    local count=0
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while [ $count -lt 120 ]; do
+        if kill -0 "$new_pid" 2>/dev/null; then
+            if curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" >/dev/null 2>&1; then
+                echo ""
+                echo ""
+                echo "========================================"
+                echo "      CosyVoice 服务启动成功"
+                echo "========================================"
+                print_success "服务状态: 运行中"
+                print_info "进程PID:  $new_pid"
+                print_info "服务端口: $COSYVOICE_PORT"
+                print_info "健康检查: http://127.0.0.1:$COSYVOICE_PORT/health"
+                print_info "日志文件: $COSYVOICE_LOG_FILE"
+                echo ""
+                print_info "常用命令:"
+                echo "  查看状态: $0 status-cosyvoice"
+                echo "  查看日志: tail -f $COSYVOICE_LOG_FILE"
+                echo "  停止服务: $0 stop-cosyvoice"
+                echo "========================================"
+                exit 0
+            fi
+        else
+            echo ""
+            echo ""
+            print_error "CosyVoice 服务启动失败 - 进程已退出"
+            print_info "查看错误日志:"
+            echo "  tail -n 50 $COSYVOICE_LOG_FILE"
+            rm -f "$COSYVOICE_PID_FILE"
+            exit 1
+        fi
+        sleep 1
+        count=$((count + 1))
+        printf "\r  %s  等待中... %d/120 秒" "${spin:$((count % 10)):1}" "$count"
+    done
+
+    echo ""
+    echo ""
+    print_warn "CosyVoice 服务启动超时 (120秒)"
+    print_info "可能原因:"
+    echo "  1. 模型加载时间较长 (CosyVoice 模型较大)"
+    echo "  2. 端口被占用: $COSYVOICE_PORT"
+    echo "  3. transformers4 依赖不完整"
+    echo ""
+    print_info "查看详细日志:"
+    echo "  tail -n 100 $COSYVOICE_LOG_FILE"
+    exit 1
+}
+
+# 停止 CosyVoice 独立服务
+do_stop_cosyvoice() {
+    echo "----------------------------------------"
+    echo "      CosyVoice 独立服务停止"
+    echo "----------------------------------------"
+
+    local pid=""
+    
+    # 先尝试从 PID 文件获取 PID
+    if is_cosyvoice_running; then
+        pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+        print_info "发现运行中的 CosyVoice 服务 (PID: $pid)"
+    else
+        # PID 文件不存在或进程已失效，尝试查找实际运行的进程
+        pid=$(pgrep -f "python.*cosyvoice_service.py" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            print_warn "PID 文件不存在，但找到运行中的 CosyVoice 进程 (PID: $pid)"
+        else
+            print_info "CosyVoice 服务未运行"
+            # 清理残留 PID 文件
+            if [ -f "$COSYVOICE_PID_FILE" ]; then
+                rm -f "$COSYVOICE_PID_FILE"
+            fi
+            return 0
+        fi
+    fi
+
+    print_step "正在停止服务..."
+
+    # 优雅终止
+    kill "$pid" 2>/dev/null || true
+
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo ""
+            print_success "CosyVoice 服务已停止"
+            rm -f "$COSYVOICE_PID_FILE"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        echo -n "."
+    done
+
+    echo ""
+    print_warn "优雅终止超时，执行强制停止..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_success "CosyVoice 服务已强制停止"
+        rm -f "$COSYVOICE_PID_FILE"
+    else
+        print_error "无法停止 CosyVoice 服务 (PID: $pid)"
+    fi
+}
+
+# 查看 CosyVoice 服务状态
+do_status_cosyvoice() {
+    echo ""
+    echo "========================================"
+    echo "      CosyVoice 独立服务状态"
+    echo "========================================"
+    echo ""
+
+    if ! is_cosyvoice_running; then
+        print_warn "CosyVoice 服务未运行"
+        if [ -f "$COSYVOICE_PID_FILE" ]; then
+            rm -f "$COSYVOICE_PID_FILE"
+        fi
+        echo ""
+        print_info "启动服务:"
+        echo "  $0 start-cosyvoice"
+        exit 0
+    fi
+
+    local pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
+    print_success "CosyVoice 服务运行中"
+    print_info "进程PID:  $pid"
+    print_info "服务端口: $COSYVOICE_PORT"
+    echo ""
+
+    print_step "执行健康检查..."
+    local health
+    health=$(curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" 2>/dev/null || echo "")
+    if [ -n "$health" ]; then
+        print_success "健康检查通过"
+        echo ""
+        echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
+    else
+        print_error "健康检查失败"
+        print_info "服务进程存在但无法响应请求"
+    fi
+    echo ""
+    print_info "日志文件: $COSYVOICE_LOG_FILE"
+    print_info "查看日志: tail -f $COSYVOICE_LOG_FILE"
+}
+
 # ============ 主逻辑 ============
 
 # 解析命令
@@ -890,6 +1211,20 @@ case "$COMMAND" in
         ;;
     status-omnivoice)
         do_status_omnivoice
+        ;;
+    start-cosyvoice)
+        do_start_cosyvoice
+        ;;
+    stop-cosyvoice)
+        do_stop_cosyvoice
+        ;;
+    restart-cosyvoice)
+        do_stop_cosyvoice
+        sleep 2
+        do_start_cosyvoice
+        ;;
+    status-cosyvoice)
+        do_status_cosyvoice
         ;;
     *)
         print_error "未知命令: $COMMAND"

@@ -10,6 +10,8 @@
         .qwen3tts-theme { --primary-color: #ff6b35; }
         .btn-generate.qwen3tts { background: linear-gradient(135deg, #ff6b35 0%, #e55a2b 100%); }
         .btn-generate.qwen3tts:hover { box-shadow: 0 8px 25px rgba(255, 107, 53, 0.4); }
+        .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; }
+        .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
         .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
         .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
         .mode-tab.active { color: #ff6b35; border-bottom-color: #ff6b35; font-weight: 600; }
@@ -24,6 +26,37 @@
         .param-section { margin-bottom: 20px; padding: 15px; background: #fafafa; border-radius: 8px; }
         .model-size-selector { display: flex; gap: 15px; margin-bottom: 20px; }
         .model-size-option { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        
+        /* 批量生成相关样式 */
+        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
+        .batch-count-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .batch-count-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .button-group { display: flex; gap: 15px; margin-bottom: 20px; }
+        .button-group button { flex: 1; padding: 14px 24px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .batch-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .batch-result-item { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent; transition: all 0.3s; }
+        .batch-result-item:hover { border-color: #ff6b35; box-shadow: 0 4px 15px rgba(255, 107, 53, 0.2); }
+        .batch-result-item.selected { border-color: #ff9800; background: #fff8e1; }
+        .batch-result-item .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .batch-result-item .result-number { font-weight: 700; color: #ff6b35; font-size: 1.1rem; }
+        .batch-result-item .select-checkbox { width: 20px; height: 20px; cursor: pointer; }
+        .batch-result-item audio { width: 100%; margin-bottom: 10px; }
+        .batch-result-item .result-actions { display: flex; gap: 10px; }
+        .batch-result-item .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-align: center; }
+        .btn-download-small { background: #4caf50; color: white; }
+        .btn-download-small:hover { background: #45a049; }
+        .batch-actions { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 10px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .batch-actions button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-select-all { background: #2196f3; color: white; }
+        .btn-select-all:hover { background: #1976d2; }
+        .btn-download-selected { background: #ff9800; color: white; }
+        .btn-download-selected:hover { background: #f57c00; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+        .selected-count { color: #666; font-size: 0.9rem; }
+        .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 15px 0; display: none; }
+        .progress-bar.active { display: block; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #ff6b35, #ff9800); width: 0%; transition: width 0.3s ease; }
+        .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
+        .progress-text.active { display: block; }
     </style>
 </head>
 <body class="qwen3tts-theme">
@@ -55,11 +88,11 @@
                 <div class="model-badge"><span>🐝</span><span>Qwen3-TTS</span></div>
 
                 <div class="info-box">
-                        💡 Qwen3-TTS 支持 30+ 种语言，提供 3 种生成功能：<br>
-                        • <b>声音克隆</b>：使用说话人管理中的参考音频克隆声音<br>
-                        • <b>预设音色</b>：9 种高质量预设音色（含北京方言、四川方言）<br>
-                        • <b>音色设计</b>：通过自然语言描述创建自定义音色（仅支持音色特征控制，不支持方言）
-                    </div>
+                    💡 Qwen3-TTS 支持 30+ 种语言，提供 3 种生成功能：<br>
+                    • <b>声音克隆</b>：使用说话人管理中的参考音频克隆声音<br>
+                    • <b>预设音色</b>：9 种高质量预设音色（含北京方言、四川方言）<br>
+                    • <b>音色设计</b>：通过自然语言描述创建自定义音色（仅支持音色特征控制，不支持方言）
+                </div>
 
                 <div id="statusMessage" class="status-message"></div>
 
@@ -128,14 +161,45 @@
                     <input type="text" id="instructText" placeholder="例如：用开心的语气说、用四川话慢慢说" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
                 </div>
 
-                <button class="btn-generate qwen3tts" id="generateBtn" onclick="generateTTS()">
-                    <span id="btnText">🎙️ 生成语音</span>
-                </button>
+                <!-- 批量生成数量设置 -->
+                <div class="batch-count-section">
+                    <label>🎲 批量生成数量</label>
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-20个）</p>
+                </div>
 
+                <!-- 进度条 -->
+                <div id="progressBar" class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+                <div id="progressText" class="progress-text">正在生成... 0/10</div>
+
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button class="btn-generate qwen3tts" id="generateBtn" onclick="generateTTS()">
+                        <span id="btnText">🎙️ 生成语音</span>
+                    </button>
+                    <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
+                        <span id="batchBtnText">🎲 批量生成</span>
+                    </button>
+                </div>
+
+                <!-- 单条生成结果 -->
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
                     <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+
+                <!-- 批量生成结果 -->
+                <div id="batchResultSection" style="display: none;">
+                    <h3>🎲 批量生成结果</h3>
+                    <div class="batch-actions">
+                        <button class="btn-select-all" onclick="toggleSelectAll()">全选/取消全选</button>
+                        <button class="btn-download-selected" onclick="downloadSelected()">⬇️ 下载选中</button>
+                        <span class="selected-count">已选择 <span id="selectedCount">0</span> 个</span>
+                    </div>
+                    <div id="batchResults" class="batch-results"></div>
                 </div>
             </div>
         </div>
@@ -145,6 +209,8 @@
     <script>
         let currentMode = 'voice_clone';
         let selectedSpeaker = null;
+        let batchResults = [];
+        let selectedFiles = new Set();
 
         // 模型能力配置（仅支持1.7B模型）
         const modelCapabilities = {
@@ -175,7 +241,6 @@
                 const mode = tab.dataset.mode;
                 if (capability.modes.includes(mode)) {
                     tab.style.display = 'block';
-                    // 更新显示名称
                     if (capability.modesDisplay[mode]) {
                         tab.textContent = capability.modesDisplay[mode];
                     }
@@ -190,38 +255,22 @@
                 VersTTS.switchMode(currentMode);
             }
 
-            // 显示/隐藏指令控制区域
-            // 注意：只有 custom_voice 模式支持额外的指令控制
-            // voice_design 模式的音色描述本身就是指令，不需要额外的指令控制
-            // voice_clone 模式使用 Base 模型，不支持指令控制
-            const instructSupportedModes = ['custom_voice'];
-            if (capability.instruct && instructSupportedModes.includes(currentMode)) {
-                instructSection.style.cssText = 'display: block !important;';
-            } else {
-                instructSection.style.cssText = 'display: none !important;';
-                document.getElementById('instructText').value = '';
-            }
+            updateInstructSection();
         }
 
-        // 切换模式（使用 common.js 中的 VersTTS.switchMode，但需要更新 currentMode）
+        // 切换模式
         function updateCurrentMode(mode) {
             currentMode = mode;
             
-            // 重置预设音色选择（当切换到 custom_voice 模式时）
             if (mode === 'custom_voice') {
-                // 保持当前选择，但如果是从其他模式切换过来，可能需要重新选择
-                // 检查是否有选中的卡片
                 const selectedCard = document.querySelector('.speaker-card.selected');
                 if (!selectedCard) {
                     selectedSpeaker = null;
                 }
             } else {
-                // 切换到其他模式时，保留 selectedSpeaker 以便切换回来时使用
-                // 但清除选中状态显示
                 document.querySelectorAll('.speaker-card').forEach(c => c.classList.remove('selected'));
             }
             
-            // 更新指令控制区域的显示状态
             updateInstructSection();
         }
         
@@ -231,9 +280,6 @@
             const capability = modelCapabilities[modelSize];
             const instructSection = document.getElementById('instructSection');
             
-            // 只有 custom_voice 模式支持额外的指令控制
-            // voice_design 模式的音色描述本身就是指令，不需要额外的指令控制
-            // voice_clone 模式使用 Base 模型，不支持指令控制
             const instructSupportedModes = ['custom_voice'];
             if (capability.instruct && instructSupportedModes.includes(currentMode)) {
                 instructSection.style.cssText = 'display: block !important;';
@@ -252,6 +298,7 @@
             });
         });
 
+        // 单条生成
         async function generateTTS() {
             const genText = document.getElementById('genText').value.trim();
             const instructText = document.getElementById('instructText').value.trim();
@@ -296,6 +343,7 @@
                 const data = await VersTTS.postForm('/tts/qwen3tts', formData);
 
                 if (data.success) {
+                    document.getElementById('batchResultSection').style.display = 'none';
                     VersTTS.showResult(data, { filename: `qwen3tts_${Date.now()}.wav` });
                     VersTTS.showStatus('语音生成成功！');
                 } else {
@@ -308,11 +356,185 @@
             }
         }
 
+        // 批量生成
+        async function batchGenerateTTS() {
+            const genText = document.getElementById('genText').value.trim();
+            const count = parseInt(document.getElementById('batchCount').value) || 10;
+            const modelSize = document.querySelector('input[name="modelSize"]:checked').value;
+
+            if (!genText) { VersTTS.showStatus('请输入生成文本', true); return; }
+            if (count < 2 || count > 20) { VersTTS.showStatus('生成数量必须在2-20之间', true); return; }
+
+            if (currentMode === 'voice_clone' && !document.getElementById('speakerSelect').value) {
+                VersTTS.showStatus('请从说话人管理中选择一个说话人', true);
+                return;
+            }
+            if (currentMode === 'custom_voice' && !selectedSpeaker) {
+                VersTTS.showStatus('请选择一种预设音色', true);
+                return;
+            }
+            if (currentMode === 'voice_design' && !document.getElementById('voiceDesignPrompt').value.trim()) {
+                VersTTS.showStatus('请输入音色描述', true);
+                return;
+            }
+
+            const btn = document.getElementById('batchGenerateBtn');
+            const btnText = document.getElementById('batchBtnText');
+            VersTTS.setButtonLoading(btn, btnText, true);
+
+            // 显示进度条
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            const progressText = document.getElementById('progressText');
+            progressBar.classList.add('active');
+            progressText.classList.add('active');
+            progressText.textContent = `正在生成... 0/${count}`;
+            progressBarFill.style.width = '0%';
+
+            try {
+                const formData = new FormData();
+                formData.append('text', genText);
+                formData.append('model', 'qwen3tts');
+                formData.append('mode', currentMode);
+                formData.append('count', count);
+
+                if (currentMode === 'voice_clone') {
+                    const speakerId = document.getElementById('speakerSelect').value;
+                    formData.append('speaker_id', speakerId);
+                } else if (currentMode === 'custom_voice') {
+                    formData.append('speaker_id', selectedSpeaker);
+                } else if (currentMode === 'voice_design') {
+                    formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
+                }
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    batchResults = data.audio_urls.map((url, index) => ({
+                        id: index,
+                        url: url,
+                        filename: data.audio_files[index]
+                    }));
+                    selectedFiles.clear();
+                    renderBatchResults();
+                    document.getElementById('resultSection').style.display = 'none';
+                    document.getElementById('batchResultSection').style.display = 'block';
+                    VersTTS.showStatus(`成功生成 ${data.count} 个音频！`);
+                    
+                    progressBarFill.style.width = '100%';
+                    progressText.textContent = `生成完成！共 ${data.count} 个音频`;
+                    setTimeout(() => {
+                        progressBar.classList.remove('active');
+                        progressText.classList.remove('active');
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || '批量生成失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量生成失败: ' + error.message, true);
+                progressBar.classList.remove('active');
+                progressText.classList.remove('active');
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        // 渲染批量生成结果
+        function renderBatchResults() {
+            const container = document.getElementById('batchResults');
+            container.innerHTML = '';
+
+            batchResults.forEach((result, index) => {
+                const item = document.createElement('div');
+                item.className = 'batch-result-item' + (selectedFiles.has(result.filename) ? ' selected' : '');
+                item.innerHTML = `
+                    <div class="result-header">
+                        <span class="result-number">#${index + 1}</span>
+                        <input type="checkbox" class="select-checkbox" 
+                               ${selectedFiles.has(result.filename) ? 'checked' : ''}
+                               onchange="toggleSelect('${result.filename}')">
+                    </div>
+                    <audio controls src="${result.url}"></audio>
+                    <div class="result-actions">
+                        <a href="${result.url}" download="${result.filename}" class="btn-small btn-download-small">⬇️ 下载</a>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            updateSelectedCount();
+        }
+
+        // 切换选中状态
+        function toggleSelect(filename) {
+            if (selectedFiles.has(filename)) {
+                selectedFiles.delete(filename);
+            } else {
+                selectedFiles.add(filename);
+            }
+            renderBatchResults();
+        }
+
+        // 全选/取消全选
+        function toggleSelectAll() {
+            if (selectedFiles.size === batchResults.length) {
+                selectedFiles.clear();
+            } else {
+                batchResults.forEach(r => selectedFiles.add(r.filename));
+            }
+            renderBatchResults();
+        }
+
+        // 更新选中计数
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+        }
+
+        // 下载选中的文件
+        async function downloadSelected() {
+            if (selectedFiles.size === 0) {
+                VersTTS.showStatus('请先选择要下载的音频', true);
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                const filesArray = Array.from(selectedFiles);
+                filesArray.forEach(file => formData.append('files', file));
+                formData.append('zip_name', `qwen3tts_batch_${Date.now()}.zip`);
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/download-zip`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `qwen3tts_batch_${Date.now()}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    VersTTS.showStatus(`已下载 ${selectedFiles.size} 个音频的ZIP包`);
+                } else {
+                    throw new Error('下载失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量下载失败: ' + error.message, true);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initPage();
-            // 加载说话人列表
             VersTTS.loadSpeakers('speakerSelect', '-- 请选择说话人 --');
-            // 立即初始化模式选项卡
             updateModeTabs();
         });
     </script>

@@ -223,7 +223,7 @@ async def tts_qwen3tts(
         else:
             audio_data = wav
 
-        audio_path = save_temp_audio(audio_data, sr)
+        audio_path = save_temp_audio(audio_data, sr, prefix="qwen3tts")
 
         # 清理显存 - 防止内存泄漏
         if torch.cuda.is_available():

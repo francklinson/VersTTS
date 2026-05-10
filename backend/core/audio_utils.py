@@ -51,7 +51,8 @@ def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> n
 
 
 def save_temp_audio(audio_data: np.ndarray, sample_rate: int, 
-                    suffix: str = ".wav", normalize: bool = True) -> str:
+                    suffix: str = ".wav", normalize: bool = True,
+                    prefix: str = "tts") -> str:
     """
     保存临时音频文件
     
@@ -60,12 +61,13 @@ def save_temp_audio(audio_data: np.ndarray, sample_rate: int,
         sample_rate: 采样率
         suffix: 文件后缀
         normalize: 是否进行音量归一化，默认True
+        prefix: 文件名前缀，默认"tts"
     """
     from backend.config import OUTPUTS_DIR
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    temp_path = os.path.join(OUTPUTS_DIR, f"tts_{timestamp}{suffix}")
+    temp_path = os.path.join(OUTPUTS_DIR, f"{prefix}_{timestamp}{suffix}")
 
     # 音量归一化处理
     if normalize:

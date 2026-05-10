@@ -10,6 +10,8 @@
         .voxcpm-theme { --primary-color: #8bc34a; }
         .btn-generate.voxcpm { background: linear-gradient(135deg, #8bc34a 0%, #689f38 100%); }
         .btn-generate.voxcpm:hover { box-shadow: 0 8px 25px rgba(139, 195, 74, 0.4); }
+        .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; }
+        .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
         .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
         .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
         .mode-tab.active { color: #8bc34a; border-bottom-color: #8bc34a; font-weight: 600; }
@@ -28,6 +30,37 @@
         .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
         .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
         .voice-design-section { margin-bottom: 20px; padding: 15px; background: #f1f8e9; border-radius: 8px; border-left: 4px solid #8bc34a; }
+        
+        /* 批量生成相关样式 */
+        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
+        .batch-count-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .batch-count-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .button-group { display: flex; gap: 15px; margin-bottom: 20px; }
+        .button-group button { flex: 1; padding: 14px 24px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .batch-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .batch-result-item { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent; transition: all 0.3s; }
+        .batch-result-item:hover { border-color: #8bc34a; box-shadow: 0 4px 15px rgba(139, 195, 74, 0.2); }
+        .batch-result-item.selected { border-color: #ff9800; background: #fff8e1; }
+        .batch-result-item .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .batch-result-item .result-number { font-weight: 700; color: #8bc34a; font-size: 1.1rem; }
+        .batch-result-item .select-checkbox { width: 20px; height: 20px; cursor: pointer; }
+        .batch-result-item audio { width: 100%; margin-bottom: 10px; }
+        .batch-result-item .result-actions { display: flex; gap: 10px; }
+        .batch-result-item .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-align: center; }
+        .btn-download-small { background: #4caf50; color: white; }
+        .btn-download-small:hover { background: #45a049; }
+        .batch-actions { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 10px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .batch-actions button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-select-all { background: #2196f3; color: white; }
+        .btn-select-all:hover { background: #1976d2; }
+        .btn-download-selected { background: #ff9800; color: white; }
+        .btn-download-selected:hover { background: #f57c00; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+        .selected-count { color: #666; font-size: 0.9rem; }
+        .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 15px 0; display: none; }
+        .progress-bar.active { display: block; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #8bc34a, #4caf50); width: 0%; transition: width 0.3s ease; }
+        .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
+        .progress-text.active { display: block; }
     </style>
 </head>
 <body class="voxcpm-theme">
@@ -98,9 +131,7 @@
                                 <option value="">-- 请选择说话人 --</option>
                             </select>
                         </div>
-                        <div id="speakerInfoClone" class="speaker-info-display" style="display: none;">
-                            <!-- 动态显示说话人信息 -->
-                        </div>
+                        <div id="speakerInfoClone" class="speaker-info-display" style="display: none;"></div>
                         <div id="noSpeakerWarningClone" class="no-speaker-warning" style="display: none;">
                             ⚠️ 暂无可用说话人，请先添加说话人
                         </div>
@@ -129,17 +160,13 @@
                                 <option value="">-- 请选择说话人 --</option>
                             </select>
                         </div>
-                        <div id="speakerInfoUltimate" class="speaker-info-display" style="display: none;">
-                            <!-- 动态显示说话人信息 -->
-                        </div>
+                        <div id="speakerInfoUltimate" class="speaker-info-display" style="display: none;"></div>
                         <div id="noSpeakerWarningUltimate" class="no-speaker-warning" style="display: none;">
                             ⚠️ 暂无可用说话人，请先添加说话人
                         </div>
                         <div id="refTextSection" style="margin-top: 15px; display: none;">
                             <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 8px;">参考文本</label>
-                            <div id="refTextDisplay" style="padding: 10px; background: white; border-radius: 6px; font-size: 0.9rem; color: #666; font-style: italic; border: 1px solid #ddd;">
-                                <!-- 显示参考文本 -->
-                            </div>
+                            <div id="refTextDisplay" style="padding: 10px; background: white; border-radius: 6px; font-size: 0.9rem; color: #666; font-style: italic; border: 1px solid #ddd;"></div>
                         </div>
                     </div>
                 </div>
@@ -149,14 +176,45 @@
                     <textarea id="textInput" placeholder="请输入要转换为语音的文本，支持30种语言..."></textarea>
                 </div>
 
-                <button class="btn-generate voxcpm" id="generateBtn" onclick="generateTTS()">
-                    <span id="btnText">🎙️ 生成语音</span>
-                </button>
+                <!-- 批量生成数量设置 -->
+                <div class="batch-count-section">
+                    <label>🎲 批量生成数量</label>
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-20个）</p>
+                </div>
 
+                <!-- 进度条 -->
+                <div id="progressBar" class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+                <div id="progressText" class="progress-text">正在生成... 0/10</div>
+
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button class="btn-generate voxcpm" id="generateBtn" onclick="generateTTS()">
+                        <span id="btnText">🎙️ 生成语音</span>
+                    </button>
+                    <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
+                        <span id="batchBtnText">🎲 批量生成</span>
+                    </button>
+                </div>
+
+                <!-- 单条生成结果 -->
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
                     <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+
+                <!-- 批量生成结果 -->
+                <div id="batchResultSection" style="display: none;">
+                    <h3>🎲 批量生成结果</h3>
+                    <div class="batch-actions">
+                        <button class="btn-select-all" onclick="toggleSelectAll()">全选/取消全选</button>
+                        <button class="btn-download-selected" onclick="downloadSelected()">⬇️ 下载选中</button>
+                        <span class="selected-count">已选择 <span id="selectedCount">0</span> 个</span>
+                    </div>
+                    <div id="batchResults" class="batch-results"></div>
                 </div>
             </div>
         </div>
@@ -167,6 +225,8 @@
         let currentMode = 'base';
         let savedSpeakers = [];
         let selectedSpeakerId = { clone: null, ultimate: null };
+        let batchResults = []; // 存储批量生成结果
+        let selectedFiles = new Set(); // 存储选中的文件
 
         // 加载说话人列表
         async function loadSpeakers() {
@@ -194,7 +254,6 @@
             const select = document.getElementById(selectId);
             const warning = document.getElementById(warningId);
 
-            // 保留第一个选项
             select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
 
             if (savedSpeakers.length === 0) {
@@ -235,7 +294,6 @@
                     speakerInfo.innerHTML = infoHtml;
                     speakerInfo.style.display = 'block';
 
-                    // 如果是ultimate模式，显示参考文本
                     if (mode === 'ultimate' && speaker.reference_text) {
                         document.getElementById('refTextSection').style.display = 'block';
                         document.getElementById('refTextDisplay').textContent = speaker.reference_text;
@@ -261,22 +319,20 @@
         function switchVoxCPMMode(mode) {
             currentMode = mode;
 
-            // 更新选项卡
             document.querySelectorAll('.mode-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
             event.target.classList.add('active');
 
-            // 更新内容
             document.querySelectorAll('.mode-content').forEach(content => {
                 content.classList.remove('active');
             });
             document.getElementById(`mode-${mode}`).classList.add('active');
         }
 
+        // 单条生成
         async function generateTTS() {
             const text = document.getElementById('textInput').value.trim();
-            // 使用默认生成参数
             const cfgValue = 2.0;
             const timesteps = 10;
 
@@ -307,35 +363,22 @@
                 formData.append('cfg_value', cfgValue);
                 formData.append('inference_timesteps', timesteps);
 
-                // 调试信息
-                console.log('【VoxCPM调试】当前模式:', currentMode);
-                console.log('【VoxCPM调试】selectedSpeakerId:', selectedSpeakerId);
-
                 if (currentMode === 'voice_design') {
                     formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
                 } else if (currentMode === 'clone') {
-                    console.log('【VoxCPM调试】clone模式 - speaker_id:', selectedSpeakerId.clone);
                     formData.append('clone_speaker_id', selectedSpeakerId.clone);
-                    // 添加控制指令（可选）
                     const controlPrompt = document.getElementById('cloneControlPrompt').value.trim();
                     if (controlPrompt) {
                         formData.append('control_prompt', controlPrompt);
-                        console.log('【VoxCPM调试】clone模式 - 控制指令:', controlPrompt);
                     }
                 } else if (currentMode === 'ultimate_clone') {
-                    console.log('【VoxCPM调试】ultimate_clone模式 - speaker_id:', selectedSpeakerId.ultimate);
                     formData.append('clone_speaker_id', selectedSpeakerId.ultimate);
-                }
-
-                // 打印FormData内容用于调试
-                console.log('【VoxCPM调试】发送的FormData:');
-                for (let [key, value] of formData.entries()) {
-                    console.log(`  ${key}:`, value);
                 }
 
                 const data = await VersTTS.postForm('/tts/voxcpm', formData);
 
                 if (data.success) {
+                    document.getElementById('batchResultSection').style.display = 'none';
                     VersTTS.showResult(data, { filename: `voxcpm_${Date.now()}.wav` });
                     VersTTS.showStatus('语音生成成功！');
                 } else {
@@ -345,6 +388,186 @@
                 VersTTS.showStatus('生成失败: ' + error.message, true);
             } finally {
                 VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        // 批量生成
+        async function batchGenerateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            const count = parseInt(document.getElementById('batchCount').value) || 10;
+
+            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+            if (count < 2 || count > 20) { VersTTS.showStatus('生成数量必须在2-20之间', true); return; }
+
+            if (currentMode === 'voice_design') {
+                const prompt = document.getElementById('voiceDesignPrompt').value.trim();
+                if (!prompt) { VersTTS.showStatus('请输入音色描述', true); return; }
+            } else if (currentMode === 'clone') {
+                if (!selectedSpeakerId.clone) { VersTTS.showStatus('请选择说话人', true); return; }
+            } else if (currentMode === 'ultimate_clone') {
+                if (!selectedSpeakerId.ultimate) { VersTTS.showStatus('请选择说话人', true); return; }
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId.ultimate);
+                if (!speaker || !speaker.reference_text) {
+                    VersTTS.showStatus('选中的说话人没有参考文本，无法使用极致克隆模式', true);
+                    return;
+                }
+            }
+
+            const btn = document.getElementById('batchGenerateBtn');
+            const btnText = document.getElementById('batchBtnText');
+            VersTTS.setButtonLoading(btn, btnText, true);
+
+            // 显示进度条
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            const progressText = document.getElementById('progressText');
+            progressBar.classList.add('active');
+            progressText.classList.add('active');
+            progressText.textContent = `正在生成... 0/${count}`;
+            progressBarFill.style.width = '0%';
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('model', 'voxcpm');
+                formData.append('mode', currentMode);
+                formData.append('count', count);
+
+                if (currentMode === 'voice_design') {
+                    formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
+                } else if (currentMode === 'clone') {
+                    formData.append('speaker_id', selectedSpeakerId.clone);
+                    const controlPrompt = document.getElementById('cloneControlPrompt').value.trim();
+                    if (controlPrompt) {
+                        formData.append('control_prompt', controlPrompt);
+                    }
+                } else if (currentMode === 'ultimate_clone') {
+                    formData.append('speaker_id', selectedSpeakerId.ultimate);
+                }
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    batchResults = data.audio_urls.map((url, index) => ({
+                        id: index,
+                        url: url,
+                        filename: data.audio_files[index]
+                    }));
+                    selectedFiles.clear();
+                    renderBatchResults();
+                    document.getElementById('resultSection').style.display = 'none';
+                    document.getElementById('batchResultSection').style.display = 'block';
+                    VersTTS.showStatus(`成功生成 ${data.count} 个音频！`);
+                    
+                    // 完成进度条
+                    progressBarFill.style.width = '100%';
+                    progressText.textContent = `生成完成！共 ${data.count} 个音频`;
+                    setTimeout(() => {
+                        progressBar.classList.remove('active');
+                        progressText.classList.remove('active');
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || '批量生成失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量生成失败: ' + error.message, true);
+                progressBar.classList.remove('active');
+                progressText.classList.remove('active');
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        // 渲染批量生成结果
+        function renderBatchResults() {
+            const container = document.getElementById('batchResults');
+            container.innerHTML = '';
+
+            batchResults.forEach((result, index) => {
+                const item = document.createElement('div');
+                item.className = 'batch-result-item' + (selectedFiles.has(result.filename) ? ' selected' : '');
+                item.innerHTML = `
+                    <div class="result-header">
+                        <span class="result-number">#${index + 1}</span>
+                        <input type="checkbox" class="select-checkbox" 
+                               ${selectedFiles.has(result.filename) ? 'checked' : ''}
+                               onchange="toggleSelect('${result.filename}')">
+                    </div>
+                    <audio controls src="${result.url}"></audio>
+                    <div class="result-actions">
+                        <a href="${result.url}" download="${result.filename}" class="btn-small btn-download-small">⬇️ 下载</a>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            updateSelectedCount();
+        }
+
+        // 切换选中状态
+        function toggleSelect(filename) {
+            if (selectedFiles.has(filename)) {
+                selectedFiles.delete(filename);
+            } else {
+                selectedFiles.add(filename);
+            }
+            renderBatchResults();
+        }
+
+        // 全选/取消全选
+        function toggleSelectAll() {
+            if (selectedFiles.size === batchResults.length) {
+                selectedFiles.clear();
+            } else {
+                batchResults.forEach(r => selectedFiles.add(r.filename));
+            }
+            renderBatchResults();
+        }
+
+        // 更新选中计数
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+        }
+
+        // 下载选中的文件
+        async function downloadSelected() {
+            if (selectedFiles.size === 0) {
+                VersTTS.showStatus('请先选择要下载的音频', true);
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                const filesArray = Array.from(selectedFiles);
+                filesArray.forEach(file => formData.append('files', file));
+                formData.append('zip_name', `voxcpm_batch_${Date.now()}.zip`);
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/download-zip`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `voxcpm_batch_${Date.now()}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    VersTTS.showStatus(`已下载 ${selectedFiles.size} 个音频的ZIP包`);
+                } else {
+                    throw new Error('下载失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量下载失败: ' + error.message, true);
             }
         }
 

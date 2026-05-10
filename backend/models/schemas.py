@@ -127,3 +127,30 @@ class BatchTTSRequest(BaseModel):
     """批量 TTS 请求"""
     model: str = Field(default="chattts", description="TTS模型名称")
     tasks: List[dict] = Field(default=[], description="任务列表")
+
+
+class BatchGenerateRequest(BaseModel):
+    """批量生成（抽卡）请求"""
+    text: str = Field(..., description="要合成的文本")
+    model: str = Field(default="voxcpm", description="TTS模型名称: voxcpm, qwen3tts")
+    mode: str = Field(default="base", description="生成模式")
+    count: int = Field(default=10, ge=2, le=20, description="生成数量(2-20)")
+    speaker_id: Optional[str] = Field(default=None, description="说话人ID(克隆模式使用)")
+    voice_design_prompt: Optional[str] = Field(default=None, description="音色设计描述")
+    control_prompt: Optional[str] = Field(default=None, description="控制指令")
+
+
+class BatchGenerateResponse(BaseModel):
+    """批量生成（抽卡）响应"""
+    success: bool
+    message: str
+    model: str
+    count: int
+    audio_urls: List[str] = Field(default=[], description="生成的音频URL列表")
+    audio_files: List[str] = Field(default=[], description="音频文件名列表")
+
+
+class BatchDownloadRequest(BaseModel):
+    """批量下载请求"""
+    files: List[str] = Field(..., description="要下载的文件名列表")
+    zip_name: Optional[str] = Field(default=None, description="ZIP包名称")

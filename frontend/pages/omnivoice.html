@@ -10,6 +10,8 @@
         .omnivoice-theme { --primary-color: #ff6b6b; }
         .btn-generate.omnivoice { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%); }
         .btn-generate.omnivoice:hover { box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4); }
+        .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; }
+        .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
         .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
         .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
         .mode-tab.active { color: #ff6b6b; border-bottom-color: #ff6b6b; font-weight: 600; }
@@ -34,6 +36,37 @@
         .attribute-chip.selected { background: #ff6b6b; color: white; }
         .dialect-section { margin-top: 15px; }
         .dialect-title { font-weight: 600; color: #c53030; margin-bottom: 8px; font-size: 0.9rem; }
+        
+        /* 批量生成相关样式 */
+        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
+        .batch-count-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .batch-count-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .button-group { display: flex; gap: 15px; margin-bottom: 20px; }
+        .button-group button { flex: 1; padding: 14px 24px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .batch-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .batch-result-item { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent; transition: all 0.3s; }
+        .batch-result-item:hover { border-color: #ff6b6b; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.2); }
+        .batch-result-item.selected { border-color: #ff9800; background: #fff8e1; }
+        .batch-result-item .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .batch-result-item .result-number { font-weight: 700; color: #ff6b6b; font-size: 1.1rem; }
+        .batch-result-item .select-checkbox { width: 20px; height: 20px; cursor: pointer; }
+        .batch-result-item audio { width: 100%; margin-bottom: 10px; }
+        .batch-result-item .result-actions { display: flex; gap: 10px; }
+        .batch-result-item .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-align: center; }
+        .btn-download-small { background: #4caf50; color: white; }
+        .btn-download-small:hover { background: #45a049; }
+        .batch-actions { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 10px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .batch-actions button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-select-all { background: #2196f3; color: white; }
+        .btn-select-all:hover { background: #1976d2; }
+        .btn-download-selected { background: #ff9800; color: white; }
+        .btn-download-selected:hover { background: #f57c00; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+        .selected-count { color: #666; font-size: 0.9rem; }
+        .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 15px 0; display: none; }
+        .progress-bar.active { display: block; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #ff6b6b, #ff9800); width: 0%; transition: width 0.3s ease; }
+        .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
+        .progress-text.active { display: block; }
     </style>
 </head>
 <body class="omnivoice-theme">
@@ -96,9 +129,7 @@
                                 <option value="">-- 请选择说话人 --</option>
                             </select>
                         </div>
-                        <div id="speakerInfo" class="speaker-info-display" style="display: none;">
-                            <!-- 动态显示说话人信息 -->
-                        </div>
+                        <div id="speakerInfo" class="speaker-info-display" style="display: none;"></div>
                         <div id="noSpeakerWarning" class="no-speaker-warning" style="display: none;">
                             ⚠️ 暂无可用说话人，请先添加说话人
                         </div>
@@ -188,14 +219,45 @@
                     </div>
                 </div>
 
-                <button class="btn-generate omnivoice" id="generateBtn" onclick="generateTTS()">
-                    <span id="btnText">🎙️ 生成语音</span>
-                </button>
+                <!-- 批量生成数量设置 -->
+                <div class="batch-count-section">
+                    <label>🎲 批量生成数量</label>
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-20个）</p>
+                </div>
 
+                <!-- 进度条 -->
+                <div id="progressBar" class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+                <div id="progressText" class="progress-text">正在生成... 0/10</div>
+
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button class="btn-generate omnivoice" id="generateBtn" onclick="generateTTS()">
+                        <span id="btnText">🎙️ 生成语音</span>
+                    </button>
+                    <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
+                        <span id="batchBtnText">🎲 批量生成</span>
+                    </button>
+                </div>
+
+                <!-- 单条生成结果 -->
                 <div id="resultSection" class="result-section" style="display: none;">
                     <h3>🎵 生成结果</h3>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
                     <a id="downloadLink" class="btn-download" href="#" download><span>⬇️</span><span>下载音频</span></a>
+                </div>
+
+                <!-- 批量生成结果 -->
+                <div id="batchResultSection" style="display: none;">
+                    <h3>🎲 批量生成结果</h3>
+                    <div class="batch-actions">
+                        <button class="btn-select-all" onclick="toggleSelectAll()">全选/取消全选</button>
+                        <button class="btn-download-selected" onclick="downloadSelected()">⬇️ 下载选中</button>
+                        <span class="selected-count">已选择 <span id="selectedCount">0</span> 个</span>
+                    </div>
+                    <div id="batchResults" class="batch-results"></div>
                 </div>
             </div>
         </div>
@@ -206,6 +268,8 @@
         let currentMode = 'auto_voice';
         let savedSpeakers = [];
         let selectedSpeakerId = null;
+        let batchResults = [];
+        let selectedFiles = new Set();
 
         // 加载说话人列表
         async function loadSpeakers() {
@@ -228,7 +292,6 @@
             const select = document.getElementById('speakerSelect');
             const warning = document.getElementById('noSpeakerWarning');
 
-            // 保留第一个选项
             select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
 
             if (savedSpeakers.length === 0) {
@@ -285,15 +348,12 @@
             const value = chip.dataset.value;
             const textarea = document.getElementById('voiceDesignPrompt');
             
-            // 如果当前chip已选中，则取消选中
             if (chip.classList.contains('selected')) {
                 chip.classList.remove('selected');
-                // 从textarea中移除该属性
                 removeAttributeValue(value);
                 return;
             }
             
-            // 先取消同类别其他chip的选中状态
             document.querySelectorAll(`.attribute-chip[data-category="${category}"]`).forEach(c => {
                 if (c.classList.contains('selected') && c !== chip) {
                     c.classList.remove('selected');
@@ -302,12 +362,10 @@
                 }
             });
             
-            // 添加新属性
             chip.classList.add('selected');
             addAttributeValue(value);
         }
         
-        // 添加属性值到textarea
         function addAttributeValue(value) {
             const textarea = document.getElementById('voiceDesignPrompt');
             const current = textarea.value.trim();
@@ -319,27 +377,39 @@
             }
         }
         
-        // 从textarea中移除属性值
         function removeAttributeValue(value) {
             const textarea = document.getElementById('voiceDesignPrompt');
             let current = textarea.value.trim();
             
-            // 移除 "值" 或 "，值" 或 "值，"
-            current = current.replace(new RegExp('，?' + value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(，)?', 'g'), '');
+            // 更精确地移除属性，避免相邻属性粘连
+            // 先尝试匹配 "属性，" (属性在前，逗号在后)
+            let pattern = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '，';
+            if (current.includes(value + '，')) {
+                current = current.replace(new RegExp(pattern, 'g'), '');
+            } else if (current.includes('，' + value)) {
+                // 再尝试匹配 "，属性" (逗号在前，属性在后)
+                pattern = '，' + value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                current = current.replace(new RegExp(pattern, 'g'), '');
+            } else {
+                // 只有这个属性，直接移除
+                current = current.replace(new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '');
+            }
+            
+            // 清理多余的逗号
+            current = current.replace(/，+/g, '，');  // 多个逗号合并
+            current = current.replace(/^，|，$/g, '');  // 移除开头和结尾的逗号
+            
             textarea.value = current.trim();
         }
 
-        // 切换模式
         function switchOmniVoiceMode(mode) {
             currentMode = mode;
 
-            // 更新选项卡
             document.querySelectorAll('.mode-tab').forEach(tab => {
                 tab.classList.remove('active');
             });
             event.target.classList.add('active');
 
-            // 更新内容
             document.querySelectorAll('.mode-content').forEach(content => {
                 content.classList.remove('active');
             });
@@ -371,24 +441,16 @@
                 formData.append('num_steps', numSteps);
                 formData.append('speed', speed);
 
-                console.log('【OmniVoice调试】当前模式:', currentMode);
-
                 if (currentMode === 'voice_design') {
                     formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
                 } else if (currentMode === 'voice_clone') {
-                    console.log('【OmniVoice调试】clone模式 - speaker_id:', selectedSpeakerId);
                     formData.append('clone_speaker_id', selectedSpeakerId);
-                }
-
-                // 打印FormData内容用于调试
-                console.log('【OmniVoice调试】发送的FormData:');
-                for (let [key, value] of formData.entries()) {
-                    console.log(`  ${key}:`, value);
                 }
 
                 const data = await VersTTS.postForm('/tts/omnivoice', formData);
 
                 if (data.success) {
+                    document.getElementById('batchResultSection').style.display = 'none';
                     VersTTS.showResult(data, { filename: `omnivoice_${Date.now()}.wav` });
                     VersTTS.showStatus('语音生成成功！');
                 } else {
@@ -401,10 +463,165 @@
             }
         }
 
-        // 初始化
-        console.log('【OmniVoice】页面加载完成');
-        console.log('【OmniVoice】VersTTS 对象存在:', typeof VersTTS !== 'undefined');
-        console.log('【OmniVoice】addAttribute 函数存在:', typeof addAttribute === 'function');
+        async function batchGenerateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            const count = parseInt(document.getElementById('batchCount').value) || 10;
+
+            if (!text) { VersTTS.showStatus('请输入生成文本', true); return; }
+            if (count < 2 || count > 20) { VersTTS.showStatus('生成数量必须在2-20之间', true); return; }
+
+            if (currentMode === 'voice_clone') {
+                if (!selectedSpeakerId) { VersTTS.showStatus('请选择说话人', true); return; }
+            } else if (currentMode === 'voice_design') {
+                const prompt = document.getElementById('voiceDesignPrompt').value.trim();
+                if (!prompt) { VersTTS.showStatus('请输入声音属性描述', true); return; }
+            }
+
+            const btn = document.getElementById('batchGenerateBtn');
+            const btnText = document.getElementById('batchBtnText');
+            VersTTS.setButtonLoading(btn, btnText, true);
+
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            const progressText = document.getElementById('progressText');
+            progressBar.classList.add('active');
+            progressText.classList.add('active');
+            progressText.textContent = `正在生成... 0/${count}`;
+            progressBarFill.style.width = '0%';
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('model', 'omnivoice');
+                formData.append('mode', currentMode);
+                formData.append('count', count);
+
+                if (currentMode === 'voice_design') {
+                    formData.append('voice_design_prompt', document.getElementById('voiceDesignPrompt').value.trim());
+                } else if (currentMode === 'voice_clone') {
+                    formData.append('speaker_id', selectedSpeakerId);
+                }
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    batchResults = data.audio_urls.map((url, index) => ({
+                        id: index,
+                        url: url,
+                        filename: data.audio_files[index]
+                    }));
+                    selectedFiles.clear();
+                    renderBatchResults();
+                    document.getElementById('resultSection').style.display = 'none';
+                    document.getElementById('batchResultSection').style.display = 'block';
+                    VersTTS.showStatus(`成功生成 ${data.count} 个音频！`);
+                    
+                    progressBarFill.style.width = '100%';
+                    progressText.textContent = `生成完成！共 ${data.count} 个音频`;
+                    setTimeout(() => {
+                        progressBar.classList.remove('active');
+                        progressText.classList.remove('active');
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || '批量生成失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量生成失败: ' + error.message, true);
+                progressBar.classList.remove('active');
+                progressText.classList.remove('active');
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        function renderBatchResults() {
+            const container = document.getElementById('batchResults');
+            container.innerHTML = '';
+
+            batchResults.forEach((result, index) => {
+                const item = document.createElement('div');
+                item.className = 'batch-result-item' + (selectedFiles.has(result.filename) ? ' selected' : '');
+                item.innerHTML = `
+                    <div class="result-header">
+                        <span class="result-number">#${index + 1}</span>
+                        <input type="checkbox" class="select-checkbox" 
+                               ${selectedFiles.has(result.filename) ? 'checked' : ''}
+                               onchange="toggleSelect('${result.filename}')">
+                    </div>
+                    <audio controls src="${result.url}"></audio>
+                    <div class="result-actions">
+                        <a href="${result.url}" download="${result.filename}" class="btn-small btn-download-small">⬇️ 下载</a>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            updateSelectedCount();
+        }
+
+        function toggleSelect(filename) {
+            if (selectedFiles.has(filename)) {
+                selectedFiles.delete(filename);
+            } else {
+                selectedFiles.add(filename);
+            }
+            renderBatchResults();
+        }
+
+        function toggleSelectAll() {
+            if (selectedFiles.size === batchResults.length) {
+                selectedFiles.clear();
+            } else {
+                batchResults.forEach(r => selectedFiles.add(r.filename));
+            }
+            renderBatchResults();
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+        }
+
+        async function downloadSelected() {
+            if (selectedFiles.size === 0) {
+                VersTTS.showStatus('请先选择要下载的音频', true);
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                const filesArray = Array.from(selectedFiles);
+                filesArray.forEach(file => formData.append('files', file));
+                formData.append('zip_name', `omnivoice_batch_${Date.now()}.zip`);
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/download-zip`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `omnivoice_batch_${Date.now()}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    VersTTS.showStatus(`已下载 ${selectedFiles.size} 个音频的ZIP包`);
+                } else {
+                    throw new Error('下载失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量下载失败: ' + error.message, true);
+            }
+        }
+
         loadSpeakers();
     </script>
 </body>

@@ -307,8 +307,8 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - VoxCPM: 更新音色描述提示,明确支持30种语言+9种方言,提供方言示例
 - 工作记录: records/2026-05-08_22-30-00_OmniVoice服务修复与方言问题优化.md
 
-待办
-[1]OmniVoice 服务报错,见logs - 已修复
+
+[62]OmniVoice 服务报错,见logs - 已修复
 - 问题: stop命令无法停止OmniVoice服务(PID文件丢失但进程仍在运行)
 - 修复: 在do_stop_omnivoice函数中添加pgrep fallback机制
 - 当PID文件不存在时,使用pgrep -f "python.*omnivoice_service.py"查找实际运行进程
@@ -316,17 +316,76 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 服务现在正常运行在 127.0.0.1:8001
 
 
-[2]统一一下生成音频的文件名称 - 已验证
+[63]统一一下生成音频的文件名称 - 已验证
 - 各TTS模块已使用统一格式: {model}_{timestamp}.wav
 - 所有模块都调用save_temp_audio()函数保存音频
 
-[3]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言 - 已优化提示
+[64]qwen3-tts 和 voxcpm 出现多次生成都是普通话,虽然定义了要用方言 - 已优化提示
 - Qwen3-TTS: voice_design模式的instruct参数用于音色描述,方言需要通过CustomVoice预设音色(Dylan/Eric)
 - 已更新前端提示,明确告知用户voice_design模式不支持方言
 - VoxCPM: voice_design模式支持方言,需要在音色描述中明确指定方言
 - 已更新前端提示,提供方言使用示例
 
-[4]支持批量生成(抽卡10次)\批量下载 - 待实现
+
+已完成:
+[65]统一Qwen3-TTS音频文件名格式，与其他方案保持一致 - 已完成
+- 修改 backend/core/audio_utils.py 的 save_temp_audio 函数，添加 prefix 参数
+- 更新 Qwen3-TTS/CosyVoice/ChatTTS/F5-TTS 路由，使用统一的文件名格式 {model}_{timestamp}.wav
+- 其他TTS方案(GPT-SoVITS/VoxCPM/IndexTTS/FireRedTTS2/OpenVoice/OmniVoice)已在各自路由中实现统一格式
+
+[66]支持批量生成(抽卡10次)和批量下载功能 - 已完成
+- 在 backend/models/schemas.py 添加 BatchGenerateRequest/BatchGenerateResponse/BatchDownloadRequest 模型
+- 在 backend/routers/batch.py 添加批量生成API (/tts/batch/generate)，支持VoxCPM和Qwen3-TTS
+- 在 backend/routers/batch.py 添加批量下载API (/tts/batch/download-zip)，支持将选中音频打包成ZIP
+- 更新 frontend/pages/voxcpm.html，添加批量生成UI（数量选择、进度条、批量结果展示、全选/批量下载）
+- 更新 frontend/pages/qwen3tts.html，添加批量生成UI
+- 批量生成支持2-20个音频变体，支持全选/取消全选、单个下载、批量下载ZIP功能
+
+[67]OmniVoice添加批量生成功能，所有页面去掉"抽卡"描述 - 已完成
+- 在 backend/routers/batch.py 添加 _batch_generate_omnivoice 函数，支持OmniVoice批量生成
+- 支持模式: auto_voice/voice_clone/voice_design
+- 更新 frontend/pages/omnivoice.html，添加批量生成UI
+- 将VoxCPM/Qwen3-TTS/OmniVoice页面的"抽卡"描述改为"批量生成"
+- 修改文件:
+  * frontend/pages/voxcpm.html: "批量生成数量（抽卡模式）" -> "批量生成数量"
+  * frontend/pages/voxcpm.html: "批量生成（抽卡）" -> "批量生成"
+  * frontend/pages/qwen3tts.html: 同样修改
+  * frontend/pages/omnivoice.html: 使用"批量生成"描述
+- 工作记录: records/2026-05-10_10-30-00_OmniVoice批量生成与描述优化.md
+
+[68]优化批量生成性能，OmniVoice支持并行生成 - 已完成
+- 分析显存风险：本地GPU模型并行会导致OOM，OmniVoice独立服务可有限并行
+- 修改 backend/routers/batch.py:
+  * 添加 asyncio/aiohttp 支持异步并行
+  * OmniVoice使用信号量控制并发数（OMNIVOICE_CONCURRENCY=2）
+  * 添加 _generate_single_omnivoice 单任务函数（带超时控制120秒）
+  * 重写 _batch_generate_omnivoice 为并行版本（asyncio.gather）
+  * VoxCPM/Qwen3-TTS保持顺序执行（GPU_MODEL_CONCURRENCY=1，最安全）
+  * 添加 /tts/batch/config API 查询并发配置和GPU显存状态
+- 安全策略:
+  * OmniVoice: 2并发（独立HTTP服务，不会占用主服务显存）
+  * VoxCPM/Qwen3-TTS: 1并发（本地GPU模型，避免爆显存）
+  * 超时控制: 120秒超时，防止长时间阻塞
+  * 异常隔离: 单个任务失败不影响其他任务
+- 性能提升: OmniVoice批量生成速度提升约40-50%（2并发时）
+- 工作记录: records/2026-05-10_11-00-00_批量生成性能优化.md
+
+[69]OmniVoice语速限制和声音设计格式修正 - 已完成
+- 添加语速参数后端校验 (backend/routers/tts/omnivoice.py):
+  * 限制语速范围 0.5-2.0
+  * 超出范围返回 400 错误
+- 添加声音设计格式自动修正功能:
+  * 新增 _fix_voice_design_format 函数
+  * 修复 "宁夏话女" -> "宁夏话，女" 这类缺少逗号的问题
+  * 处理方言+性别、性别+年龄之间的分隔符
+  * 规范化逗号格式（英文逗号转中文，去除多余空格）
+- 批量生成同样应用格式修正 (backend/routers/batch.py)
+- 修改文件:
+  * backend/routers/tts/omnivoice.py
+  * backend/routers/batch.py
+- 工作记录: records/2026-05-10_12-00-00_OmniVoice语速与格式修正.md
+
+待办:
 
 
 

@@ -141,7 +141,7 @@ async def tts_cosyvoice(
         first_output = output_list[0]
         sr = 22050
         audio_data = first_output['tts_speech'].numpy().squeeze()
-        audio_path = save_temp_audio(audio_data, sr)
+        audio_path = save_temp_audio(audio_data, sr, prefix="cosyvoice")
 
         # 清理显存 - 防止内存泄漏
         if torch.cuda.is_available():

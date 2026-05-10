@@ -34,6 +34,84 @@ def _check_omnivoice_service():
         return False
 
 
+def _fix_voice_design_format(prompt: str) -> str:
+    """
+    修正声音设计属性的格式
+    
+    问题：用户可能输入 "宁夏话女，中年，高音调" 或 "女，老年甘肃话"（缺少逗号）
+    修正："宁夏话，女，中年，高音调" 或 "女，老年，甘肃话"
+    
+    规则：
+    1. 在相邻的中文属性之间添加逗号分隔
+    2. 处理所有属性组合之间缺少分隔符的情况
+    """
+    if not prompt:
+        return prompt
+    
+    # 定义所有可能的属性值
+    dialects = ['四川话', '东北话', '河南话', '陕西话', '云南话', '贵州话', '桂林话',
+                '甘肃话', '宁夏话', '济南话', '青岛话', '石家庄话']
+    genders = ['男', '女']
+    ages = ['儿童', '少年', '青年', '中年', '老年']
+    pitches = ['极低音调', '低音调', '中音调', '高音调', '极高音调', '耳语']
+    
+    all_attributes = dialects + genders + ages + pitches
+    
+    result = prompt
+    
+    # 迭代处理直到没有变化（处理多重粘连）
+    max_iterations = 10
+    for _ in range(max_iterations):
+        prev_result = result
+        
+        # 1. 处理方言和性别之间缺少分隔符
+        # 例如："宁夏话女" -> "宁夏话，女"
+        for dialect in dialects:
+            for gender in genders:
+                result = re.sub(f'{dialect}{gender}(?![\u4e00-\u9fff])', f'{dialect}，{gender}', result)
+        
+        # 2. 处理性别和年龄之间缺少分隔符
+        # 例如："男中年" -> "男，中年"
+        for gender in genders:
+            for age in ages:
+                result = re.sub(f'{gender}{age}(?![\u4e00-\u9fff])', f'{gender}，{age}', result)
+        
+        # 3. 处理年龄和方言之间缺少分隔符
+        # 例如："老年甘肃话" -> "老年，甘肃话"
+        for age in ages:
+            for dialect in dialects:
+                result = re.sub(f'{age}{dialect}(?![\u4e00-\u9fff])', f'{age}，{dialect}', result)
+        
+        # 4. 处理年龄和音调之间缺少分隔符
+        # 例如："老年高音调" -> "老年，高音调"
+        for age in ages:
+            for pitch in pitches:
+                result = re.sub(f'{age}{pitch}(?![\u4e00-\u9fff])', f'{age}，{pitch}', result)
+        
+        # 5. 处理性别和音调之间缺少分隔符
+        # 例如："男高音调" -> "男，高音调"
+        for gender in genders:
+            for pitch in pitches:
+                result = re.sub(f'{gender}{pitch}(?![\u4e00-\u9fff])', f'{gender}，{pitch}', result)
+        
+        # 6. 处理方言和音调之间缺少分隔符
+        # 例如："四川话高音调" -> "四川话，高音调"
+        for dialect in dialects:
+            for pitch in pitches:
+                result = re.sub(f'{dialect}{pitch}(?![\u4e00-\u9fff])', f'{dialect}，{pitch}', result)
+        
+        if result == prev_result:
+            break  # 没有更多变化，退出迭代
+    
+    # 规范化分隔符：统一使用中文逗号，去除多余空格
+    result = result.replace(',', '，')  # 英文逗号转中文
+    result = re.sub(r'\s*，\s*', '，', result)  # 去除逗号前后的空格
+    result = re.sub(r'，+', '，', result)  # 多个逗号合并为一个
+    result = re.sub(r'^，|，$', '', result)  # 移除开头和结尾的逗号
+    
+    return result.strip()
+
+
 @router.post("/")
 async def tts_omnivoice(
         request: Request,
@@ -77,7 +155,14 @@ async def tts_omnivoice(
             speaker_ref_text = speaker.get("reference_text")
             system_logger.info(f"【OmniVoice】找到说话人 | 名称: {speaker.get('name')}")
 
-        # 声音设计模式校验
+        # 语速参数校验
+        if speed < 0.5 or speed > 2.0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"语速参数必须在 0.5-2.0 之间，当前值: {speed}"
+            )
+
+        # 声音设计模式校验和格式修正
         if mode == "voice_design" and voice_design_prompt:
             has_chinese = bool(re.search(r'[\u4e00-\u9fff]', voice_design_prompt))
             has_english = bool(re.search(r'[a-zA-Z]', voice_design_prompt))
@@ -86,6 +171,10 @@ async def tts_omnivoice(
                     status_code=400,
                     detail="声音设计属性不能中英文混用！请使用纯中文（如'男，四川话'）或纯英文（如'male, high pitch'）"
                 )
+            
+            # 修正格式：确保属性之间用逗号分隔
+            # 处理 "宁夏话女" -> "宁夏话，女" 这样的情况
+            voice_design_prompt = _fix_voice_design_format(voice_design_prompt)
 
         # 调用独立服务
         system_logger.info(f"【OmniVoice】调用独立服务...")

@@ -14,30 +14,28 @@ PID_FILE="$SCRIPT_DIR/.server.pid"
 LOG_FILE="$SCRIPT_DIR/logs/server.log"
 ENV_FILE="$SCRIPT_DIR/.env.offline"
 
-# OmniVoice 独立服务配置
-OMNIVOICE_PID_FILE="$SCRIPT_DIR/.omnivoice.pid"
-OMNIVOICE_LOG_FILE="$SCRIPT_DIR/logs/omnivoice_service.log"
-OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
-OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
-
-# CosyVoice 独立服务配置
-COSYVOICE_PID_FILE="$SCRIPT_DIR/.cosyvoice.pid"
-COSYVOICE_LOG_FILE="$SCRIPT_DIR/logs/cosyvoice_service.log"
-COSYVOICE_PORT="${COSYVOICE_PORT:-8002}"
-COSYVOICE_SCRIPT="$SCRIPT_DIR/cosyvoice_service.py"
-
 # 服务配置
 HOST="0.0.0.0"
 PORT="8000"
+
+# OmniVoice 独立服务配置
+OMNIVOICE_HOST="127.0.0.1"
+OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
+OMNIVOICE_PID_FILE="$SCRIPT_DIR/.omnivoice.pid"
+OMNIVOICE_LOG_FILE="$SCRIPT_DIR/logs/omnivoice_service.log"
+OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
+
+# CosyVoice 独立服务配置
+COSYVOICE_HOST="127.0.0.1"
+COSYVOICE_PORT="${COSYVOICE_PORT:-8002}"
+COSYVOICE_PID_FILE="$SCRIPT_DIR/.cosyvoice.pid"
+COSYVOICE_LOG_FILE="$SCRIPT_DIR/logs/cosyvoice_service.log"
+COSYVOICE_SCRIPT="$SCRIPT_DIR/cosyvoice_service.py"
 
 # HTTPS 配置（留空则使用 HTTP）
 # 生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
 SSL_CERT="ssl/cert.pem"  # SSL 证书路径，如 "ssl/cert.pem"
 SSL_KEY="ssl/key.pem"   # SSL 私钥路径，如 "ssl/key.pem"
-
-# OmniVoice 独立服务配置
-OMNIVOICE_HOST="127.0.0.1"
-OMNIVOICE_PORT="8001"
 
 # 路径配置
 MODELS_DIR="models"

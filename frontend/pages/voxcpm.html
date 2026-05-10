@@ -61,6 +61,14 @@
         .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #8bc34a, #4caf50); width: 0%; transition: width 0.3s ease; }
         .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
         .progress-text.active { display: block; }
+        /* 常用属性选择器样式 */
+        .voice-attributes-section { margin-top: 15px; padding: 15px; background: #f9fbe7; border-radius: 8px; border: 1px solid #c5e1a5; }
+        .attribute-category-title { font-weight: 600; color: #33691e; margin-bottom: 8px; font-size: 0.9rem; }
+        .attribute-subtitle { font-size: 0.85rem; color: #666; margin: 10px 0 8px 0; }
+        .attribute-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+        .attribute-chip { padding: 6px 10px; background: #dcedc8; border-radius: 4px; font-size: 0.8rem; color: #558b2f; cursor: pointer; text-align: center; transition: all 0.2s; }
+        .attribute-chip:hover { background: #8bc34a; color: white; }
+        .attribute-chip.selected { background: #8bc34a; color: white; }
     </style>
 </head>
 <body class="voxcpm-theme">
@@ -113,6 +121,69 @@
                         <label style="font-weight: 600; color: #33691e; display: block; margin-bottom: 10px;">音色描述</label>
                         <textarea id="voiceDesignPrompt" placeholder="用自然语言描述你想要的音色特征，例如：年轻女性，声音甜美，用四川话说话..."></textarea>
                         <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">详细描述想要的音色特征，包括方言（如四川话、粤语等）、年龄、性别、情绪等。VoxCPM支持30种语言+9种方言。</p>
+                        
+                        <!-- 常用属性选择器 -->
+                        <div class="voice-attributes-section">
+                            <div class="attribute-category-title">常用属性（点击添加）：</div>
+                            <p style="font-size: 0.8rem; color: #888; margin-bottom: 10px;">💡 同类别只能选择一个，会自动替换</p>
+                            
+                            <div class="attribute-subtitle">性别</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="gender" data-value="男声" onclick="onToggleChip(this)">男声</span>
+                                <span class="attribute-chip" data-category="gender" data-value="女声" onclick="onToggleChip(this)">女声</span>
+                            </div>
+                            
+                            <div class="attribute-subtitle">年龄</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="age" data-value="儿童" onclick="onToggleChip(this)">儿童</span>
+                                <span class="attribute-chip" data-category="age" data-value="少年" onclick="onToggleChip(this)">少年</span>
+                                <span class="attribute-chip" data-category="age" data-value="青年" onclick="onToggleChip(this)">青年</span>
+                                <span class="attribute-chip" data-category="age" data-value="中年" onclick="onToggleChip(this)">中年</span>
+                                <span class="attribute-chip" data-category="age" data-value="老年" onclick="onToggleChip(this)">老年</span>
+                            </div>
+                            
+                            <div class="attribute-subtitle">方言/语言</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="dialect" data-value="四川话" onclick="onToggleChip(this)">四川话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="粤语" onclick="onToggleChip(this)">粤语</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="东北话" onclick="onToggleChip(this)">东北话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="河南话" onclick="onToggleChip(this)">河南话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="陕西话" onclick="onToggleChip(this)">陕西话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="台湾话" onclick="onToggleChip(this)">台湾话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="上海话" onclick="onToggleChip(this)">上海话</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="闽南语" onclick="onToggleChip(this)">闽南语</span>
+                                <span class="attribute-chip" data-category="dialect" data-value="英语" onclick="onToggleChip(this)">英语</span>
+                            </div>
+                            
+                            <div class="attribute-subtitle">音色/风格</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="style" data-value="温柔的" onclick="onToggleChip(this)">温柔的</span>
+                                <span class="attribute-chip" data-category="style" data-value="成熟的" onclick="onToggleChip(this)">成熟的</span>
+                                <span class="attribute-chip" data-category="style" data-value="活泼的" onclick="onToggleChip(this)">活泼的</span>
+                                <span class="attribute-chip" data-category="style" data-value="稳重的" onclick="onToggleChip(this)">稳重的</span>
+                                <span class="attribute-chip" data-category="style" data-value="甜美的" onclick="onToggleChip(this)">甜美的</span>
+                                <span class="attribute-chip" data-category="style" data-value="磁性的" onclick="onToggleChip(this)">磁性的</span>
+                                <span class="attribute-chip" data-category="style" data-value="清亮的" onclick="onToggleChip(this)">清亮的</span>
+                                <span class="attribute-chip" data-category="style" data-value="低沉的" onclick="onToggleChip(this)">低沉的</span>
+                            </div>
+                            
+                            <div class="attribute-subtitle">语速</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="speed" data-value="缓慢的" onclick="onToggleChip(this)">缓慢的</span>
+                                <span class="attribute-chip" data-category="speed" data-value="适中的" onclick="onToggleChip(this)">适中的</span>
+                                <span class="attribute-chip" data-category="speed" data-value="快速的" onclick="onToggleChip(this)">快速的</span>
+                            </div>
+                            
+                            <div class="attribute-subtitle">语气/情绪</div>
+                            <div class="attribute-grid">
+                                <span class="attribute-chip" data-category="tone" data-value="平静地" onclick="onToggleChip(this)">平静地</span>
+                                <span class="attribute-chip" data-category="tone" data-value="开心地" onclick="onToggleChip(this)">开心地</span>
+                                <span class="attribute-chip" data-category="tone" data-value="严肃地" onclick="onToggleChip(this)">严肃地</span>
+                                <span class="attribute-chip" data-category="tone" data-value="温柔地" onclick="onToggleChip(this)">温柔地</span>
+                                <span class="attribute-chip" data-category="tone" data-value="激动地" onclick="onToggleChip(this)">激动地</span>
+                                <span class="attribute-chip" data-category="tone" data-value="悲伤地" onclick="onToggleChip(this)">悲伤地</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -389,6 +460,59 @@
             } finally {
                 VersTTS.setButtonLoading(btn, btnText, false);
             }
+        }
+
+        // 切换属性（同类别只能选一个）
+        function onToggleChip(chip) {
+            const category = chip.dataset.category;
+            const value = chip.dataset.value;
+            const textarea = document.getElementById('voiceDesignPrompt');
+
+            if (chip.classList.contains('selected')) {
+                chip.classList.remove('selected');
+                removeAttributeValue(value);
+                return;
+            }
+
+            document.querySelectorAll(`.attribute-chip[data-category="${category}"]`).forEach(c => {
+                if (c.classList.contains('selected') && c !== chip) {
+                    c.classList.remove('selected');
+                    const oldValue = c.dataset.value;
+                    removeAttributeValue(oldValue);
+                }
+            });
+
+            chip.classList.add('selected');
+            addAttributeValue(value);
+        }
+
+        function addAttributeValue(value) {
+            const textarea = document.getElementById('voiceDesignPrompt');
+            const current = textarea.value.trim();
+
+            if (current) {
+                textarea.value = current + '，' + value;
+            } else {
+                textarea.value = value;
+            }
+        }
+
+        function removeAttributeValue(value) {
+            const textarea = document.getElementById('voiceDesignPrompt');
+            let current = textarea.value.trim();
+
+            if (current.includes(value + '，')) {
+                current = current.replace(value + '，', '');
+            } else if (current.includes('，' + value)) {
+                current = current.replace('，' + value, '');
+            } else {
+                current = current.replace(value, '');
+            }
+
+            current = current.replace(/，+/g, '，');
+            current = current.replace(/^，|，$/g, '');
+
+            textarea.value = current.trim();
         }
 
         // 验证批量生成数量（自动纠正）

@@ -40,28 +40,26 @@ DETAILED_FORMATTER = logging.Formatter(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# 设置日志记录器
-logger = logging.getLogger(__name__)
+# 设置日志记录器 - 使用独立名称避免冲突
+logger = logging.getLogger("cosyvoice_service")
 logger.setLevel(logging.INFO)
 
-# 避免重复添加处理器
-if not logger.handlers:
-    # 文件处理器 - 使用 RotatingFileHandler 实现日志轮转
-    file_handler = RotatingFileHandler(
-        COSYVOICE_LOG,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=3,
-        encoding='utf-8'
-    )
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(DETAILED_FORMATTER)
-    logger.addHandler(file_handler)
-    
-    # 控制台处理器
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(DETAILED_FORMATTER)
-    logger.addHandler(console_handler)
+# 清除已有处理器（避免重复）
+logger.handlers = []
+
+# 只添加文件处理器（控制台输出由启动脚本重定向处理）
+file_handler = RotatingFileHandler(
+    COSYVOICE_LOG,
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=3,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(DETAILED_FORMATTER)
+logger.addHandler(file_handler)
+
+# 阻止日志向父记录器传播（避免重复）
+logger.propagate = False
 
 # 添加 CosyVoice 算法路径
 ALGORITHMS_PATH = os.path.join(os.path.dirname(__file__), "algorithms", "CosyVoice")

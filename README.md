@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/许可-Apache%202.0-yellow.svg" alt="License">
 </p>
 
-VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 9 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
+VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业界领先的 10 种开源 TTS 算法，提供统一的后端 API 服务和美观的前端交互界面，支持音色克隆、预设音色、语音设计等多种语音合成能力。
 
 ---
 
@@ -31,7 +31,9 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ### 核心功能
 
-- **多算法集成**: 一键切换 10 种主流 TTS 算法
+- **多算法集成**: 一键切换 10 种主流 TTS 算法（3种前端可用）
+- **独立服务架构**: 主服务 + OmniVoice/CosyVoice 独立服务，解决依赖冲突
+- **详细日志记录**: 所有 TTS 服务记录完整的模型信息和请求参数
 - **音色克隆**: 支持使用参考音频进行声音克隆
 - **预设音色**: 提供多种优质预设人声
 - **语音设计**: 通过自然语言描述生成特定音色
@@ -57,18 +59,18 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 
 ### 当前前端可用算法
 
-| 算法 | 能力 | 音色克隆 | 预设音色 | 指令控制 | 流式 | 中文效果 | 状态 |
-|------|------|----------|----------|----------|------|----------|------|
-| **Qwen3-TTS** | 全功能 | ✅ (3秒) | 9种 | ✅ | ✅ (97ms) | 优秀 | 🟢 前端可用 |
-| **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 | 🟢 前端可用 |
-| **OmniVoice** | 全功能 | ✅ | 12种方言 | ✅ | ❌ | 优秀 | 🟢 前端可用 |
+| 算法 | 能力 | 音色克隆 | 预设音色 | 指令控制 | 流式 | 中文效果 | 服务类型 | 状态 |
+|------|------|----------|----------|----------|------|----------|----------|------|
+| **Qwen3-TTS** | 全功能 | ✅ (3秒) | 9种 | ✅ | ✅ (97ms) | 优秀 | 主服务 | 🟢 前端可用 |
+| **VoxCPM** | 全功能 | ✅ | 9种 | ✅ | ❌ | 优秀 | 主服务 | 🟢 前端可用 |
+| **OmniVoice** | 全功能 | ✅ | 12种方言 | ✅ | ❌ | 优秀 | 独立服务 | 🟢 前端可用 |
+| **CosyVoice** | 全功能 | ✅ | 18+方言 | ✅ | ❌ | 优秀 | 独立服务 | 🟢 前端可用 |
 
 ### 后端API可用算法（前端已隐藏）
 
 | 算法 | 能力 | 音色克隆 | 预设音色 | 状态 |
 |------|------|----------|----------|------|
 | **GPT-SoVITS** | 克隆专用 | ✅ 优秀 | ❌ | 🔴 前端已屏蔽 |
-| **CosyVoice** | 全功能 | ✅ | ✅ | 🔴 前端已隐藏 |
 | **ChatTTS** | 对话优化 | ✅ | ❌ | 🔴 前端已屏蔽 |
 | **F5-TTS** | 克隆专用 | ✅ | ❌ | 🔴 前端已屏蔽 |
 | **OpenVoice** | 克隆专用 | ✅ | ❌ | 🔴 前端已屏蔽 |
@@ -82,7 +84,11 @@ VersTTS 是一个统一的语音合成（Text-to-Speech）平台，集成了业�
 - **需要流式低延迟**: 选择 Qwen3-TTS
 - **需要音色设计**: 选择 OmniVoice (12种方言)
 - **最佳克隆效果**: 选择 VoxCPM
-- **方言支持**: OmniVoice (四川话、东北话、粤语等12种)，Qwen3-TTS (北京话、四川话)，VoxCPM (30种语言+9种方言)
+- **方言支持**: 
+  - CosyVoice: 18+种中文方言（粤语、闽南语、四川话、东北话、河南话、陕西话、山东话、上海话、天津话等）
+  - OmniVoice: 12种方言（四川话、东北话、河南话、陕西话、云南话、贵州话、桂林话、甘肃话、宁夏话、济南话、青岛话、石家庄话）
+  - Qwen3-TTS: 北京话、四川话
+  - VoxCPM: 30种语言+9种方言
 
 ---
 
@@ -116,13 +122,16 @@ VersTTS/
 │   └── pages/              # 各算法页面
 │
 ├── lib/                     # 独立依赖库
-│   └── transformers5/      # OmniVoice 专用 transformers 5.x
+│   ├── transformers5/      # OmniVoice 专用 transformers 5.x
+│   └── transformers4/      # CosyVoice 专用 transformers 4.51.3
 │
 ├── models/                  # 模型文件存放目录
+│   ├── FunAudioLLM/        # CosyVoice 模型 (~6GB)
 │   ├── OmniVoice/          # OmniVoice 模型 (~2.3GB)
 │   ├── Qwen3-TTS/          # Qwen3-TTS 模型 (~18GB)
 │   └── VoxCPM/             # VoxCPM 模型 (~4.7GB)
 │
+├── cosyvoice_service.py     # CosyVoice 独立服务脚本
 ├── omnivoice_service.py     # OmniVoice 独立服务脚本
 ├── start_server.sh          # 统一启动脚本
 ├── test_scripts/            # 测试脚本
@@ -205,16 +214,34 @@ modelscope download --model OpenBMB/VoxCPM-2B --local_dir ./models/VoxCPM-2B
 ./start_server.sh restart-omnivoice        # 重启 OmniVoice 独立服务
 ./start_server.sh status-omnivoice         # 查看 OmniVoice 服务状态
 
+# CosyVoice 独立服务（需要 transformers 4.51.3）
+./start_server.sh start-cosyvoice          # 启动 CosyVoice 独立服务
+./start_server.sh start-cosyvoice --offline  # 离线模式启动 CosyVoice
+./start_server.sh stop-cosyvoice           # 停止 CosyVoice 独立服务
+./start_server.sh restart-cosyvoice        # 重启 CosyVoice 独立服务
+./start_server.sh status-cosyvoice         # 查看 CosyVoice 服务状态
+
+# 一键启动所有服务
+./start_server.sh start-all                # 启动主服务 + 所有独立服务
+./start_server.sh stop-all                 # 停止所有服务
+./start_server.sh restart-all              # 重启所有服务
+
 # 查看日志
 tail -f logs/server.log                    # 主服务日志
 tail -f logs/omnivoice_service.log         # OmniVoice 服务日志
+tail -f logs/cosyvoice_service.log         # CosyVoice 服务日志
 
 # 或手动启动
 python backend/api_server.py               # 手动启动主服务
 python omnivoice_service.py                # 手动启动 OmniVoice 服务
 ```
 
-> **注意**: OmniVoice 需要独立的 transformers 5.x 版本，因此运行在独立进程（端口 8001）。其他 TTS 算法（Qwen3-TTS、VoxCPM 等）运行在主服务（端口 8000）。
+> **注意**: 
+> - OmniVoice 需要 transformers 5.x，运行在独立进程（端口 8001）
+> - CosyVoice 需要 transformers 4.51.3，运行在独立进程（端口 8002）
+> - 其他 TTS 算法（Qwen3-TTS、VoxCPM 等）运行在主服务（端口 8000）
+> 
+> 三个服务相互独立，可以单独启停，通过 restart-all 可一键重启所有服务。
 
 ### 6. 访问系统
 
@@ -243,6 +270,11 @@ nano start_server.sh
 | `PORT` | `8000` | 主服务端口 |
 | `OMNIVOICE_HOST` | `127.0.0.1` | OmniVoice 服务地址 |
 | `OMNIVOICE_PORT` | `8001` | OmniVoice 服务端口 |
+| `COSYVOICE_HOST` | `127.0.0.1` | CosyVoice 服务地址 |
+| `COSYVOICE_PORT` | `8002` | CosyVoice 服务端口 |
+| `MAIN_GPU` | `0` | 主服务使用的 GPU |
+| `OMNIVOICE_GPU` | `0` | OmniVoice 服务使用的 GPU |
+| `COSYVOICE_GPU` | `0` | CosyVoice 服务使用的 GPU |
 | `MODELS_DIR` | `models` | 模型文件目录 |
 | `OUTPUTS_DIR` | `outputs` | 音频输出目录 |
 | `LOGS_DIR` | `logs` | 日志目录 |
@@ -407,6 +439,7 @@ python scripts/batch_tts_client.py \
 | **GPT-SoVITS** | [algorithms/GPT-SoVITS/readme.md](algorithms/GPT-SoVITS/readme.md) | VQ+GPT+VITS，最佳克隆效果 |
 | **VoxCPM** | [algorithms/VoxCPM/readme.md](algorithms/VoxCPM/readme.md) | 无Tokenizer扩散自回归，30语言支持 |
 | **OmniVoice** | [algorithms/OmniVoice/readme.md](algorithms/OmniVoice/readme.md) | 扩散语言模型，600+语言，12种方言 |
+| **CosyVoice** | [algorithms/CosyVoice/readme.md](algorithms/CosyVoice/readme.md) | 流匹配+LLM，18+中文方言支持 |
 | **IndexTTS** | [algorithms/IndexTTS/readme.md](algorithms/IndexTTS/readme.md) | 自回归GPT架构，哔哩哔哩开源 |
 | **FireRedTTS2** | [algorithms/FireRedTTS2/readme.md](algorithms/FireRedTTS2/readme.md) | 双Transformer，长对话优化 |
 
@@ -428,6 +461,16 @@ python scripts/batch_tts_client.py \
 │ FireRedTTS2 │ 双Transformer│  ★★★   │   ★★    │   高     │
 └─────────────┴────────────┴──────────┴──────────┴──────────┘
 ```
+
+### 独立服务说明
+
+由于依赖冲突，以下算法运行在独立服务进程中：
+
+| 服务 | 端口 | Transformers版本 | 说明 |
+|------|------|------------------|------|
+| 主服务 | 8000 | 4.57.3 | Qwen3-TTS, VoxCPM 等 |
+| OmniVoice服务 | 8001 | 5.x | 需要最新版 transformers |
+| CosyVoice服务 | 8002 | 4.51.3 | CosyVoice 3.0 专用版本 |
 
 ---
 
@@ -454,7 +497,17 @@ python scripts/batch_tts_client.py \
 | 声音克隆 | ✅ | Reference-only模式 |
 | 极致克隆 | ✅ | Combined模式，需参考文本 |
 | 控制指令 | ✅ | 支持语速/情绪控制 |
-| 方言支持 | ✅ | 30种语言+9种方言 |
+| 方言支持 | ✅ | 30种语言+9种方言
+
+#### CosyVoice
+
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| Zero-shot克隆 | ✅ | 3-10秒参考音频克隆 |
+| Instruct指令 | ✅ | 自然语言控制说话风格 |
+| 方言支持 | ✅ | 18+种中文方言（粤语、闽南语、四川话等） |
+| 跨语言克隆 | ✅ | 支持多语言音色迁移 |
+| 服务类型 | 独立服务 | 端口8002，transformers 4.51.3 |
 
 ### 通用功能
 
@@ -471,32 +524,46 @@ python scripts/batch_tts_client.py \
 ## 🔧 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        前端界面                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  登录页面    │  │  主应用页面  │  │    算法选择页面     │ │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTP/WebSocket
-┌────────────────────────▼────────────────────────────────────┐
-│                    FastAPI 后端服务                          │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              统一API接口层                           │   │
-│  │   /tts/*  /speakers  /system  /concurrency         │   │
-│  └────────────────────┬────────────────────────────────┘   │
-│                       │ 算法调度层 + 并发控制                │
-│  ┌─────────┬─────────┬─────────┬─────────┬─────────┐       │
-│  │ChatTTS  │CosyVoice│ F5-TTS  │GPT-SoVITS│OpenVoice│      │
-│  │ VoxCPM  │IndexTTS │FireRed  │ Qwen3   │         │      │
-│  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │ 适配器  │       │
-│  └────┬────┴────┬────┴────┬────┴────┬────┴────┬────┘       │
-│       │         │         │         │         │             │
-└───────┼─────────┼─────────┼─────────┼─────────┼─────────────┘
-        │         │         │         │         │
-   ┌────┴────┐ ┌─┴────┐ ┌──┴───┐ ┌───┴───┐ ┌───┴────┐
-   │ ChatTTS │ │CosyVo│ │F5-TTS│ │GPT-SoV│ │OpenVoic│
-   │  模型   │ │模型  │ │ 模型 │ │模型   │ │模型    │
-   └─────────┘ └──────┘ └──────┘ └───────┘ └────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                              前端界面                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐   │
+│  │  登录页面    │  │  主应用页面  │  │      算法选择页面            │   │
+│  └─────────────┘  └─────────────┘  └─────────────────────────────┘   │
+└──────────────────────────┬────────────────────────────────────────────┘
+                           │ HTTP/WebSocket
+┌──────────────────────────▼────────────────────────────────────────────┐
+│                      FastAPI 后端服务                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │                    统一API接口层                                 │ │
+│  │     /tts/*  /speakers  /system  /concurrency                    │ │
+│  └────────────────────────┬────────────────────────────────────────┘ │
+│                           │ 算法调度层 + 并发控制                      │
+│  ┌───────────┬───────────┬───────────┬───────────┬───────────┐       │
+│  │ ChatTTS   │ F5-TTS    │GPT-SoVITS │ OpenVoice │ VoxCPM    │       │
+│  │ IndexTTS  │ FireRed   │ Qwen3-TTS │ 适配器    │ 适配器    │       │
+│  │ 适配器    │ 适配器    │ 适配器    │           │           │       │
+│  └─────┬─────┴─────┬─────┴─────┬─────┴─────┬─────┴─────┬─────┘       │
+│        │           │           │           │           │             │
+└────────┼───────────┼───────────┼───────────┼───────────┼─────────────┘
+         │           │           │           │           │
+    ┌────┴────┐ ┌────┴────┐ ┌────┴────┐ ┌────┴────┐ ┌────┴────┐
+    │ ChatTTS │ │ F5-TTS  │ │GPT-SoVIT│ │OpenVoice│ │ VoxCPM  │
+    │  模型   │ │  模型   │ │  模型   │ │  模型   │ │  模型   │
+    └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
+
+┌───────────────────────────────────────────────────────────────────────┐
+│                         独立服务进程                                   │
+│  ┌──────────────────────────┐  ┌──────────────────────────┐          │
+│  │   OmniVoice 服务          │  │   CosyVoice 服务          │          │
+│  │   端口: 8001              │  │   端口: 8002              │          │
+│  │   Transformers: 5.x       │  │   Transformers: 4.51.3    │          │
+│  └───────────┬──────────────┘  └───────────┬──────────────┘          │
+│              │                             │                         │
+│         ┌────┴────┐                   ┌────┴────┐                    │
+│         │OmniVoice│                   │CosyVoice│                    │
+│         │  模型   │                   │  模型   │                    │
+│         └─────────┘                   └─────────┘                    │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -522,31 +589,48 @@ ls -lt records/ | head -20
 
 ## ❓ 常见问题
 
-### Q1: 为什么需要启动两个服务？
+### Q1: 为什么需要多个独立服务？
 
-OmniVoice 需要 transformers 5.x 版本，而其他 TTS 算法（Qwen3-TTS、VoxCPM 等）使用 transformers 4.57.3。
-由于 Python 无法在同一进程中加载两个不同版本的 transformers，因此 OmniVoice 运行在独立进程（端口 8001）。
+由于不同 TTS 算法依赖不同版本的 transformers 库，而 Python 无法在同一进程中加载多个版本的同一库：
+
+| 服务 | Transformers版本 | 原因 |
+|------|------------------|------|
+| 主服务 | 4.57.3 | Qwen3-TTS、VoxCPM 等主流算法兼容版本 |
+| OmniVoice服务 | 5.x | OmniVoice 需要最新版 transformers |
+| CosyVoice服务 | 4.51.3 | CosyVoice 3.0 特定版本要求 |
+
+因此采用独立进程架构，各服务通过 HTTP API 通信。
 
 ### Q2: 如何启动完整服务？
 
 ```bash
-# 主服务
+# 一键启动所有服务（推荐）
+./start_server.sh start-all                # 启动主服务 + 所有独立服务
+./start_server.sh stop-all                 # 停止所有服务
+./start_server.sh restart-all              # 重启所有服务
+
+# 单独控制主服务
 ./start_server.sh start                    # 启动主服务
-./start_server.sh start --offline          # 离线模式启动
 ./start_server.sh stop                     # 停止主服务
 ./start_server.sh restart                  # 重启主服务
 ./start_server.sh status                   # 查看主服务状态
 
-# OmniVoice 独立服务
+# 单独控制 OmniVoice 服务
 ./start_server.sh start-omnivoice          # 启动 OmniVoice 服务
-./start_server.sh start-omnivoice --offline  # 离线模式启动
 ./start_server.sh stop-omnivoice           # 停止服务
 ./start_server.sh restart-omnivoice        # 重启服务
 ./start_server.sh status-omnivoice         # 查看状态
 
+# 单独控制 CosyVoice 服务
+./start_server.sh start-cosyvoice          # 启动 CosyVoice 服务
+./start_server.sh stop-cosyvoice           # 停止服务
+./start_server.sh restart-cosyvoice        # 重启服务
+./start_server.sh status-cosyvoice         # 查看状态
+
 # 查看日志
 tail -f logs/server.log                    # 主服务日志
 tail -f logs/omnivoice_service.log         # OmniVoice 服务日志
+tail -f logs/cosyvoice_service.log         # CosyVoice 服务日志
 ```
 
 ### Q3: 模型文件存放位置
@@ -555,23 +639,55 @@ tail -f logs/omnivoice_service.log         # OmniVoice 服务日志
 
 ```
 models/
+├── FunAudioLLM/        # CosyVoice 模型 (~6GB)
+│   └── Fun-CosyVoice3-0.5B-2512/
 ├── OmniVoice/          # OmniVoice 模型 (~2.3GB)
+│   └── speechpi/
+│       └── OmniVoice/
 ├── Qwen3-TTS/          # Qwen3-TTS 模型 (~18GB)
+│   └── Qwen/
+│       └── Qwen3-TTS-1.7B/
 └── VoxCPM/             # VoxCPM 模型 (~4.7GB)
 ```
 
-### Q4: OmniVoice 支持哪些方言？
+> **注意**: 模型文件较大，首次启动时会自动下载（需要网络连接），或使用离线模式需手动放置。
 
-OmniVoice 声音设计模式支持以下 12 种中文方言：
+### Q4: 各算法支持哪些方言？
+
+**CosyVoice**（18+种中文方言）：
+- 粤语、闽南语、四川话、东北话、河南话
+- 陕西话、山东话、上海话、天津话、山西话
+- 宁夏话、甘肃话、客家话、湖南话、湖北话
+- 河北话、安徽话、江苏话
+
+**OmniVoice**（12种中文方言）：
 - 四川话、东北话、河南话、陕西话、云南话
 - 贵州话、桂林话、甘肃话、宁夏话、济南话
 - 青岛话、石家庄话
+
+**Qwen3-TTS**（2种中文方言）：
+- 北京话、四川话
+
+**VoxCPM**（30种语言+9种方言）
 
 ### Q5: 录音功能无法使用？
 
 录音功能需要 HTTPS 安全连接或 localhost 访问。
 - 使用 `http://localhost:8000` 访问（支持录音）
 - 使用 `http://192.168.x.x:8000` 访问（不支持录音，浏览器安全限制）
+
+### Q6: 如何查看详细的模型信息？
+
+所有 TTS 服务都会在日志中详细记录模型信息：
+
+```bash
+# 查看各服务日志中的模型信息
+tail -f logs/server.log | grep "模型信息"           # 主服务
+tail -f logs/omnivoice_service.log | grep "模型信息" # OmniVoice
+tail -f logs/cosyvoice_service.log | grep "模型信息" # CosyVoice
+```
+
+日志内容包括：模型名称、版本、路径、支持的语言/方言、采样率等。
 
 ---
 
@@ -614,4 +730,4 @@ OmniVoice 声音设计模式支持以下 12 种中文方言：
 
 ---
 
-**更新时间**: 2026-05-07
+**更新时间**: 2026-05-10

@@ -328,7 +328,6 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 已更新前端提示,提供方言使用示例
 
 
-已完成:
 [65]统一Qwen3-TTS音频文件名格式，与其他方案保持一致 - 已完成
 - 修改 backend/core/audio_utils.py 的 save_temp_audio 函数，添加 prefix 参数
 - 更新 Qwen3-TTS/CosyVoice/ChatTTS/F5-TTS 路由，使用统一的文件名格式 {model}_{timestamp}.wav
@@ -386,8 +385,8 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
   * backend/routers/batch.py
 - 工作记录: records/2026-05-10_12-00-00_OmniVoice语速与格式修正.md
 
-已完成:
-[1]cosyvoice需求transformers==4.51.3,类似omnivoice设置独立服务的方案,给cosyvoice也部署一个单独的transformers服务环境 - 已完成
+
+[70]cosyvoice需求transformers==4.51.3,类似omnivoice设置独立服务的方案,给cosyvoice也部署一个单独的transformers服务环境 - 已完成
 - 创建 lib/transformers4/ 目录，安装 transformers==4.51.3
 - 创建 cosyvoice_service.py 独立服务脚本，运行在端口 8002
 - 修改 backend/routers/tts/cosyvoice.py 通过 HTTP 调用独立服务
@@ -396,12 +395,12 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 主服务启动时自动启动 CosyVoice 服务
 - 工作记录: records/2026-05-10_13-00-00_CosyVoice独立服务部署.md
 
-[2]恢复CosyVoice前端页面 - 已完成
+[71]恢复CosyVoice前端页面 - 已完成
 - 取消注释 frontend/index.html 中的 CosyVoice 模型卡片
 - 更新功能描述为 "Zero-shot声音克隆"、"Instruct指令控制"
 - 工作记录: records/2026-05-10_13-15-00_恢复CosyVoice前端页面.md
 
-[3]CosyVoice服务添加单独日志文件 - 已完成
+[72]CosyVoice服务添加单独日志文件 - 已完成
 - 修改 cosyvoice_service.py，添加专门的日志配置
 - 日志文件: logs/cosyvoice.log
 - 使用 RotatingFileHandler 实现日志轮转 (10MB, 3个备份)
@@ -409,10 +408,9 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 同时输出到文件和控制台
 - 工作记录: records/2026-05-10_13-20-00_CosyVoice单独日志文件.md
 
+
+
 待办:
-
-
-
 
 
 其他:

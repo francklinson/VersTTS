@@ -64,6 +64,27 @@ SKIP_CHECK=false
 RELOAD=false
 OFFLINE_MODE=false
 
+# ========== 模型预加载配置 ==========
+# 设置启动时预加载哪些模型，以逗号分隔
+# 
+# 【主服务模型】运行在端口 8000，使用 transformers 4.57.3
+# 可选值: qwen3tts_base, qwen3tts_custom, qwen3tts_design, voxcpm
+# 
+# 【独立服务模型】
+# - OmniVoice (端口 8001): omnivoice - 使用 transformers 5.x
+# - CosyVoice (端口 8002): cosyvoice - 使用 transformers 4.51.3
+#
+# 示例配置:
+#   PRELOAD_MODELS="qwen3tts_base,voxcpm"              # 主服务: Base+VoxCPM
+#   PRELOAD_MODELS="all"                               # 主服务: 加载所有模型
+#   PRELOAD_MODELS="none"                              # 主服务: 不预加载
+#   PRELOAD_OMNIVOICE="1"                              # OmniVoice: 预加载
+#   PRELOAD_COSYVOICE="1"                              # CosyVoice: 预加载
+#
+PRELOAD_MODELS="${PRELOAD_MODELS:-qwen3tts_base,voxcpm}"
+PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-1}"   # 1=启动时加载, 0=按需加载
+PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-1}"   # 1=启动时加载, 0=按需加载
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -214,6 +235,9 @@ do_start() {
     export LOG_BACKUP_COUNT
     export TRANSFORMERS_OFFLINE
     export HF_HUB_OFFLINE
+    export PRELOAD_MODELS
+    export PRELOAD_OMNIVOICE
+    export PRELOAD_COSYVOICE
 
     # 检查 Python
     PYTHON_VERSION=$(python --version 2>&1)
@@ -276,6 +300,7 @@ else:
     print_info "命令: ${cmd[*]}"
     print_info "GPU设备: $MAIN_GPU"
     print_info "日志文件: $LOG_FILE"
+    print_info "预加载模型: $PRELOAD_MODELS"
     echo ""
 
     # 后台启动并记录 PID
@@ -323,16 +348,23 @@ else:
                     if [ ! -f "$OMNIVOICE_SCRIPT" ]; then
                         print_warn "OmniVoice 服务脚本不存在，跳过"
                     else
-                        print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)..."
+                        print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU, 预加载: $PRELOAD_OMNIVOICE)..."
                         
                         cd "$SCRIPT_DIR"
                         CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
                         local ov_pid=$!
                         echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
                         
+                        # 根据预加载设置调整等待时间
+                        if [ "$PRELOAD_OMNIVOICE" = "1" ]; then
+                            local ov_max_wait=90  # 预加载需要更长时间
+                        else
+                            local ov_max_wait=30  # 不预加载启动更快
+                        fi
+                        
                         local ov_count=0
                         local ov_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-                        while [ $ov_count -lt 90 ]; do
+                        while [ $ov_count -lt $ov_max_wait ]; do
                             if kill -0 "$ov_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" >/dev/null 2>&1; then
                                     print_success "OmniVoice 已启动 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
@@ -345,7 +377,7 @@ else:
                             fi
                             sleep 1
                             ov_count=$((ov_count + 1))
-                            printf "\r  %s  OmniVoice 启动中... %d/90 秒" "${ov_spin:$((ov_count % 10)):1}" "$ov_count"
+                            printf "\r  %s  OmniVoice 启动中... %d/%d 秒" "${ov_spin:$((ov_count % 10)):1}" "$ov_count" "$ov_max_wait"
                         done
                     fi
                 fi
@@ -361,16 +393,23 @@ else:
                     if [ ! -f "$COSYVOICE_SCRIPT" ]; then
                         print_warn "CosyVoice 服务脚本不存在，跳过"
                     else
-                        print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)..."
+                        print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU, 预加载: $PRELOAD_COSYVOICE)..."
 
                         cd "$SCRIPT_DIR"
                         CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
                         local cv_pid=$!
                         echo "$cv_pid" > "$COSYVOICE_PID_FILE"
 
+                        # 根据预加载设置调整等待时间
+                        if [ "$PRELOAD_COSYVOICE" = "1" ]; then
+                            local cv_max_wait=120  # 预加载需要更长时间
+                        else
+                            local cv_max_wait=30   # 不预加载启动更快
+                        fi
+
                         local cv_count=0
                         local cv_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-                        while [ $cv_count -lt 120 ]; do
+                        while [ $cv_count -lt $cv_max_wait ]; do
                             if kill -0 "$cv_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" >/dev/null 2>&1; then
                                     print_success "CosyVoice 已启动 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
@@ -383,7 +422,7 @@ else:
                             fi
                             sleep 1
                             cv_count=$((cv_count + 1))
-                            printf "\r  %s  CosyVoice 启动中... %d/120 秒" "${cv_spin:$((cv_count % 10)):1}" "$cv_count"
+                            printf "\r  %s  CosyVoice 启动中... %d/%d 秒" "${cv_spin:$((cv_count % 10)):1}" "$cv_count" "$cv_max_wait"
                         done
                     fi
                 fi

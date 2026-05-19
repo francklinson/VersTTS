@@ -87,8 +87,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"【日志文件】{COSYVOICE_LOG}")
     logger.info("=" * 60)
     
-    # 启动时加载模型
-    load_model()
+    # 检查是否启用预加载
+    preload_enabled = os.environ.get('PRELOAD_COSYVOICE', '1') == '1'
+    
+    if preload_enabled:
+        # 启动时加载模型
+        load_model()
+    else:
+        logger.info("【CosyVoice服务】预加载已禁用，模型将在首次请求时加载")
+    
     yield
     
     # 关闭时清理资源

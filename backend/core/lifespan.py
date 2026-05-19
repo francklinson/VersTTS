@@ -3,6 +3,7 @@
 FastAPI 应用生命周期管理
 """
 
+import os
 import sys
 import gc
 import time
@@ -15,6 +16,20 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, PROJECT_ROOT, ensure_directories
 from backend.core.memory_utils import cleanup_memory, get_gpu_memory_info
 from backend.core.concurrency import initialize_concurrency, shutdown_concurrency
+
+
+def get_preload_models():
+    """从环境变量获取预加载模型配置"""
+    preload_config = os.environ.get('PRELOAD_MODELS', 'qwen3tts_base,voxcpm')
+    
+    if preload_config.lower() == 'none':
+        return []
+    
+    if preload_config.lower() == 'all':
+        return ['qwen3tts_base', 'qwen3tts_custom', 'qwen3tts_design', 'voxcpm']
+    
+    # 解析逗号分隔的列表
+    return [m.strip() for m in preload_config.split(',') if m.strip()]
 
 
 @asynccontextmanager
@@ -54,6 +69,63 @@ async def lifespan(app: FastAPI):
     OperationLogger.log_config_load("CORS配置", "成功", "允许所有来源")
     OperationLogger.log_config_load("FastAPI配置", "成功", f"版本: {app.version}")
     OperationLogger.log_config_load("并发控制", "成功", "GPU锁+限流器+任务队列")
+
+    # ========== 预加载模型 ==========
+    preload_models = get_preload_models()
+    
+    if preload_models:
+        system_logger.info("=" * 80)
+        system_logger.info(f"【模型预加载】配置: {', '.join(preload_models)}")
+        system_logger.info("=" * 80)
+        
+        # 预加载 Qwen3-TTS Base 模型
+        if 'qwen3tts_base' in preload_models:
+            try:
+                from backend.engines import get_qwen3tts_model
+                system_logger.info("【模型预加载】正在加载 Qwen3-TTS Base 模型...")
+                qwen_base = get_qwen3tts_model("1.7B", "Base")
+                system_logger.info("【模型预加载】Qwen3-TTS Base 模型加载完成")
+            except Exception as e:
+                system_logger.warning(f"【模型预加载】Qwen3-TTS Base 加载失败: {e}")
+        
+        # 预加载 Qwen3-TTS CustomVoice 模型
+        if 'qwen3tts_custom' in preload_models:
+            try:
+                from backend.engines import get_qwen3tts_model
+                system_logger.info("【模型预加载】正在加载 Qwen3-TTS CustomVoice 模型...")
+                qwen_custom = get_qwen3tts_model("1.7B", "CustomVoice")
+                system_logger.info("【模型预加载】Qwen3-TTS CustomVoice 模型加载完成")
+            except Exception as e:
+                system_logger.warning(f"【模型预加载】Qwen3-TTS CustomVoice 加载失败: {e}")
+        
+        # 预加载 Qwen3-TTS VoiceDesign 模型
+        if 'qwen3tts_design' in preload_models:
+            try:
+                from backend.engines import get_qwen3tts_model
+                system_logger.info("【模型预加载】正在加载 Qwen3-TTS VoiceDesign 模型...")
+                qwen_design = get_qwen3tts_model("1.7B", "VoiceDesign")
+                system_logger.info("【模型预加载】Qwen3-TTS VoiceDesign 模型加载完成")
+            except Exception as e:
+                system_logger.warning(f"【模型预加载】Qwen3-TTS VoiceDesign 加载失败: {e}")
+        
+        # 预加载 VoxCPM 模型
+        if 'voxcpm' in preload_models:
+            try:
+                from backend.engines import get_voxcpm_model
+                system_logger.info("【模型预加载】正在加载 VoxCPM 模型...")
+                voxcpm_model = get_voxcpm_model()
+                system_logger.info("【模型预加载】VoxCPM 模型加载完成")
+            except Exception as e:
+                system_logger.warning(f"【模型预加载】VoxCPM 加载失败: {e}")
+        
+        # 显示预加载后的显存状态
+        if torch.cuda.is_available():
+            mem_after = get_gpu_memory_info()
+            system_logger.info(f"【模型预加载】预加载后显存使用: {mem_after['allocated']:.2f} GB")
+        
+        system_logger.info("=" * 80)
+    else:
+        system_logger.info("【模型预加载】已禁用（按需加载模式）")
 
     init_duration = time.time() - init_start_time
     OperationLogger.log_init_complete(init_duration, "成功")

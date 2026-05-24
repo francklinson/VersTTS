@@ -71,6 +71,10 @@ from backend.config import (
 from backend.core import lifespan
 from backend.routers import router as api_router
 
+# 导入任务队列和处理器（启动时自动注册）
+from backend.task_queue import task_queue
+from backend import task_handlers
+
 # 记录项目启动
 OperationLogger.log_init_start()
 

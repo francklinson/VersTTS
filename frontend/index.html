@@ -9,6 +9,30 @@
     <title>VersTTS - 多模型语音合成平台</title>
     <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
     <link rel="stylesheet" href="assets/css/common.css?v=7">
+    <style>
+        .queue-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+            box-shadow: 0 2px 5px rgba(244, 67, 54, 0.3);
+            animation: badgePulse 2s infinite;
+        }
+        @keyframes badgePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
 </head>
 <body>
     <!-- 动态背景效果 -->
@@ -85,6 +109,11 @@
             <div class="speaker-manage-btn" onclick="openSpeakerManage()">
                 <span>🎙️</span>
                 <span>说话人管理</span>
+            </div>
+            <div class="speaker-manage-btn" onclick="window.location.href='pages/tasks.html'" style="margin-right: 10px; position: relative;">
+                <span>📋</span>
+                <span>任务队列</span>
+                <span id="taskQueueBadge" class="queue-badge" style="display: none;">0</span>
             </div>
             <div class="health-status">
                 <div class="health-dot checking" id="healthDot"></div>
@@ -1427,6 +1456,31 @@
             return date.toLocaleDateString('zh-CN');
         }
         
+        // 更新任务队列红点
+        async function updateTaskQueueBadge() {
+            try {
+                const response = await fetch(`${API_BASE}/tasks/list?limit=100`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.tasks) {
+                        // 统计等待中和执行中的任务
+                        const activeTasks = data.tasks.filter(t =>
+                            t.status === 'queued' || t.status === 'processing'
+                        );
+                        const badge = document.getElementById('taskQueueBadge');
+                        if (activeTasks.length > 0) {
+                            badge.textContent = activeTasks.length > 99 ? '99+' : activeTasks.length;
+                            badge.style.display = 'flex';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('获取任务数量失败:', error);
+            }
+        }
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             // 检查登录状态
@@ -1442,6 +1496,11 @@
 
             const username = localStorage.getItem('versTTS_username') || '用户';
             document.getElementById('userName').textContent = username;
+
+            // 加载任务队列数量
+            updateTaskQueueBadge();
+            // 每30秒刷新一次任务数量
+            setInterval(updateTaskQueueBadge, 30000);
 
             // ESC 键关闭删除确认弹窗
             document.addEventListener('keydown', (e) => {

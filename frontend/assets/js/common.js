@@ -39,12 +39,33 @@ const VersTTS = {
      */
     showStatus(message, isError = false) {
         const statusEl = document.getElementById('statusMessage');
-        if (!statusEl) return;
+        if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
+            setTimeout(() => {
+                statusEl.classList.remove('show');
+            }, 5000);
+        }
 
-        statusEl.textContent = message;
-        statusEl.className = `status-message show ${isError ? 'error' : 'success'}`;
-        setTimeout(() => {
-            statusEl.classList.remove('show');
+        // 同时显示全局 fixed Toast，确保用户在页面任何位置都能看到
+        let toast = document.getElementById('globalToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'globalToast';
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:8px;z-index:9999;font-size:14px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:opacity 0.3s,top 0.3s;opacity:0;pointer-events:none;max-width:80%;word-break:break-word;';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.style.background = isError ? '#fee2e2' : '#c6f6d5';
+        toast.style.color = isError ? '#742a2a' : '#22543d';
+        toast.style.border = isError ? '1px solid #fc8181' : '1px solid #9ae6b4';
+        toast.style.top = '20px';
+        toast.style.opacity = '1';
+
+        if (this._toastTimer) clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.top = '0px';
         }, 5000);
     },
 

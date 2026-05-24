@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务队列 - VersTTS</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/logo.svg">
+    <link rel="stylesheet" href="../assets/css/common.css?v=7">
+    <style>
+        .tasks-theme { --primary-color: #2196f3; }
+        .btn-refresh {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 22px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.25);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.5px;
+        }
+        .btn-refresh:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(33, 150, 243, 0.45);
+            background: linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%);
+        }
+        .btn-refresh:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+        }
+        .btn-clear {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 22px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.25);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.5px;
+        }
+        .btn-clear:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(244, 67, 54, 0.45);
+            background: linear-gradient(135deg, #ef5350 0%, #c62828 100%);
+        }
+        .btn-clear:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+        }
+        
+        /* 任务列表样式 */
+        .task-list { margin-top: 20px; }
+        .task-item {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #ddd;
+            transition: all 0.3s;
+        }
+        .task-item:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.12); }
+        .task-item.pending { border-left-color: #ff9800; }
+        .task-item.processing { border-left-color: #2196f3; }
+        .task-item.completed { border-left-color: #4caf50; }
+        .task-item.failed { border-left-color: #f44336; }
+        .task-item.cancelled { border-left-color: #9e9e9e; }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .task-id { font-family: monospace; font-size: 0.85rem; color: #666; }
+        .task-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .task-status.pending { background: #fff3e0; color: #e65100; }
+        .task-status.processing { background: #e3f2fd; color: #1565c0; }
+        .task-status.completed { background: #e8f5e9; color: #2e7d32; }
+        .task-status.failed { background: #ffebee; color: #c62828; }
+        .task-status.cancelled { background: #f5f5f5; color: #616161; }
+        
+        .task-content { margin: 10px 0; }
+        .task-text {
+            color: #333;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+        .task-meta {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .task-meta span { display: flex; align-items: center; gap: 5px; }
+        
+        .task-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+        .task-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-download {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+        }
+        .btn-download:hover { box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3); }
+        .btn-cancel {
+            background: #ff9800;
+            color: white;
+        }
+        .btn-cancel:hover { background: #f57c00; }
+        .btn-cancel:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-retry {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            color: white;
+        }
+        .btn-retry:hover { box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3); }
+        .btn-delete-task {
+            background: #f44336;
+            color: white;
+        }
+        .btn-delete-task:hover { background: #d32f2f; }
+        
+        /* 进度条 */
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2196f3, #4caf50);
+            transition: width 0.3s ease;
+        }
+        
+        /* 筛选器 */
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-bar select {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: white;
+        }
+        
+        /* 统计信息 */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2196f3;
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        /* 自动刷新开关 */
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider { background-color: #2196f3; }
+        input:checked + .toggle-slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body class="tasks-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝄞</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>📋 任务队列</h1>
+                <p>查看和管理您的TTS生成任务</p>
+            </header>
+
+            <!-- 统计信息 -->
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-value" id="statPending">0</div>
+                    <div class="stat-label">等待中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statProcessing">0</div>
+                    <div class="stat-label">执行中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statCompleted">0</div>
+                    <div class="stat-label">已完成</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statFailed">0</div>
+                    <div class="stat-label">失败</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statCancelled">0</div>
+                    <div class="stat-label">已取消</div>
+                </div>
+            </div>
+
+            <!-- 筛选器和操作 -->
+            <div class="filter-bar">
+                <select id="statusFilter" onchange="loadTasks()">
+                    <option value="">全部状态</option>
+                    <option value="queued">等待中</option>
+                    <option value="processing">执行中</option>
+                    <option value="completed">已完成</option>
+                    <option value="failed">失败</option>
+                    <option value="cancelled">已取消</option>
+                </select>
+                <button class="btn-refresh" onclick="loadTasks()">🔄 刷新</button>
+                <button class="btn-clear" onclick="batchDeleteCompleted()" id="batchDeleteBtn" style="display: none;">🗑️ 清理已完成</button>
+                <div class="auto-refresh">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="autoRefresh" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span>自动刷新</span>
+                </div>
+            </div>
+
+            <!-- 任务列表 -->
+            <div id="taskList" class="task-list">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <p>暂无任务</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/js/common.js"></script>
+    <script>
+        let refreshInterval = null;
+        let currentTasks = [];
+
+        // 状态映射
+        const statusMap = {
+            'queued': { text: '等待中', class: 'pending' },
+            'processing': { text: '执行中', class: 'processing' },
+            'completed': { text: '已完成', class: 'completed' },
+            'failed': { text: '失败', class: 'failed' },
+            'cancelled': { text: '已取消', class: 'cancelled' }
+        };
+
+        // 模型名称映射
+        const modelMap = {
+            'voxcpm': 'VoxCPM',
+            'qwen3tts': 'Qwen3-TTS',
+            'omnivoice': 'OmniVoice',
+            'cosyvoice': 'CosyVoice'
+        };
+
+        // 当前选中的任务ID（用于批量操作）
+        let selectedTaskIds = new Set();
+
+        // 页面初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTasks();
+            setupAutoRefresh();
+            checkHealth();
+        });
+
+        // 设置自动刷新
+        function setupAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    startAutoRefresh();
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+            startAutoRefresh();
+        }
+
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(loadTasks, 3000); // 每3秒刷新
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+
+        // 加载任务列表
+        async function loadTasks() {
+            try {
+                const statusFilter = document.getElementById('statusFilter').value;
+                let url = `${VersTTS.API_BASE}/tasks/list`;
+                if (statusFilter) {
+                    url += `?status=${statusFilter}`;
+                }
+
+                console.log('正在加载任务列表:', url);
+                const response = await fetch(url);
+                console.log('响应状态:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('响应数据:', data);
+
+                if (data.success) {
+                    currentTasks = data.tasks;
+                    const isPlaying = Array.from(document.querySelectorAll('audio')).some(a => !a.paused);
+                    if (!isPlaying) {
+                        renderTasks(data.tasks);
+                    }
+                    updateStats(data.tasks);
+                } else {
+                    console.error('API返回错误:', data);
+                }
+            } catch (error) {
+                console.error('加载任务失败:', error);
+            }
+        }
+
+        // 构建单个任务卡片的 HTML
+        function buildTaskCardHTML(task) {
+            const status = statusMap[task.status] || { text: task.status, class: task.status };
+            const modelName = modelMap[task.model] || task.model;
+            const createdTime = new Date(task.created_at).toLocaleString('zh-CN');
+
+            let progressHtml = '';
+            if (task.status === 'processing') {
+                progressHtml = `
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${task.progress}%"></div>
+                    </div>
+                `;
+            }
+
+            let singleAudioHtml = '';
+            if (task.status === 'completed' && task.audio_url && (!task.batch_results || task.batch_results.length === 0)) {
+                const audioSrc = task.audio_url.startsWith('http') ? task.audio_url : `${VersTTS.API_BASE}${task.audio_url}`;
+                singleAudioHtml = `
+                    <div class="single-audio" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
+                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎵 试听</div>
+                        <audio controls style="width: 100%; height: 36px;" src="${audioSrc}"></audio>
+                    </div>
+                `;
+            }
+
+            let batchResultsHtml = '';
+            if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
+                batchResultsHtml = `
+                    <div class="batch-results" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
+                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎲 批量生成结果（${task.batch_results.length}个）</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+                            ${task.batch_results.map((r, idx) => `
+                                <div style="background: white; padding: 8px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                                    <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px;">#${idx + 1} ${escapeHtml(r.filename)}</div>
+                                    <audio controls style="width: 100%; height: 32px;" src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            let actionsHtml = '';
+            if (task.status === 'completed' && task.audio_url) {
+                const btnText = (task.batch_results && task.batch_results.length > 0) ? '⬇️ 下载ZIP包' : '⬇️ 下载音频';
+                actionsHtml += `<button class="btn-download" onclick="downloadTask('${task.task_id}')">${btnText}</button>`;
+            }
+            if (task.status === 'queued') {
+                actionsHtml += `<button class="btn-cancel" onclick="cancelTask('${task.task_id}')">❌ 取消</button>`;
+            }
+            if (task.status === 'failed' || task.status === 'cancelled') {
+                actionsHtml += `<button class="btn-retry" onclick="retryTask('${task.task_id}')">🔄 重试</button>`;
+                actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
+            }
+            if (task.status === 'completed') {
+                actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
+            }
+
+            const errorHtml = task.error_message ? `<div class="task-error" style="color: #f44336; font-size: 0.85rem; margin-top: 8px;">❌ ${escapeHtml(task.error_message)}</div>` : '';
+
+            return `
+                <div class="task-item ${status.class}" data-task-id="${task.task_id}" data-status="${task.status}">
+                    <div class="task-header">
+                        <span class="task-id">${task.task_id}</span>
+                        <span class="task-status ${status.class}">${status.text}</span>
+                    </div>
+                    <div class="task-content">
+                        <div class="task-text">${escapeHtml(task.text)}</div>
+                        <div class="task-meta">
+                            <span>🤖 ${modelName}</span>
+                            <span>⚙️ ${task.mode}</span>
+                            <span>🕐 ${createdTime}</span>
+                        </div>
+                        ${progressHtml}
+                        ${errorHtml}
+                        ${singleAudioHtml}
+                        ${batchResultsHtml}
+                    </div>
+                    <div class="task-actions">
+                        ${actionsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 增量更新已有任务卡片
+        function updateTaskCard(card, task) {
+            const status = statusMap[task.status] || { text: task.status, class: task.status };
+
+            // 1. 更新卡片状态 class
+            card.className = `task-item ${status.class}`;
+            card.dataset.status = task.status;
+
+            // 2. 更新状态标签
+            const statusEl = card.querySelector('.task-status');
+            if (statusEl) {
+                statusEl.className = `task-status ${status.class}`;
+                statusEl.textContent = status.text;
+            }
+
+            // 3. 更新进度条（不重建，只改 width 或添加/移除）
+            let progressBar = card.querySelector('.progress-bar');
+            if (task.status === 'processing') {
+                if (!progressBar) {
+                    const content = card.querySelector('.task-content');
+                    if (content) {
+                        content.insertAdjacentHTML('beforeend', `<div class="progress-bar"><div class="progress-fill" style="width: ${task.progress}%"></div></div>`);
+                    }
+                } else {
+                    const fill = progressBar.querySelector('.progress-fill');
+                    if (fill) fill.style.width = `${task.progress}%`;
+                }
+            } else if (progressBar) {
+                progressBar.remove();
+            }
+
+            // 4. 操作按钮（仅在状态变化时更新）
+            const actionsEl = card.querySelector('.task-actions');
+            if (actionsEl) {
+                let actionsHtml = '';
+                if (task.status === 'completed' && task.audio_url) {
+                    const btnText = (task.batch_results && task.batch_results.length > 0) ? '⬇️ 下载ZIP包' : '⬇️ 下载音频';
+                    actionsHtml += `<button class="btn-download" onclick="downloadTask('${task.task_id}')">${btnText}</button>`;
+                }
+                if (task.status === 'queued') {
+                    actionsHtml += `<button class="btn-cancel" onclick="cancelTask('${task.task_id}')">❌ 取消</button>`;
+                }
+                if (task.status === 'failed' || task.status === 'cancelled') {
+                    actionsHtml += `<button class="btn-retry" onclick="retryTask('${task.task_id}')">🔄 重试</button>`;
+                    actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
+                }
+                if (task.status === 'completed') {
+                    actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
+                }
+                if (actionsEl.innerHTML.trim() !== actionsHtml.trim()) {
+                    actionsEl.innerHTML = actionsHtml;
+                }
+            }
+
+            // 5. 单个音频试听（只在 completed 且没有时添加，已有则不动）
+            if (task.status === 'completed' && task.audio_url && (!task.batch_results || task.batch_results.length === 0)) {
+                const singleContainer = card.querySelector('.single-audio');
+                if (!singleContainer) {
+                    const content = card.querySelector('.task-content');
+                    if (content) {
+                        const audioSrc = task.audio_url.startsWith('http') ? task.audio_url : `${VersTTS.API_BASE}${task.audio_url}`;
+                        const html = `
+                            <div class="single-audio" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎵 试听</div>
+                                <audio controls style="width: 100%; height: 36px;" src="${audioSrc}"></audio>
+                            </div>
+                        `;
+                        content.insertAdjacentHTML('beforeend', html);
+                    }
+                }
+            } else {
+                const singleContainer = card.querySelector('.single-audio');
+                if (singleContainer) singleContainer.remove();
+            }
+
+            // 6. 批量结果（只在 completed 且没有时添加，已有则不动）
+            if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
+                const batchContainer = card.querySelector('.batch-results');
+                if (!batchContainer) {
+                    const content = card.querySelector('.task-content');
+                    if (content) {
+                        const html = `
+                            <div class="batch-results" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
+                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎲 批量生成结果（${task.batch_results.length}个）</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+                                    ${task.batch_results.map((r, idx) => `
+                                        <div style="background: white; padding: 8px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px;">#${idx + 1} ${escapeHtml(r.filename)}</div>
+                                            <audio controls style="width: 100%; height: 32px;" src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                        content.insertAdjacentHTML('beforeend', html);
+                    }
+                }
+            }
+
+            // 7. 错误信息
+            const errorEl = card.querySelector('.task-error');
+            if (task.error_message) {
+                if (!errorEl) {
+                    const content = card.querySelector('.task-content');
+                    if (content) {
+                        content.insertAdjacentHTML('beforeend', `<div class="task-error" style="color: #f44336; font-size: 0.85rem; margin-top: 8px;">❌ ${escapeHtml(task.error_message)}</div>`);
+                    }
+                }
+            } else if (errorEl) {
+                errorEl.remove();
+            }
+        }
+
+        // 渲染任务列表（增量更新）
+        function renderTasks(tasks) {
+            const container = document.getElementById('taskList');
+
+            if (tasks.length === 0) {
+                if (container.children.length === 1 && container.querySelector('.empty-state')) return;
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        <p>暂无任务</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 移除空状态
+            const emptyState = container.querySelector('.empty-state');
+            if (emptyState) emptyState.remove();
+
+            // 收集现有卡片
+            const existingCards = {};
+            Array.from(container.children).forEach(child => {
+                const tid = child.dataset.taskId;
+                if (tid) existingCards[tid] = child;
+            });
+
+            const seenIds = new Set();
+
+            tasks.forEach(task => {
+                seenIds.add(task.task_id);
+                const existing = existingCards[task.task_id];
+                if (existing) {
+                    updateTaskCard(existing, task);
+                } else {
+                    container.insertAdjacentHTML('beforeend', buildTaskCardHTML(task));
+                }
+            });
+
+            // 删除已不存在的任务
+            Object.keys(existingCards).forEach(tid => {
+                if (!seenIds.has(tid)) {
+                    existingCards[tid].remove();
+                }
+            });
+        }
+
+        // 更新统计
+        function updateStats(tasks) {
+            const stats = {
+                queued: 0,
+                processing: 0,
+                completed: 0,
+                failed: 0,
+                cancelled: 0
+            };
+
+            tasks.forEach(task => {
+                if (stats.hasOwnProperty(task.status)) {
+                    stats[task.status]++;
+                }
+            });
+
+            document.getElementById('statPending').textContent = stats.queued;
+            document.getElementById('statProcessing').textContent = stats.processing;
+            document.getElementById('statCompleted').textContent = stats.completed;
+            document.getElementById('statFailed').textContent = stats.failed;
+            document.getElementById('statCancelled').textContent = stats.cancelled;
+
+            // 显示/隐藏批量清理按钮
+            const hasCompleted = stats.completed > 0 || stats.failed > 0 || stats.cancelled > 0;
+            document.getElementById('batchDeleteBtn').style.display = hasCompleted ? 'inline-block' : 'none';
+        }
+
+        // 下载任务结果
+        async function downloadTask(taskId) {
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/download`);
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const task = currentTasks.find(t => t.task_id === taskId);
+                    const ext = task && task.audio_url && task.audio_url.endsWith('.zip') ? '.zip' : '.wav';
+                    a.download = `task_${taskId}${ext}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    VersTTS.showStatus('下载成功');
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.detail || '下载失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('下载失败: ' + error.message, true);
+            }
+        }
+
+        // 取消任务
+        async function cancelTask(taskId) {
+            if (!confirm('确定要取消这个任务吗？')) return;
+
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/cancel`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    VersTTS.showStatus('任务已取消');
+                    loadTasks();
+                } else {
+                    throw new Error(data.detail || '取消失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('取消失败: ' + error.message, true);
+            }
+        }
+
+        // 重试任务
+        async function retryTask(taskId) {
+            if (!confirm('确定要重新提交这个任务吗？')) return;
+
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/retry`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    VersTTS.showStatus(`任务已重新提交: ${data.new_task_id}`);
+                    loadTasks();
+                } else {
+                    throw new Error(data.detail || '重试失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('重试失败: ' + error.message, true);
+            }
+        }
+
+        // 删除任务
+        async function deleteTask(taskId) {
+            if (!confirm('确定要删除这个任务记录吗？\n注意：此操作不可撤销！')) return;
+
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    VersTTS.showStatus('任务已删除');
+                    loadTasks();
+                } else {
+                    throw new Error(data.detail || '删除失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('删除失败: ' + error.message, true);
+            }
+        }
+
+        // 批量清理已完成/失败/已取消的任务
+        async function batchDeleteCompleted() {
+            const completedTasks = currentTasks.filter(t =>
+                t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'
+            );
+
+            if (completedTasks.length === 0) {
+                VersTTS.showStatus('没有可清理的任务');
+                return;
+            }
+
+            if (!confirm(`确定要清理 ${completedTasks.length} 个任务记录吗？\n（包括已完成、失败、已取消的任务）`)) return;
+
+            let deleted = 0;
+            let failed = 0;
+
+            for (const task of completedTasks) {
+                try {
+                    const response = await fetch(`${VersTTS.API_BASE}/tasks/${task.task_id}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        deleted++;
+                    } else {
+                        failed++;
+                    }
+                } catch (e) {
+                    failed++;
+                }
+            }
+
+            VersTTS.showStatus(`清理完成: 删除 ${deleted} 个, 失败 ${failed} 个`);
+            loadTasks();
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

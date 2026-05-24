@@ -410,8 +410,105 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 
 
 
+[73]将批量生成音频的最大值修改成100 - 已完成
+- 修改后端API: backend/routers/batch.py，将生成数量限制从2-20改为2-100
+- 修改前端CosyVoice页面: frontend/pages/cosyvoice.html，将max值从20改为100
+- 更新CosyVoice页面提示文本和JavaScript验证逻辑
+- 其他页面(VoxCPM/Qwen3-TTS/OmniVoice)已经是2-100，无需修改
+- 工作记录: records/2026-05-23_10-45-00_批量生成最大值改为100.md
+
+
+
+[74]增加任务队列功能 - 已完成
+- 实现任务队列核心模块 backend/task_queue.py:
+  * 支持任务提交、状态管理、优先级队列
+  * 后台异步执行器，串行处理TTS任务
+  * 任务记录持久化存储
+- 实现任务处理器 backend/task_handlers.py:
+  * 注册VoxCPM、Qwen3-TTS、OmniVoice、CosyVoice处理器
+- 实现任务队列API backend/routers/task_queue.py:
+  * POST /tasks/submit - 提交任务
+  * GET /tasks/list - 获取任务列表
+  * GET /tasks/{task_id}/status - 查询任务状态
+  * GET /tasks/{task_id}/download - 下载任务结果
+  * POST /tasks/{task_id}/cancel - 取消任务
+  * GET /tasks/queue/status - 队列状态
+- 实现任务队列前端页面 frontend/pages/tasks.html:
+  * 任务列表展示，支持状态筛选
+  * 实时统计（等待中/执行中/已完成/失败）
+  * 自动刷新功能
+  * 任务结果下载
+- 集成到VoxCPM页面：添加"加入队列"按钮
+- 首页添加任务队列入口
+- 工作记录: records/2026-05-23_11-00-00_任务队列功能实现.md
+
+[75]补充完善任务队列功能 - 已完成
+- 修复优先级队列实现: 将 asyncio.Queue 替换为手动排序列表，确保高优先级任务优先执行
+- 添加定时清理机制: 24小时自动清理7天前的任务记录和音频文件
+- 添加显存释放: 任务执行完成后自动调用 gc.collect() 和 torch.cuda.empty_cache()
+- 新增任务删除API: DELETE /tasks/{task_id}，支持删除已完成/失败/已取消的任务
+- 新增任务重试API: POST /tasks/{task_id}/retry，支持一键重新提交失败任务
+- 新增批量提交API: POST /tasks/batch/submit，支持一次提交多个任务
+- 前端任务队列页面增强:
+  * 增加"已取消"状态统计（5列布局）
+  * 添加"重试"按钮（失败/已取消任务）
+  * 添加"删除"按钮（已完成/失败/已取消任务）
+  * 添加"清理已完成"批量删除功能
+- 首页任务队列红点提示: 实时显示等待中/执行中的任务数量，每30秒自动刷新
+- 工作记录: records/2026-05-23_12-00-00_任务队列功能补充完善.md
+
+[76]任务队列完成后在主页面返回音频供试听 - 已完成
+- VoxCPM页面: 修复 audio_url 拼接逻辑，任务完成后自动显示音频播放器和下载按钮
+- Qwen3-TTS页面: 添加 startPollingTask / stopPollingTask / displayTaskResult 轮询函数
+- OmniVoice页面: 添加轮询函数，任务完成后在结果区域显示音频
+- CosyVoice页面: 添加轮询函数，任务完成后在结果区域显示音频
+- 统一交互流程:
+  * 点击"生成语音"提交任务到队列
+  * 立即显示结果区域，展示"⏳ 任务已提交到队列，正在等待执行..."状态
+  * 每3秒轮询任务状态，显示"🔧 正在生成音频"
+  * 完成后自动加载音频到播放器，显示"✅ 生成完成！"
+  * 失败时显示错误原因
+  * 超时时提示前往任务队列页面查看
+- 工作记录: records/2026-05-23_12-30-00_队列任务完成后主页面返回音频.md
+
 待办:
 
+已完成:
+[77]Qwen3-TTS-声音克隆-批量生成 按照任务队列的逻辑实现 - 已完成
+- 前端: 批量生成提交后自动启动任务轮询 (startPollingTask)
+- 前端: 任务完成后自动展示批量结果 (displayBatchTaskResult)，支持音频列表试听和ZIP下载
+- 前端: 新增 zipDownloadBtn 一键下载全部音频
+- 后端: 修复 voice_clone 模式下说话人不存在时静默回退的问题，改为抛出异常
+- 后端: 修复 custom_voice 批量生成硬编码 "vivian" 的问题，使用传入的 speaker_id
+- 工作记录: records/2026-05-24_16-00-00_Qwen3-TTS批量生成任务队列实现.md
+
+[78]统一所有TTS页面的单音频/批量生成体验 - 已完成
+- 统一标准: 以 CosyVoice 页面为参考
+- 单音频生成: 点击后立即显示 "⏳ 任务已提交..." 状态，processing 时显示 "🔧 正在生成音频..."
+- 批量生成: 提交后显示 "已提交 X 个任务到队列，请前往任务列表查看进度"，按钮恢复可用
+- Qwen3-TTS: 批量生成改回静态提示模式，不再页面内轮询批量结果
+- VoxCPM: 修复 startPollingTask 缺少即时状态提示的问题，添加 queueGenStatus / processing 状态 / 超时提示
+- VoxCPM: 修复 displayTaskResult 缺少 statusEl 更新的问题
+- VoxCPM: 修复 addToQueue 中说话人选择器 id 错误 (speakerSelectClone/speakerSelectUltimate)
+- VoxCPM: 修复 addToQueue 中控制指令 id 错误 (cloneControlPrompt)
+- 后端: 修复 handle_qwen3tts_task custom_voice 模式下 speaker 参数读取，支持 speaker_id 回退
+- 工作记录: records/2026-05-24_17-00-00_统一TTS页面生成体验.md
+- 前端: 批量生成提交后自动启动任务轮询 (startPollingTask)
+- 前端: 任务完成后自动展示批量结果 (displayBatchTaskResult)，支持音频列表试听和ZIP下载
+- 前端: 新增 zipDownloadBtn 一键下载全部音频
+- 后端: 修复 voice_clone 模式下说话人不存在时静默回退的问题，改为抛出异常
+- 后端: 修复 custom_voice 批量生成硬编码 "vivian" 的问题，使用传入的 speaker_id
+- 工作记录: records/2026-05-24_16-00-00_Qwen3-TTS批量生成任务队列实现.md
+
+
+
+[79]修复 Qwen3-TTS 声音克隆批量生成阻塞问题 - 已完成
+- 根因: _batch_generate_qwen3tts / _batch_generate_voxcpm 是 async def 但内部没有 await，
+  同步 GPU 推理代码阻塞了 asyncio 事件循环，导致 FastAPI 无法处理新的 HTTP 请求
+- 修复: 将 _batch_generate_qwen3tts 和 _batch_generate_voxcpm 改为 def（同步函数），
+  在 task_handlers.py 中通过 loop.run_in_executor() 在线程池中执行
+- 修复: 将 handle_qwen3tts_task / handle_voxcpm_task 的单音频生成逻辑也提取为嵌套同步函数，
+  通过 run_in_executor 在线程池中执行，避免单音频生成阻塞事件循环导致后续请求卡顿
 
 其他:
 修复transformers版本兼容性问题

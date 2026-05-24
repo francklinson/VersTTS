@@ -12,6 +12,8 @@
         .btn-generate.cosyvoice:hover { box-shadow: 0 8px 25px rgba(156, 39, 176, 0.4); }
         .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; }
         .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
+        .btn-queue { background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%); color: white; }
+        .btn-queue:hover { box-shadow: 0 8px 25px rgba(33, 150, 243, 0.4); }
         .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; }
         .mode-tab { padding: 12px 24px; background: none; border: none; cursor: pointer; font-size: 1rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
         .mode-tab.active { color: #9c27b0; border-bottom-color: #9c27b0; font-weight: 600; }
@@ -181,8 +183,8 @@
                 <!-- 批量生成数量设置 -->
                 <div class="batch-count-section">
                     <label>🎲 批量生成数量</label>
-                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="20" onblur="validateBatchCount()">
-                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-20个）</p>
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="100" onblur="validateBatchCount()">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-100个）</p>
                 </div>
 
                 <!-- 进度条 -->
@@ -197,11 +199,19 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-generate cosyvoice" id="generateBtn" onclick="generateTTS()">
+                    <button class="btn-generate cosyvoice" id="generateBtn" onclick="addToQueue()">
                         <span id="btnText">🎙️ 生成语音</span>
                     </button>
                     <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
                         <span id="batchBtnText">🎲 批量生成</span>
+                    </button>
+                </div>
+                <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+                    💡 点击"生成语音"将自动加入任务队列
+                </p>
+                <div style="margin-top: 10px;">
+                    <button class="btn-secondary" onclick="window.location.href='tasks.html'" style="background: #f0f0f0; color: #333; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
+                        📋 查看任务队列
                     </button>
                 </div>
 
@@ -365,11 +375,11 @@
                 value = 10;
             }
 
-            // 限制范围 2-20
+            // 限制范围 2-100
             if (value < 2) {
                 value = 2;
-            } else if (value > 20) {
-                value = 20;
+            } else if (value > 100) {
+                value = 100;
             }
 
             // 更新输入框值
@@ -443,23 +453,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    batchResults = data.audio_urls.map((url, index) => ({
-                        id: index,
-                        url: url,
-                        filename: data.audio_files[index]
-                    }));
-                    selectedFiles.clear();
-                    renderBatchResults();
-                    document.getElementById('resultSection').style.display = 'none';
-                    document.getElementById('batchResultSection').style.display = 'block';
-                    VersTTS.showStatus(`成功生成 ${data.count} 个音频！`);
-                    
                     progressBarFill.style.width = '100%';
-                    progressText.textContent = `生成完成！共 ${data.count} 个音频`;
+                    progressText.textContent = `已提交 ${data.count} 个任务到队列`;
                     setTimeout(() => {
                         progressBar.classList.remove('active');
                         progressText.classList.remove('active');
                     }, 2000);
+                    VersTTS.showStatus(`已提交 ${data.count} 个生成任务到队列，请前往任务列表查看进度`);
                 } else {
                     throw new Error(data.message || '批量生成失败');
                 }
@@ -554,6 +554,171 @@
                 }
             } catch (error) {
                 VersTTS.showStatus('批量下载失败: ' + error.message, true);
+            }
+        }
+
+        // 当前正在轮询的任务ID
+        let pollingTaskId = null;
+        let pollingInterval = null;
+
+        // 添加到任务队列
+        async function addToQueue() {
+            const text = document.getElementById('textInput').value.trim();
+            const mode = currentMode || 'zero_shot';
+
+            if (!text) {
+                VersTTS.showStatus('请输入要生成的文本', true);
+                return;
+            }
+
+            // 收集参数
+            const speakerId = mode === 'zero_shot'
+                ? document.getElementById('speakerSelect')?.value
+                : document.getElementById('speakerSelectInstruct')?.value;
+
+            if (mode === 'instruct' && !speakerId) {
+                VersTTS.showStatus('请选择说话人', true);
+                return;
+            }
+
+            const instructText = mode === 'instruct'
+                ? document.getElementById('instructText')?.value.trim()
+                : '';
+
+            if (mode === 'instruct' && !instructText) {
+                VersTTS.showStatus('请输入指令文本', true);
+                return;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('model', 'cosyvoice');
+                formData.append('mode', mode);
+                formData.append('text', text);
+                if (speakerId) formData.append('speaker_id', speakerId);
+                if (instructText) formData.append('control_prompt', instructText);
+
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/submit`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const queueMsg = data.queue_position !== null ? ` (队列位置: ${data.queue_position + 1})` : '';
+                    VersTTS.showStatus(`已加入生成队列${queueMsg}，生成完成后将自动显示结果...`);
+                    // 开始轮询任务状态
+                    startPollingTask(data.task_id);
+                } else {
+                    throw new Error(data.message || '提交失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('提交任务失败: ' + error.message, true);
+            }
+        }
+
+        // 开始轮询任务状态
+        function startPollingTask(taskId) {
+            stopPollingTask();
+            pollingTaskId = taskId;
+            let retryCount = 0;
+            const maxRetries = 300;
+
+            const resultSection = document.getElementById('resultSection');
+            const audioPlayer = document.getElementById('audioPlayer');
+            const downloadLink = document.getElementById('downloadLink');
+            if (audioPlayer) audioPlayer.style.display = 'none';
+            if (downloadLink) downloadLink.style.display = 'none';
+            resultSection.style.display = 'block';
+            let statusEl = document.getElementById('queueGenStatus');
+            if (!statusEl) {
+                statusEl = document.createElement('div');
+                statusEl.id = 'queueGenStatus';
+                statusEl.style.cssText = 'margin:10px 0;padding:12px 16px;background:#e3f2fd;border-radius:8px;color:#1565c0;font-size:0.9rem;';
+                resultSection.insertBefore(statusEl, resultSection.children[1] || null);
+            }
+            statusEl.style.display = 'block';
+            statusEl.innerHTML = '⏳ 任务已提交到队列，正在等待执行...';
+            resultSection.scrollIntoView({ behavior: 'smooth' });
+
+            pollingInterval = setInterval(async () => {
+                if (retryCount >= maxRetries) {
+                    stopPollingTask();
+                    if (statusEl) {
+                        statusEl.innerHTML = '⏱️ 任务超时，请到<a href="tasks.html">任务队列</a>页面查看结果';
+                        statusEl.style.background = '#fff3e0';
+                        statusEl.style.color = '#e65100';
+                    }
+                    return;
+                }
+                try {
+                    const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/status`);
+                    const data = await response.json();
+                    if (!data.success) { retryCount++; return; }
+
+                    if (data.status === 'completed') {
+                        stopPollingTask();
+                        displayTaskResult(data);
+                    } else if (data.status === 'failed') {
+                        stopPollingTask();
+                        if (statusEl) {
+                            statusEl.innerHTML = '❌ 生成失败: ' + (data.error_message || '未知错误');
+                            statusEl.style.background = '#ffebee';
+                            statusEl.style.color = '#c62828';
+                        }
+                        VersTTS.showStatus('生成失败: ' + (data.error_message || ''), true);
+                    } else if (data.status === 'processing') {
+                        if (statusEl) statusEl.innerHTML = '🔧 正在生成音频，请稍候...';
+                        retryCount++;
+                    } else {
+                        retryCount++;
+                    }
+                } catch (error) {
+                    console.error('轮询任务状态失败:', error);
+                    retryCount++;
+                }
+            }, 3000);
+        }
+
+        // 停止轮询
+        function stopPollingTask() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            pollingTaskId = null;
+        }
+
+        // 显示任务结果
+        function displayTaskResult(taskData) {
+            if (taskData.audio_url) {
+                const resultSection = document.getElementById('resultSection');
+                const audioPlayer = document.getElementById('audioPlayer');
+                const downloadLink = document.getElementById('downloadLink');
+                const statusEl = document.getElementById('queueGenStatus');
+
+                const audioUrl = taskData.audio_url.startsWith('http')
+                    ? taskData.audio_url
+                    : `${VersTTS.API_BASE}${taskData.audio_url}`;
+
+                if (audioPlayer) {
+                    audioPlayer.src = audioUrl;
+                    audioPlayer.style.display = 'block';
+                }
+                if (downloadLink) {
+                    downloadLink.href = audioUrl;
+                    downloadLink.download = `cosyvoice_${taskData.task_id}.wav`;
+                    downloadLink.style.display = 'inline-flex';
+                }
+                if (statusEl) {
+                    statusEl.innerHTML = '✅ 生成完成！';
+                    statusEl.style.background = '#e8f5e9';
+                    statusEl.style.color = '#2e7d32';
+                }
+
+                resultSection.style.display = 'block';
+                VersTTS.showStatus('音频生成完成！');
             }
         }
 

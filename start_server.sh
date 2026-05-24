@@ -16,7 +16,7 @@ ENV_FILE="$SCRIPT_DIR/.env.offline"
 
 # 服务配置
 HOST="0.0.0.0"
-PORT="8000"
+PORT="8008"
 
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
@@ -82,8 +82,8 @@ OFFLINE_MODE=false
 #   PRELOAD_COSYVOICE="1"                              # CosyVoice: 预加载
 #
 PRELOAD_MODELS="${PRELOAD_MODELS:-qwen3tts_base,voxcpm}"
-PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-1}"   # 1=启动时加载, 0=按需加载
-PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-1}"   # 1=启动时加载, 0=按需加载
+PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-0}"   # 1=启动时加载, 0=按需加载
+PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加载
 
 # 颜色定义
 RED='\033[0;31m'

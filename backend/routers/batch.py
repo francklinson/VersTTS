@@ -127,21 +127,21 @@ async def get_batch_results(job_id: str):
 
 # ========== 批量生成（抽卡模式）API ==========
 
-@router.post("/generate", response_model=BatchGenerateResponse)
+@router.post("/generate")
 async def batch_generate(
     request: Request,
     text: str = Form(..., description="要合成的文本"),
     model: str = Form("voxcpm", description="TTS模型名称"),
     mode: str = Form("base", description="生成模式"),
-    count: int = Form(10, description="生成数量(2-20)"),
+    count: int = Form(10, description="生成数量(2-100)"),
     speaker_id: str = Form(None, description="说话人ID"),
     voice_design_prompt: str = Form(None, description="音色设计描述"),
     control_prompt: str = Form(None, description="控制指令"),
     speed: float = Form(1.0, description="语速(0.5-2.0)")
 ):
     """
-    批量生成（抽卡模式）- 一次生成多个音频变体
-    
+    批量生成（抽卡模式）- 提交一个批量任务到队列
+
     支持模型:
     - voxcpm: 基础生成、音色设计、声音克隆、极致克隆
     - qwen3tts: base, voice_clone, custom_voice, voice_design
@@ -149,82 +149,52 @@ async def batch_generate(
     - cosyvoice: zero_shot, instruct, cross_lingual
     """
     try:
+        from backend.task_queue import task_queue
+
         # 验证参数
-        if count < 2 or count > 20:
-            raise HTTPException(status_code=400, detail="生成数量必须在2-20之间")
-        
+        if count < 2 or count > 100:
+            raise HTTPException(status_code=400, detail="生成数量必须在2-100之间")
+
         if not text or not text.strip():
             raise HTTPException(status_code=400, detail="文本不能为空")
-        
-        system_logger.info(f"【批量生成】模型: {model} | 模式: {mode} | 数量: {count} | 文本: {text[:50]}...")
-        
-        # 根据模型调用相应的生成逻辑
-        audio_urls = []
-        audio_files = []
-        
-        if model == "voxcpm":
-            result = await _batch_generate_voxcpm(
-                text=text,
-                mode=mode,
-                count=count,
-                speaker_id=speaker_id,
-                voice_design_prompt=voice_design_prompt,
-                control_prompt=control_prompt
-            )
-            audio_urls = result["audio_urls"]
-            audio_files = result["audio_files"]
-        elif model == "qwen3tts":
-            result = await _batch_generate_qwen3tts(
-                text=text,
-                mode=mode,
-                count=count,
-                speaker_id=speaker_id,
-                voice_design_prompt=voice_design_prompt
-            )
-            audio_urls = result["audio_urls"]
-            audio_files = result["audio_files"]
-        elif model == "omnivoice":
-            # 语速自动矫正
-            original_speed = speed
-            if speed < 0.5 or speed > 2.0:
-                speed = max(0.5, min(2.0, speed))
-                speed = round(speed, 1)
-                system_logger.warning(f"【批量生成】语速参数 {original_speed} 超出范围，已自动矫正为 {speed}")
-            
-            result = await _batch_generate_omnivoice(
-                text=text,
-                mode=mode,
-                count=count,
-                speaker_id=speaker_id,
-                voice_design_prompt=voice_design_prompt,
-                speed=speed
-            )
-            audio_urls = result["audio_urls"]
-            audio_files = result["audio_files"]
-        elif model == "cosyvoice":
-            result = await _batch_generate_cosyvoice(
-                text=text,
-                mode=mode,
-                count=count,
-                speaker_id=speaker_id,
-                control_prompt=control_prompt
-            )
-            audio_urls = result["audio_urls"]
-            audio_files = result["audio_files"]
-        else:
-            raise HTTPException(status_code=400, detail=f"不支持的模型: {model}")
-        
-        system_logger.info(f"【批量生成】完成 | 生成数量: {len(audio_urls)}")
-        
-        return BatchGenerateResponse(
-            success=True,
-            message=f"成功生成 {len(audio_urls)} 个音频",
+
+        # 获取用户ID
+        user_id = request.client.host if request.client else "anonymous"
+
+        system_logger.info(f"【批量生成】提交到任务队列 | 模型: {model} | 模式: {mode} | 数量: {count}")
+
+        # 构建参数（将 count 放入 params 作为 batch_count）
+        params = {
+            "speaker_id": speaker_id,
+            "voice_design_prompt": voice_design_prompt,
+            "control_prompt": control_prompt,
+            "speed": speed,
+            "batch_count": count
+        }
+        # 移除None值
+        params = {k: v for k, v in params.items() if v is not None}
+
+        # 提交一个批量任务到队列
+        task = await task_queue.submit_task(
+            user_id=user_id,
             model=model,
-            count=len(audio_urls),
-            audio_urls=audio_urls,
-            audio_files=audio_files
+            mode=mode,
+            text=text.strip(),
+            params=params,
+            priority=0
         )
-        
+
+        system_logger.info(f"【批量生成】已提交批量任务 {task.task_id} 到队列（数量: {count}）")
+
+        return {
+            "success": True,
+            "message": f"已提交批量生成任务到队列（数量: {count}）",
+            "model": model,
+            "count": count,
+            "task_id": task.task_id,
+            "redirect_url": "/pages/tasks.html"
+        }
+
     except HTTPException:
         raise
     except Exception as e:
@@ -232,10 +202,10 @@ async def batch_generate(
         raise HTTPException(status_code=500, detail=f"批量生成失败: {str(e)}")
 
 
-async def _batch_generate_voxcpm(text: str, mode: str, count: int, 
-                                  speaker_id: str = None, 
-                                  voice_design_prompt: str = None,
-                                  control_prompt: str = None) -> Dict:
+def _batch_generate_voxcpm(text: str, mode: str, count: int,
+                           speaker_id: str = None,
+                           voice_design_prompt: str = None,
+                           control_prompt: str = None) -> Dict:
     """批量生成VoxCPM音频"""
     import torch
     import soundfile as sf
@@ -327,9 +297,9 @@ async def _batch_generate_voxcpm(text: str, mode: str, count: int,
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 
-async def _batch_generate_qwen3tts(text: str, mode: str, count: int,
-                                    speaker_id: str = None,
-                                    voice_design_prompt: str = None) -> Dict:
+def _batch_generate_qwen3tts(text: str, mode: str, count: int,
+                             speaker_id: str = None,
+                             voice_design_prompt: str = None) -> Dict:
     """批量生成Qwen3-TTS音频"""
     import torch
     import numpy as np
@@ -360,6 +330,8 @@ async def _batch_generate_qwen3tts(text: str, mode: str, count: int,
             if s["id"] == speaker_id:
                 speaker_data = s
                 break
+        if not speaker_data:
+            raise ValueError(f"说话人不存在: {speaker_id}")
     
     # 批量生成
     for i in range(count):
@@ -383,7 +355,7 @@ async def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                 
             elif mode == "custom_voice":
                 # 预设音色模式
-                speaker = "vivian"
+                speaker = speaker_id or "vivian"
                 if hasattr(tts, 'generate_custom_voice'):
                     wavs, sr = tts.generate_custom_voice(
                         text=text,
@@ -782,7 +754,7 @@ async def _generate_single_cosyvoice(
             elif mode == "instruct":
                 if ref_path:
                     data["prompt_wav_path"] = ref_path
-                if instruct_text:
+                if instruct_text is not None:
                     data["instruct_text"] = instruct_text
             elif mode == "cross_lingual":
                 if ref_path:
@@ -835,7 +807,7 @@ async def _generate_single_cosyvoice(
 
 
 @router.post("/download-zip")
-async def batch_download_zip(files: List[str] = Form(...), zip_name: str = Form(None)):
+async def batch_download_zip(request: Request, zip_name: str = Form(None)):
     """
     批量下载 - 将多个音频文件打包成ZIP
     
@@ -844,11 +816,20 @@ async def batch_download_zip(files: List[str] = Form(...), zip_name: str = Form(
     - zip_name: ZIP包名称（可选）
     """
     try:
+        # 从表单数据中获取文件列表
+        form_data = await request.form()
+        files = []
+        for key in form_data.keys():
+            if key == 'files':
+                value = form_data.getlist(key)
+                if value:
+                    files.extend(value)
+        
         if not files:
             raise HTTPException(status_code=400, detail="文件列表不能为空")
         
-        if len(files) > 50:
-            raise HTTPException(status_code=400, detail="单次下载文件数量不能超过50个")
+        if len(files) > 100:
+            raise HTTPException(status_code=400, detail="单次下载文件数量不能超过100个")
         
         # 生成ZIP包名称
         if not zip_name:

@@ -8,6 +8,7 @@ import os
 import io
 import zipfile
 import asyncio
+from typing import Callable
 import aiohttp
 from datetime import datetime
 from typing import List, Dict
@@ -205,7 +206,8 @@ async def batch_generate(
 def _batch_generate_voxcpm(text: str, mode: str, count: int,
                            speaker_id: str = None,
                            voice_design_prompt: str = None,
-                           control_prompt: str = None) -> Dict:
+                           control_prompt: str = None,
+                           progress_callback: Callable = None) -> Dict:
     """批量生成VoxCPM音频"""
     import torch
     import soundfile as sf
@@ -213,13 +215,13 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
     from backend.engines import get_voxcpm_model
     from backend.services import get_speaker_by_id
     from backend.core import cleanup_memory, log_gpu_memory_usage, save_temp_audio
-    
+
     audio_urls = []
     audio_files = []
-    
+
     # 获取模型
     model = get_voxcpm_model()
-    
+
     # 获取说话人信息（如果需要）
     ref_path = None
     speaker_ref_text = None
@@ -228,7 +230,7 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
         if speaker:
             ref_path = speaker.get("audio_path")
             speaker_ref_text = speaker.get("reference_text")
-    
+
     # 检查模型类型
     import sys
     voxcpm_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "algorithms", "VoxCPM", "src")
@@ -236,16 +238,20 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
         sys.path.insert(0, voxcpm_path)
     from voxcpm.model.voxcpm2 import VoxCPM2Model
     is_v2 = isinstance(model.tts_model, VoxCPM2Model)
-    
+
     # 批量生成
     for i in range(count):
         try:
+            # 报告进度
+            if progress_callback:
+                progress_callback(i, count)
+
             # 构建生成参数
             generate_kwargs = {
                 "cfg_value": 2.0,
                 "inference_timesteps": 10
             }
-            
+
             # 根据模式处理
             if mode == "voice_design" and voice_design_prompt:
                 generate_kwargs["text"] = f"({voice_design_prompt}){text}"
@@ -254,7 +260,7 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
                     generate_kwargs["text"] = f"({control_prompt}){text}"
                 else:
                     generate_kwargs["text"] = text
-                
+
                 if is_v2:
                     generate_kwargs["reference_wav_path"] = ref_path
                 else:
@@ -273,43 +279,48 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
             else:
                 # base模式
                 generate_kwargs["text"] = text
-            
+
             # 生成音频
             audio_data = model.generate(**generate_kwargs)
-            
+
             # 保存音频（使用统一格式）
             sr = 48000
             audio_path = save_temp_audio(audio_data, sr, prefix="voxcpm")
-            
+
             audio_urls.append(f"/audio/{os.path.basename(audio_path)}")
             audio_files.append(os.path.basename(audio_path))
-            
+
             system_logger.info(f"【批量生成】VoxCPM 第 {i+1}/{count} 个完成")
-            
+
         except Exception as e:
             system_logger.error(f"【批量生成】VoxCPM 第 {i+1} 个失败: {e}")
-    
+
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
+
     # 清理显存
     if torch.cuda.is_available():
         cleanup_memory()
         log_gpu_memory_usage("VoxCPM-Batch")
-    
+
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 
 def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                              speaker_id: str = None,
-                             voice_design_prompt: str = None) -> Dict:
+                             voice_design_prompt: str = None,
+                             progress_callback: Callable = None) -> Dict:
     """批量生成Qwen3-TTS音频"""
     import torch
     import numpy as np
     from backend.engines import get_qwen3tts_model
     from backend.services import load_speakers_db
     from backend.core import cleanup_memory, log_gpu_memory_usage, save_temp_audio
-    
+
     audio_urls = []
     audio_files = []
-    
+
     # 根据模式确定模型类型
     model_type_map = {
         "voice_clone": "VoiceClone",
@@ -318,10 +329,10 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
         "base": "Base"
     }
     model_type = model_type_map.get(mode, "Base")
-    
+
     # 获取模型
     tts = get_qwen3tts_model("1.7B", model_type)
-    
+
     # 获取说话人信息（如果需要）
     speaker_data = None
     if mode == "voice_clone" and speaker_id:
@@ -332,18 +343,22 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                 break
         if not speaker_data:
             raise ValueError(f"说话人不存在: {speaker_id}")
-    
+
     # 批量生成
     for i in range(count):
         try:
+            # 报告进度
+            if progress_callback:
+                progress_callback(i, count)
+
             wav = None
             sr = 24000
-            
+
             if mode == "voice_clone" and speaker_data:
                 # 声音克隆模式
                 ref_path = speaker_data.get("audio_path")
                 ref_text = speaker_data.get("reference_text", "")
-                
+
                 wavs, sr = tts.generate_voice_clone(
                     text=text,
                     language="Auto",
@@ -352,7 +367,7 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                     x_vector_only_mode=not ref_text
                 )
                 wav = wavs[0] if isinstance(wavs, list) else wavs
-                
+
             elif mode == "custom_voice":
                 # 预设音色模式
                 speaker = speaker_id or "vivian"
@@ -381,7 +396,7 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                         x_vector_only_mode=True
                     )
                     wav = wavs[0] if isinstance(wavs, list) else wavs
-                    
+
             elif mode == "voice_design" and voice_design_prompt:
                 # 音色设计模式
                 if hasattr(tts, 'generate_voice_design'):
@@ -416,33 +431,37 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                     x_vector_only_mode=True
                 )
                 wav = wavs[0] if isinstance(wavs, list) else wavs
-            
+
             # 处理音频数据
             if isinstance(wav, list):
                 audio_data = np.array(wav)
             else:
                 audio_data = wav
-            
+
             # 保存音频（使用统一格式）
             audio_path = save_temp_audio(audio_data, sr, prefix="qwen3tts")
-            
+
             audio_urls.append(f"/audio/{os.path.basename(audio_path)}")
             audio_files.append(os.path.basename(audio_path))
-            
+
             system_logger.info(f"【批量生成】Qwen3-TTS 第 {i+1}/{count} 个完成")
-            
+
             # 清理
             if torch.cuda.is_available():
                 del audio_data, wav
-                
+
         except Exception as e:
             system_logger.error(f"【批量生成】Qwen3-TTS 第 {i+1} 个失败: {e}")
-    
+
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
+
     # 清理显存
     if torch.cuda.is_available():
         cleanup_memory()
         log_gpu_memory_usage("Qwen3-TTS-Batch")
-    
+
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 

@@ -37,31 +37,63 @@ def _pack_batch_results(audio_files: List[str], audio_urls: List[str], prefix: s
     }
 
 
+def _generate_meaningful_filename(model: str, mode: str, text: str, index: int = 0, batch_total: int = 1) -> str:
+    """
+    生成有意义的音频文件名
+    
+    格式: {model}_{mode}_{text摘要}_{timestamp}.wav
+    """
+    import re
+    # 提取文本前10个字符作为摘要，去除特殊字符
+    text_summary = text[:10].strip()
+    # 移除文件名不友好字符
+    text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
+    if not text_summary:
+        text_summary = "audio"
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if batch_total > 1:
+        return f"{model}_{mode}_{text_summary}_{timestamp}_{index+1}of{batch_total}.wav"
+    else:
+        return f"{model}_{mode}_{text_summary}_{timestamp}.wav"
+
+
 async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
     """处理VoxCPM任务"""
     try:
         from backend.engines import get_voxcpm_model
-        
+        from backend.task_queue import task_queue, progress_updater
+
         params = task.params or {}
         batch_count = params.get('batch_count', 1)
-        
+
         if batch_count > 1:
             import asyncio
             from backend.routers.batch import _batch_generate_voxcpm
             loop = asyncio.get_running_loop()
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
             result = await loop.run_in_executor(
                 None, _batch_generate_voxcpm,
                 task.text, task.mode, batch_count,
                 params.get('speaker_id'),
                 params.get('voice_design_prompt'),
-                params.get('control_prompt')
+                params.get('control_prompt'),
+                _progress_callback
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])
             if not audio_files:
                 raise Exception("批量生成未产生任何音频")
             return _pack_batch_results(audio_files, audio_urls, "voxcpm")
-        
+
         def _sync_generate():
             _speaker_id = params.get('speaker_id')
             _voice_design_prompt = params.get('voice_design_prompt')
@@ -97,8 +129,8 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
             _audio = _model.generate(**_generate_kwargs)
             _sample_rate = _model.tts_model.sample_rate
 
-            _timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            _filename = f"voxcpm_{_timestamp}.wav"
+            # 使用有意义的文件名
+            _filename = _generate_meaningful_filename("voxcpm", task.mode, task.text)
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
@@ -122,26 +154,36 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
     """处理Qwen3-TTS任务"""
     try:
         from backend.engines import get_qwen3tts_model
+        from backend.task_queue import task_queue, progress_updater
 
         params = task.params or {}
         batch_count = params.get('batch_count', 1)
-        
+
         if batch_count > 1:
             import asyncio
             from backend.routers.batch import _batch_generate_qwen3tts
             loop = asyncio.get_running_loop()
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
             result = await loop.run_in_executor(
                 None, _batch_generate_qwen3tts,
                 task.text, task.mode, batch_count,
                 params.get('speaker_id'),
-                params.get('voice_design_prompt')
+                params.get('voice_design_prompt'),
+                _progress_callback
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])
             if not audio_files:
                 raise Exception("批量生成未产生任何音频")
             return _pack_batch_results(audio_files, audio_urls, "qwen3tts")
-        
+
         def _sync_generate():
             _text = task.text
             _mode = task.mode
@@ -269,8 +311,8 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
                 )
                 _wav = _wavs[0] if isinstance(_wavs, list) else _wavs
 
-            _timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            _filename = f"qwen3tts_{_timestamp}.wav"
+            # 使用有意义的文件名
+            _filename = _generate_meaningful_filename("qwen3tts", task.mode, task.text)
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
@@ -323,7 +365,7 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
 
         params = task.params or {}
         batch_count = params.get('batch_count', 1)
-        
+
         if batch_count > 1:
             from backend.routers.batch import _batch_generate_omnivoice
             result = await _batch_generate_omnivoice(
@@ -339,7 +381,7 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
             if not audio_files:
                 raise Exception("批量生成未产生任何音频")
             return _pack_batch_results(audio_files, audio_urls, "omnivoice")
-        
+
         # 获取参数
         speaker_id = params.get('speaker_id')
         voice_design = params.get('voice_design_prompt')
@@ -383,8 +425,8 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
                 if not audio_path or not os.path.exists(audio_path):
                     raise Exception(f"OmniVoice返回的音频文件不存在: {audio_path}")
 
-                # 将文件复制到 outputs 目录以便 /audio 挂载访问
-                filename = os.path.basename(audio_path)
+                # 使用有意义的文件名并复制到 outputs 目录
+                filename = _generate_meaningful_filename("omnivoice", task.mode, task.text)
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 import shutil
                 shutil.copy2(audio_path, dest_path)
@@ -413,7 +455,7 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
 
         params = task.params or {}
         batch_count = params.get('batch_count', 1)
-        
+
         if batch_count > 1:
             from backend.routers.batch import _batch_generate_cosyvoice
             result = await _batch_generate_cosyvoice(
@@ -428,7 +470,7 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
             if not audio_files:
                 raise Exception("批量生成未产生任何音频")
             return _pack_batch_results(audio_files, audio_urls, "cosyvoice")
-        
+
         speaker_id = params.get('speaker_id')
         instruct_text = params.get('instruct_text') or params.get('control_prompt')
 
@@ -470,8 +512,8 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
                 if not audio_path or not os.path.exists(audio_path):
                     raise Exception(f"CosyVoice返回的音频文件不存在: {audio_path}")
 
-                # 将文件复制到 outputs 目录以便 /audio 挂载访问
-                filename = os.path.basename(audio_path)
+                # 使用有意义的文件名并复制到 outputs 目录
+                filename = _generate_meaningful_filename("cosyvoice", task.mode, task.text)
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 import shutil
                 shutil.copy2(audio_path, dest_path)

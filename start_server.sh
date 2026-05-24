@@ -27,6 +27,11 @@ OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
 # CosyVoice 独立服务 GPU 配置
 COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
 
+# 任务队列并发配置
+# 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
+# 如需启用多模型并行，可调整此值（建议根据GPU数量和显存大小设置）
+MAX_CONCURRENT_MODELS="${MAX_CONCURRENT_MODELS:-2}"
+
 # OmniVoice 独立服务配置
 OMNIVOICE_HOST="127.0.0.1"
 OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
@@ -292,8 +297,9 @@ else:
         print_info "开发模式: 已启用自动重载"
     fi
     
-    # 导出协议变量
+    # 导出协议变量和并发配置
     export SERVER_PROTOCOL="$protocol"
+    export MAX_CONCURRENT_MODELS="$MAX_CONCURRENT_MODELS"
 
     echo ""
     print_step "启动 Uvicorn 服务..."
@@ -301,6 +307,7 @@ else:
     print_info "GPU设备: $MAIN_GPU"
     print_info "日志文件: $LOG_FILE"
     print_info "预加载模型: $PRELOAD_MODELS"
+    print_info "最大并发模型数: $MAX_CONCURRENT_MODELS"
     echo ""
 
     # 后台启动并记录 PID
@@ -322,7 +329,7 @@ else:
     # 等待服务启动
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 30 ]; do
+    while [ $count -lt 60 ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
             if curl $curl_opts "$health_url" >/dev/null 2>&1; then
                 echo ""
@@ -467,7 +474,7 @@ else:
         fi
         sleep 1
         count=$((count + 1))
-        printf "\r  %s  等待中... %d/30 秒" "${spin:$((count % 10)):1}" "$count"
+        printf "\r  %s  等待中... %d/60 秒" "${spin:$((count % 10)):1}" "$count"
     done
 
     echo ""

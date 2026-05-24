@@ -510,6 +510,15 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 修复: 将 handle_qwen3tts_task / handle_voxcpm_task 的单音频生成逻辑也提取为嵌套同步函数，
   通过 run_in_executor 在线程池中执行，避免单音频生成阻塞事件循环导致后续请求卡顿
 
+
+待办:
+[1]任务列表页面的批量生成缺少进度提示
+[2]是否不应该用顺序队列,而是有的任务可以并发执行? 类似任务池, 维护各模型是否忙碌的状态
+[3]任务列表页面的任务信息应当更明确一些
+[4]生成音频文件的命名应当更有意义一些
+
+
+
 其他:
 修复transformers版本兼容性问题
 transformers==4.51.3

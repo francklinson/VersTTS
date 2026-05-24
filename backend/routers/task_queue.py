@@ -71,7 +71,11 @@ class TaskInfo(BaseModel):
     audio_url: Optional[str] = None
     error_message: Optional[str] = None
     progress: int
+    batch_total: int = 0
+    batch_completed: int = 0
     batch_results: Optional[List[Dict]] = None
+    speaker_name: Optional[str] = None
+    batch_count: int = 1
 
 
 class TaskListResponse(BaseModel):
@@ -191,9 +195,24 @@ async def list_tasks(
     try:
         user_id = get_user_id(request)
         tasks = task_queue.get_user_tasks(user_id, status=status, limit=limit)
-        
+
         task_infos = []
         for task in tasks:
+            # 获取说话人名称
+            speaker_name = None
+            speaker_id = task.params.get('speaker_id') if task.params else None
+            if speaker_id:
+                try:
+                    from backend.services import get_speaker_by_id
+                    speaker_info = get_speaker_by_id(speaker_id)
+                    if speaker_info:
+                        speaker_name = speaker_info.get('name', speaker_id)
+                except Exception:
+                    pass
+
+            # 获取批量数量
+            batch_count = task.params.get('batch_count', 1) if task.params else 1
+
             task_infos.append(TaskInfo(
                 task_id=task.task_id,
                 model=task.model,
@@ -206,15 +225,19 @@ async def list_tasks(
                 audio_url=task.audio_url,
                 error_message=task.error_message,
                 progress=task.progress,
-                batch_results=task.batch_results
+                batch_total=task.batch_total,
+                batch_completed=task.batch_completed,
+                batch_results=task.batch_results,
+                speaker_name=speaker_name,
+                batch_count=batch_count
             ))
-        
+
         return TaskListResponse(
             success=True,
             tasks=task_infos,
             total=len(task_infos)
         )
-        
+
     except Exception as e:
         system_logger.error(f"【任务API】获取任务列表失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
@@ -236,6 +259,21 @@ async def get_task_status(task_id: str, request: Request):
         if task.user_id != user_id:
             raise HTTPException(status_code=403, detail="无权访问此任务")
         
+        # 获取说话人名称
+        speaker_name = None
+        speaker_id = task.params.get('speaker_id') if task.params else None
+        if speaker_id:
+            try:
+                from backend.services import get_speaker_by_id
+                speaker_info = get_speaker_by_id(speaker_id)
+                if speaker_info:
+                    speaker_name = speaker_info.get('name', speaker_id)
+            except Exception:
+                pass
+
+        # 获取批量数量
+        batch_count = task.params.get('batch_count', 1) if task.params else 1
+
         return {
             "success": True,
             "task_id": task.task_id,
@@ -243,6 +281,10 @@ async def get_task_status(task_id: str, request: Request):
             "mode": task.mode,
             "status": task.status,
             "progress": task.progress,
+            "batch_total": task.batch_total,
+            "batch_completed": task.batch_completed,
+            "batch_count": batch_count,
+            "speaker_name": speaker_name,
             "created_at": task.created_at,
             "started_at": task.started_at,
             "completed_at": task.completed_at,

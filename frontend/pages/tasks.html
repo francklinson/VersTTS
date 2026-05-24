@@ -81,22 +81,60 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #e0e0e0;
         }
-        .task-id { font-family: monospace; font-size: 0.85rem; color: #666; }
-        .task-status {
-            padding: 4px 12px;
-            border-radius: 12px;
+        .task-id {
+            font-family: 'SF Mono', 'Fira Code', monospace;
             font-size: 0.8rem;
-            font-weight: 600;
+            color: #888;
+            background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 100%);
+            padding: 4px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
         }
-        .task-status.pending { background: #fff3e0; color: #e65100; }
-        .task-status.processing { background: #e3f2fd; color: #1565c0; }
-        .task-status.completed { background: #e8f5e9; color: #2e7d32; }
-        .task-status.failed { background: #ffebee; color: #c62828; }
-        .task-status.cancelled { background: #f5f5f5; color: #616161; }
-        
-        .task-content { margin: 10px 0; }
+        .task-status {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .task-status.pending {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            color: #e65100;
+            border: 1px solid #ffcc80;
+        }
+        .task-status.processing {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            border: 1px solid #90caf9;
+            animation: pulse-status 2s infinite;
+        }
+        @keyframes pulse-status {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .task-status.completed {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+        .task-status.failed {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
+        .task-status.cancelled {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            color: #616161;
+            border: 1px solid #bdbdbd;
+        }
+
+        .task-content { margin: 12px 0; }
         .task-text {
             color: #333;
             font-size: 0.95rem;
@@ -105,18 +143,20 @@
         }
         .task-meta {
             display: flex;
-            gap: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
             margin-top: 10px;
             font-size: 0.85rem;
             color: #666;
+            align-items: center;
         }
         .task-meta span { display: flex; align-items: center; gap: 5px; }
-        
+
         .task-actions {
             display: flex;
             gap: 10px;
-            margin-top: 12px;
-            padding-top: 12px;
+            margin-top: 14px;
+            padding-top: 14px;
             border-top: 1px solid #eee;
         }
         .task-actions button {
@@ -263,6 +303,325 @@
         }
         input:checked + .toggle-slider { background-color: #2196f3; }
         input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+        /* ===== 批量生成结果美化 ===== */
+        .batch-results-container {
+            margin-top: 16px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            border-radius: 14px;
+            border: 1px solid #e8eaf6;
+        }
+        .batch-results-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #c5cae9;
+        }
+        .batch-results-header .batch-icon {
+            font-size: 1.2rem;
+        }
+        .batch-results-header .batch-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #3f51b5;
+            letter-spacing: 0.3px;
+        }
+        .batch-results-header .batch-count {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .batch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+        }
+        .batch-audio-card {
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid #e8eaf6;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .batch-audio-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .batch-audio-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+            border-color: #c5cae9;
+        }
+        .batch-audio-card:hover::before {
+            opacity: 1;
+        }
+        .batch-audio-card .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .batch-audio-card .card-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 26px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .batch-audio-card .card-filename {
+            font-size: 0.75rem;
+            color: #888;
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: monospace;
+        }
+        .batch-audio-card audio {
+            width: 100%;
+            height: 44px;
+            border-radius: 22px;
+            filter: invert(1) hue-rotate(200deg) saturate(1.5) brightness(1.1);
+            transition: filter 0.3s;
+        }
+        .batch-audio-card audio:hover {
+            filter: invert(1) hue-rotate(210deg) saturate(1.8) brightness(1.2);
+        }
+
+        /* 单音频试听美化 */
+        .single-audio-container {
+            margin-top: 14px;
+            padding: 14px;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e6f7ff 100%);
+            border-radius: 12px;
+            border: 1px solid #b3e5fc;
+        }
+        .single-audio-container .audio-label {
+            font-size: 0.85rem;
+            color: #0277bd;
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .single-audio-container audio {
+            width: 100%;
+            height: 48px;
+            border-radius: 24px;
+            filter: invert(1) hue-rotate(180deg) saturate(1.5) brightness(1.1);
+            transition: filter 0.3s;
+        }
+        .single-audio-container audio:hover {
+            filter: invert(1) hue-rotate(190deg) saturate(1.8) brightness(1.2);
+        }
+
+        /* 任务信息标签美化 */
+        .task-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .task-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .task-tag.speaker-tag {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            border: 1px solid #90caf9;
+        }
+        .task-tag.batch-tag {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            color: #e65100;
+            border: 1px solid #ffcc80;
+        }
+        .task-tag.model-tag {
+            background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+            color: #7b1fa2;
+            border: 1px solid #ce93d8;
+        }
+        .task-tag.mode-tag {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
+        /* 进度条美化 */
+        .progress-wrapper {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-radius: 10px;
+            border: 1px solid #bbdefb;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                rgba(255,255,255,0.3) 50%,
+                transparent 100%
+            );
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .progress-text {
+            font-size: 0.8rem;
+            color: #1565c0;
+            margin-top: 6px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 操作按钮美化 */
+        .task-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #eee;
+        }
+        .task-actions button {
+            padding: 9px 18px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            letter-spacing: 0.3px;
+        }
+        .btn-download {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.25);
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(76, 175, 80, 0.4);
+        }
+        .btn-cancel {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.25);
+        }
+        .btn-cancel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(255, 152, 0, 0.4);
+        }
+        .btn-retry {
+            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.25);
+        }
+        .btn-retry:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(33, 150, 243, 0.4);
+        }
+        .btn-delete-task {
+            background: linear-gradient(135deg, #ef5350 0%, #d32f2f 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 83, 80, 0.25);
+        }
+        .btn-delete-task:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(239, 83, 80, 0.4);
+        }
+
+        /* 任务文本美化 */
+        .task-text {
+            color: #2c3e50;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            word-break: break-all;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+            border-radius: 10px;
+            border-left: 3px solid #667eea;
+        }
+
+        /* 任务元信息美化 */
+        .task-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: #666;
+            align-items: center;
+        }
+        .task-meta span { display: flex; align-items: center; gap: 5px; }
+
+        /* 错误信息美化 */
+        .task-error {
+            color: #c62828;
+            font-size: 0.85rem;
+            margin-top: 10px;
+            padding: 10px 14px;
+            background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%);
+            border-radius: 10px;
+            border-left: 3px solid #f44336;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
     </style>
 </head>
 <body class="tasks-theme">
@@ -370,6 +729,22 @@
             'cosyvoice': 'CosyVoice'
         };
 
+        // 模式名称映射
+        const modeMap = {
+            'base': '基础生成',
+            'voice_clone': '声音克隆',
+            'custom_voice': '预设音色',
+            'voice_design': '音色设计',
+            'clone': '声音克隆',
+            'ultimate_clone': '极致克隆',
+            'zero_shot': '零样本克隆',
+            'instruct': '指令控制',
+            'cross_lingual': '跨语言',
+            'auto_voice': '自动音色',
+            'free': '自由生成',
+            'controlled': '可控生成'
+        };
+
         // 当前选中的任务ID（用于批量操作）
         let selectedTaskIds = new Set();
 
@@ -444,13 +819,21 @@
         function buildTaskCardHTML(task) {
             const status = statusMap[task.status] || { text: task.status, class: task.status };
             const modelName = modelMap[task.model] || task.model;
+            const modeName = modeMap[task.mode] || task.mode;
             const createdTime = new Date(task.created_at).toLocaleString('zh-CN');
 
+            // 批量进度显示
             let progressHtml = '';
             if (task.status === 'processing') {
+                const batchInfo = task.batch_total > 1 ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
                 progressHtml = `
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${task.progress}%"></div>
+                    <div class="progress-wrapper">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${task.progress || 0}%"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%
+                        </div>
                     </div>
                 `;
             }
@@ -459,9 +842,9 @@
             if (task.status === 'completed' && task.audio_url && (!task.batch_results || task.batch_results.length === 0)) {
                 const audioSrc = task.audio_url.startsWith('http') ? task.audio_url : `${VersTTS.API_BASE}${task.audio_url}`;
                 singleAudioHtml = `
-                    <div class="single-audio" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
-                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎵 试听</div>
-                        <audio controls style="width: 100%; height: 36px;" src="${audioSrc}"></audio>
+                    <div class="single-audio-container">
+                        <div class="audio-label">🎵 试听</div>
+                        <audio controls src="${audioSrc}"></audio>
                     </div>
                 `;
             }
@@ -469,13 +852,20 @@
             let batchResultsHtml = '';
             if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
                 batchResultsHtml = `
-                    <div class="batch-results" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
-                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎲 批量生成结果（${task.batch_results.length}个）</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+                    <div class="batch-results-container">
+                        <div class="batch-results-header">
+                            <span class="batch-icon">🎲</span>
+                            <span class="batch-title">批量生成结果</span>
+                            <span class="batch-count">${task.batch_results.length}个</span>
+                        </div>
+                        <div class="batch-grid">
                             ${task.batch_results.map((r, idx) => `
-                                <div style="background: white; padding: 8px; border-radius: 6px; border: 1px solid #e0e0e0;">
-                                    <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px;">#${idx + 1} ${escapeHtml(r.filename)}</div>
-                                    <audio controls style="width: 100%; height: 32px;" src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
+                                <div class="batch-audio-card">
+                                    <div class="card-header">
+                                        <span class="card-number">${idx + 1}</span>
+                                        <span class="card-filename" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
+                                    </div>
+                                    <audio controls src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
                                 </div>
                             `).join('')}
                         </div>
@@ -501,6 +891,15 @@
 
             const errorHtml = task.error_message ? `<div class="task-error" style="color: #f44336; font-size: 0.85rem; margin-top: 8px;">❌ ${escapeHtml(task.error_message)}</div>` : '';
 
+            // 构建额外信息标签（合并到 task-meta 同一行）
+            let extraMetaHtml = '';
+            if (task.speaker_name) {
+                extraMetaHtml += `<span class="task-tag speaker-tag">👤 ${escapeHtml(task.speaker_name)}</span>`;
+            }
+            if (task.batch_count > 1) {
+                extraMetaHtml += `<span class="task-tag batch-tag">🎲 批量×${task.batch_count}</span>`;
+            }
+
             return `
                 <div class="task-item ${status.class}" data-task-id="${task.task_id}" data-status="${task.status}">
                     <div class="task-header">
@@ -510,8 +909,9 @@
                     <div class="task-content">
                         <div class="task-text">${escapeHtml(task.text)}</div>
                         <div class="task-meta">
-                            <span>🤖 ${modelName}</span>
-                            <span>⚙️ ${task.mode}</span>
+                            <span class="task-tag model-tag">🤖 ${modelName}</span>
+                            <span class="task-tag mode-tag">⚙️ ${modeName}</span>
+                            ${extraMetaHtml}
                             <span>🕐 ${createdTime}</span>
                         </div>
                         ${progressHtml}
@@ -542,19 +942,33 @@
             }
 
             // 3. 更新进度条（不重建，只改 width 或添加/移除）
-            let progressBar = card.querySelector('.progress-bar');
+            let progressWrapper = card.querySelector('.progress-wrapper');
             if (task.status === 'processing') {
-                if (!progressBar) {
+                const batchInfo = task.batch_total > 1 ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
+                if (!progressWrapper) {
                     const content = card.querySelector('.task-content');
                     if (content) {
-                        content.insertAdjacentHTML('beforeend', `<div class="progress-bar"><div class="progress-fill" style="width: ${task.progress}%"></div></div>`);
+                        content.insertAdjacentHTML('beforeend', `
+                            <div class="progress-wrapper">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: ${task.progress || 0}%"></div>
+                                </div>
+                                <div class="progress-text">
+                                    <span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%
+                                </div>
+                            </div>
+                        `);
                     }
                 } else {
-                    const fill = progressBar.querySelector('.progress-fill');
-                    if (fill) fill.style.width = `${task.progress}%`;
+                    const fill = progressWrapper.querySelector('.progress-fill');
+                    if (fill) fill.style.width = `${task.progress || 0}%`;
+                    const textEl = progressWrapper.querySelector('.progress-text');
+                    if (textEl) {
+                        textEl.innerHTML = `<span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%`;
+                    }
                 }
-            } else if (progressBar) {
-                progressBar.remove();
+            } else {
+                if (progressWrapper) progressWrapper.remove();
             }
 
             // 4. 操作按钮（仅在状态变化时更新）
@@ -582,39 +996,46 @@
 
             // 5. 单个音频试听（只在 completed 且没有时添加，已有则不动）
             if (task.status === 'completed' && task.audio_url && (!task.batch_results || task.batch_results.length === 0)) {
-                const singleContainer = card.querySelector('.single-audio');
+                const singleContainer = card.querySelector('.single-audio-container');
                 if (!singleContainer) {
                     const content = card.querySelector('.task-content');
                     if (content) {
                         const audioSrc = task.audio_url.startsWith('http') ? task.audio_url : `${VersTTS.API_BASE}${task.audio_url}`;
                         const html = `
-                            <div class="single-audio" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
-                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎵 试听</div>
-                                <audio controls style="width: 100%; height: 36px;" src="${audioSrc}"></audio>
+                            <div class="single-audio-container">
+                                <div class="audio-label">🎵 试听</div>
+                                <audio controls src="${audioSrc}"></audio>
                             </div>
                         `;
                         content.insertAdjacentHTML('beforeend', html);
                     }
                 }
             } else {
-                const singleContainer = card.querySelector('.single-audio');
+                const singleContainer = card.querySelector('.single-audio-container');
                 if (singleContainer) singleContainer.remove();
             }
 
             // 6. 批量结果（只在 completed 且没有时添加，已有则不动）
             if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
-                const batchContainer = card.querySelector('.batch-results');
+                const batchContainer = card.querySelector('.batch-results-container');
                 if (!batchContainer) {
                     const content = card.querySelector('.task-content');
                     if (content) {
                         const html = `
-                            <div class="batch-results" style="margin-top: 12px; padding: 12px; background: #f9f9f9; border-radius: 8px;">
-                                <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px; font-weight: 600;">🎲 批量生成结果（${task.batch_results.length}个）</div>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
+                            <div class="batch-results-container">
+                                <div class="batch-results-header">
+                                    <span class="batch-icon">🎲</span>
+                                    <span class="batch-title">批量生成结果</span>
+                                    <span class="batch-count">${task.batch_results.length}个</span>
+                                </div>
+                                <div class="batch-grid">
                                     ${task.batch_results.map((r, idx) => `
-                                        <div style="background: white; padding: 8px; border-radius: 6px; border: 1px solid #e0e0e0;">
-                                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 4px;">#${idx + 1} ${escapeHtml(r.filename)}</div>
-                                            <audio controls style="width: 100%; height: 32px;" src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
+                                        <div class="batch-audio-card">
+                                            <div class="card-header">
+                                                <span class="card-number">${idx + 1}</span>
+                                                <span class="card-filename" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
+                                            </div>
+                                            <audio controls src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
                                         </div>
                                     `).join('')}
                                 </div>
@@ -631,7 +1052,7 @@
                 if (!errorEl) {
                     const content = card.querySelector('.task-content');
                     if (content) {
-                        content.insertAdjacentHTML('beforeend', `<div class="task-error" style="color: #f44336; font-size: 0.85rem; margin-top: 8px;">❌ ${escapeHtml(task.error_message)}</div>`);
+                        content.insertAdjacentHTML('beforeend', `<div class="task-error">❌ ${escapeHtml(task.error_message)}</div>`);
                     }
                 }
             } else if (errorEl) {

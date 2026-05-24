@@ -8,6 +8,7 @@ import os
 import json
 import asyncio
 import uuid
+import heapq
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -18,6 +19,54 @@ import time
 
 from backend.logger_config import system_logger
 from backend.config import OUTPUTS_DIR
+
+
+class ThreadSafeProgressUpdater:
+    """线程安全的进度更新器，用于在线程池中更新任务进度"""
+
+    def __init__(self):
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._callbacks: List[tuple] = []
+        self._lock = threading.Lock()
+
+    def set_loop(self, loop: asyncio.AbstractEventLoop):
+        """设置事件循环"""
+        self._loop = loop
+        # 处理积压的回调
+        with self._lock:
+            pending = self._callbacks[:]
+            self._callbacks.clear()
+        for callback, args, kwargs in pending:
+            self._call_in_loop(callback, args, kwargs)
+
+    def _call_in_loop(self, callback, args, kwargs):
+        """在事件循环中调用回调"""
+        if self._loop and self._loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._async_callback(callback, args, kwargs),
+                    self._loop
+                )
+            except Exception as e:
+                system_logger.warning(f"【进度更新】调度回调失败: {e}")
+        else:
+            with self._lock:
+                self._callbacks.append((callback, args, kwargs))
+
+    async def _async_callback(self, callback, args, kwargs):
+        """异步执行回调"""
+        try:
+            callback(*args, **kwargs)
+        except Exception as e:
+            system_logger.warning(f"【进度更新】执行回调失败: {e}")
+
+    def update_progress(self, callback, *args, **kwargs):
+        """线程安全地调用进度更新回调"""
+        self._call_in_loop(callback, args, kwargs)
+
+
+# 全局线程安全进度更新器
+progress_updater = ThreadSafeProgressUpdater()
 
 
 class TaskStatus(Enum):
@@ -48,6 +97,8 @@ class TaskRecord:
     audio_url: Optional[str] = None
     error_message: Optional[str] = None
     progress: int = 0               # 进度百分比
+    batch_total: int = 0            # 批量生成总数
+    batch_completed: int = 0        # 批量生成已完成数
     batch_results: Optional[List[Dict]] = None  # 批量生成结果列表
     
     def to_dict(self) -> Dict:
@@ -204,8 +255,15 @@ class TaskQueue:
         """启动任务队列处理器"""
         if self._running:
             return
-        
+
         self._running = True
+        # 设置进度更新器的事件循环
+        try:
+            loop = asyncio.get_running_loop()
+            progress_updater.set_loop(loop)
+        except RuntimeError:
+            pass
+
         self._worker_task = asyncio.create_task(self._worker_loop())
         # 启动定时清理
         await self.start_cleanup_scheduler(interval_hours=24)
@@ -242,9 +300,29 @@ class TaskQueue:
             # 进度更新不频繁写入磁盘，仅在关键节点保存
             if progress in [25, 50, 75, 100]:
                 self._save_task(task)
-    
+
+    def update_batch_progress(self, task_id: str, completed: int, total: int):
+        """
+        更新批量生成进度
+        
+        Args:
+            task_id: 任务ID
+            completed: 已完成数量
+            total: 总数量
+        """
+        task = self.tasks.get(task_id)
+        if task and task.status == TaskStatus.PROCESSING.value:
+            task.batch_completed = completed
+            task.batch_total = total
+            if total > 0:
+                task.progress = int((completed / total) * 100)
+            # 每完成5个或全部完成时保存
+            if completed % 5 == 0 or completed == total:
+                self._save_task(task)
+
     async def _worker_loop(self):
-        """工作线程主循环"""
+        """工作线程主循环 - 支持模型级并发"""
+        system_logger.info("【任务队列】工作线程已启动（模型级并发模式）")
         while self._running:
             try:
                 # 等待有任务或事件
@@ -254,26 +332,85 @@ class TaskQueue:
                         await asyncio.wait_for(self._queue_event.wait(), timeout=1.0)
                     except asyncio.TimeoutError:
                         continue
-                
-                # 获取优先级最高的任务
+
+                # 获取当前各模型运行中的任务数
+                running_models = {}
+                for tid, t in list(self.processing_tasks.items()):
+                    running_models[t.model] = running_models.get(t.model, 0) + 1
+
+                # 并发控制策略：
+                # 基于实际测试数据，双模型并行时速度下降50-100%，
+                # 因此默认采用单模型串行，保证最大吞吐量。
+                # 如需启用多模型并行，可通过环境变量调整。
+                MAX_CONCURRENT_MODELS = int(os.environ.get('MAX_CONCURRENT_MODELS', '1'))
+                current_model_count = len(running_models)
+
+                # 调试日志
+                if self._pending_list:
+                    pending_models = [t.model for (_, _, t) in self._pending_list]
+                    system_logger.info(f"【任务队列】调试: running_models={running_models}, pending={pending_models}, 并发限制={MAX_CONCURRENT_MODELS}")
+
+                # 如果已达到并发限制，等待
+                if current_model_count >= MAX_CONCURRENT_MODELS:
+                    system_logger.info(f"【任务队列】已达到最大并发数({MAX_CONCURRENT_MODELS})，等待空闲: {list(running_models.keys())}")
+                    await asyncio.sleep(0.3)
+                    continue
+
+                # 一次性收集所有可执行的任务（不同模型的）
+                tasks_to_dispatch = []
                 async with self._lock:
-                    task = self._pop_next_task()
-                
-                if task is None:
+                    # 遍历 pending_list 找到所有可执行的任务
+                    remaining = []
+                    while self._pending_list:
+                        item = heapq.heappop(self._pending_list)
+                        _, _, candidate = item
+                        # 如果该模型没有正在运行的任务，则可以执行
+                        if running_models.get(candidate.model, 0) == 0:
+                            tasks_to_dispatch.append(candidate)
+                            # 标记该模型即将运行（防止同模型任务同时派发）
+                            running_models[candidate.model] = 1
+                            system_logger.info(f"【任务队列】调试: 选中任务 {candidate.task_id} [模型={candidate.model}]")
+                        else:
+                            remaining.append(item)
+                            system_logger.info(f"【任务队列】调试: 跳过任务 {candidate.task_id} [模型={candidate.model}] - 模型繁忙")
+                    # 把剩下的放回去
+                    for item in remaining:
+                        heapq.heappush(self._pending_list, item)
+
+                if not tasks_to_dispatch:
+                    # 所有任务都被同模型任务阻塞，等待一下
+                    system_logger.info(f"【任务队列】模型繁忙中，等待空闲: {list(running_models.keys())}")
+                    await asyncio.sleep(0.3)
                     continue
-                
-                # 检查任务是否已被取消
-                if task.status == TaskStatus.CANCELLED.value:
-                    system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
-                    continue
-                
-                # 执行任务
-                await self._execute_task(task)
-                
+
+                # 批量派发所有可并行执行的任务
+                # 先将所有任务标记为执行中，防止同模型任务被重复派发
+                for task in tasks_to_dispatch:
+                    task.status = TaskStatus.PROCESSING.value
+                    task.started_at = datetime.now().isoformat()
+                    async with self._lock:
+                        self.processing_tasks[task.task_id] = task
+                    self._save_task(task)
+
+                for task in tasks_to_dispatch:
+                    # 检查任务是否已被取消
+                    if task.status == TaskStatus.CANCELLED.value:
+                        system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
+                        # 从processing_tasks中移除
+                        async with self._lock:
+                            self.processing_tasks.pop(task.task_id, None)
+                        continue
+
+                    system_logger.info(f"【任务队列】派发任务: {task.task_id} [模型={task.model}]")
+                    # 使用 asyncio.create_task 让不同模型的任务可以并行执行
+                    asyncio.create_task(self._execute_task(task))
+
             except Exception as e:
                 system_logger.error(f"【任务队列】工作线程错误: {e}")
+                import traceback
+                traceback.print_exc()
                 await asyncio.sleep(1)
-    
+
     async def _execute_task(self, task: TaskRecord):
         """执行单个任务"""
         handler = self._handlers.get(task.model)
@@ -293,7 +430,15 @@ class TaskQueue:
             self.processing_tasks[task.task_id] = task
         self._save_task(task)
         
-        system_logger.info(f"【任务队列】开始执行任务: {task.task_id}")
+        system_logger.info(f"【任务队列】开始执行任务: {task.task_id} [模型={task.model}, 模式={task.mode}]")
+        
+        # 记录当前并发执行的任务数
+        running_count = len(self.processing_tasks)
+        running_models = set()
+        for tid, t in list(self.processing_tasks.items()):
+            running_models.add(t.model)
+        if running_count > 1:
+            system_logger.info(f"【任务队列】当前并发任务数: {running_count}, 运行的模型: {running_models}")
         
         try:
             # 执行处理函数
@@ -367,12 +512,25 @@ class TaskQueue:
     
     def get_queue_status(self) -> Dict:
         """获取队列状态"""
+        # 统计各模型的任务数
+        model_counts = {}
+        for task in self.tasks.values():
+            model_counts[task.model] = model_counts.get(task.model, 0) + 1
+
+        # 统计正在处理中的模型
+        processing_models = {}
+        for task in self.processing_tasks.values():
+            processing_models[task.model] = processing_models.get(task.model, 0) + 1
+
         return {
             "pending_count": self._get_pending_count(),
             "processing_count": len(self.processing_tasks),
             "total_tasks": len(self.tasks),
             "is_running": self._running,
-            "max_workers": self.max_workers
+            "max_workers": self.max_workers,
+            "model_counts": model_counts,
+            "processing_models": processing_models,
+            "concurrent_models": list(processing_models.keys())
         }
     
     async def cancel_task(self, task_id: str, user_id: str) -> bool:
@@ -444,11 +602,15 @@ class TaskQueue:
             os.remove(filepath)
         
         # 删除音频文件（如果存在且不是共享文件）
+        system_logger.info(f"【任务队列】删除任务调试: task_id={task_id}, audio_file={task.audio_file}, exists={os.path.exists(task.audio_file) if task.audio_file else False}")
         if task.audio_file and os.path.exists(task.audio_file):
             try:
                 os.remove(task.audio_file)
+                system_logger.info(f"【任务队列】音频文件已删除: {task.audio_file}")
             except Exception as e:
                 system_logger.warning(f"【任务队列】删除音频文件失败 {task.audio_file}: {e}")
+        elif task.audio_file:
+            system_logger.warning(f"【任务队列】音频文件不存在，无法删除: {task.audio_file}")
         
         # 从内存中移除
         del self.tasks[task_id]

@@ -1,0 +1,47 @@
+{
+  "name": "verstts-e2e-tests",
+  "version": "1.0.0",
+  "description": "VersTTS 前端 E2E 自动化测试 - 按用例集区分",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+
+    "smoke": "playwright test --grep '@smoke'",
+    "smoke:headed": "playwright test --grep '@smoke' --headed",
+    "smoke:ui": "playwright test --grep '@smoke' --ui",
+
+    "regression": "playwright test --grep '@regression'",
+    "regression:chromium": "playwright test --grep '@regression' --project=regression-chromium",
+    "regression:firefox": "playwright test --grep '@regression' --project=regression-firefox",
+    "regression:webkit": "playwright test --grep '@regression' --project=regression-webkit",
+
+    "boundary": "playwright test --grep '@boundary'",
+    "critical": "playwright test --grep '@critical'",
+    "ui": "playwright test --grep '@ui'",
+    "api": "playwright test --grep '@api'",
+
+    "batch": "playwright test --grep '@batch'",
+    "queue": "playwright test --grep '@queue'",
+    "performance": "playwright test --grep '@performance'",
+
+    "report": "playwright show-report",
+    "report:open": "npx playwright show-report playwright-report",
+    "install:browsers": "playwright install",
+
+    "trace:view": "npx playwright show-trace",
+    "clean": "rm -rf test-results playwright-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "http-server": "^14.1.1"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "testing",
+    "tts"
+  ],
+  "license": "MIT"
+}

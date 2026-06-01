@@ -57,36 +57,7 @@ test.describe('全局公共组件', { tag: ['@regression', '@ui'] }, () => {
     await expect(page).toHaveURL(/tasks\.html/);
   });
 
-  test('全局 Toast：应显示在页面顶部中央', { tag: ['@smoke', '@ui', '@critical'] }, async ({ page }) => {
-    await navigateWithAuth(page, './index.html');
-
-    await page.evaluate(() => {
-      if (window.VersTTS) {
-        window.VersTTS.showStatus('测试 Toast 消息');
-      }
-    });
-
-    const toast = page.locator('#globalToast');
-    await expect(toast).toBeVisible();
-    await expect(toast).toHaveText('测试 Toast 消息');
-    await expect(toast).toHaveCSS('position', 'fixed');
-
-    // 验证 5 秒后自动消失
-    await expect(toast).not.toBeVisible({ timeout: 7000 });
-  });
-
-  test('全局 Toast 错误样式：应显示红色背景', { tag: ['@ui'] }, async ({ page }) => {
-    await navigateWithAuth(page, './index.html');
-    await page.evaluate(() => {
-      if (window.VersTTS) {
-        window.VersTTS.showStatus('错误测试', true);
-      }
-    });
-
-    const toast = page.locator('#globalToast');
-    await expect(toast).toBeVisible();
-    await expect(toast).toHaveCSS('background-color', 'rgb(254, 226, 226)');
-  });
+  // 注意：Toast 功能在模型页面中测试，因为首页没有加载 common.js
 });
 
 test.describe('跨页面导航', { tag: ['@regression', '@ui', '@smoke'] }, () => {

@@ -212,9 +212,12 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
     import torch
     import soundfile as sf
     import numpy as np
+    import re
+    from datetime import datetime
     from backend.engines import get_voxcpm_model
     from backend.services import get_speaker_by_id
-    from backend.core import cleanup_memory, log_gpu_memory_usage, save_temp_audio
+    from backend.core import cleanup_memory, log_gpu_memory_usage
+    from backend.config import OUTPUTS_DIR
 
     audio_urls = []
     audio_files = []
@@ -225,11 +228,13 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
     # 获取说话人信息（如果需要）
     ref_path = None
     speaker_ref_text = None
+    speaker_name = None
     if mode in ["clone", "ultimate_clone"] and speaker_id:
         speaker = get_speaker_by_id(speaker_id)
         if speaker:
             ref_path = speaker.get("audio_path")
             speaker_ref_text = speaker.get("reference_text")
+            speaker_name = speaker.get("name")
 
     # 检查模型类型
     import sys
@@ -283,12 +288,29 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
             # 生成音频
             audio_data = model.generate(**generate_kwargs)
 
-            # 保存音频（使用统一格式）
+            # 保存音频（使用有意义的文件名）
             sr = 48000
-            audio_path = save_temp_audio(audio_data, sr, prefix="voxcpm")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            audio_urls.append(f"/audio/{os.path.basename(audio_path)}")
-            audio_files.append(os.path.basename(audio_path))
+            # 提取文本摘要
+            text_summary = text[:8].strip()
+            text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
+            if not text_summary:
+                text_summary = "audio"
+
+            # 构建文件名
+            speaker_part = ""
+            if speaker_name:
+                clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
+                if clean_name:
+                    speaker_part = f"_{clean_name}"
+
+            filename = f"voxcpm_{mode}{speaker_part}_{text_summary}_{timestamp}_{i+1:02d}of{count:02d}.wav"
+            audio_path = os.path.join(OUTPUTS_DIR, filename)
+            sf.write(audio_path, audio_data, sr)
+
+            audio_urls.append(f"/audio/{filename}")
+            audio_files.append(filename)
 
             system_logger.info(f"【批量生成】VoxCPM 第 {i+1}/{count} 个完成")
 
@@ -314,9 +336,13 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
     """批量生成Qwen3-TTS音频"""
     import torch
     import numpy as np
+    import re
+    from datetime import datetime
+    import soundfile as sf
     from backend.engines import get_qwen3tts_model
     from backend.services import load_speakers_db
-    from backend.core import cleanup_memory, log_gpu_memory_usage, save_temp_audio
+    from backend.core import cleanup_memory, log_gpu_memory_usage
+    from backend.config import OUTPUTS_DIR
 
     audio_urls = []
     audio_files = []
@@ -335,11 +361,13 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
 
     # 获取说话人信息（如果需要）
     speaker_data = None
+    speaker_name = None
     if mode == "voice_clone" and speaker_id:
         db = load_speakers_db()
         for s in db.get("speakers", []):
             if s["id"] == speaker_id:
                 speaker_data = s
+                speaker_name = s.get("name")
                 break
         if not speaker_data:
             raise ValueError(f"说话人不存在: {speaker_id}")
@@ -438,11 +466,28 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
             else:
                 audio_data = wav
 
-            # 保存音频（使用统一格式）
-            audio_path = save_temp_audio(audio_data, sr, prefix="qwen3tts")
+            # 保存音频（使用有意义的文件名）
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            audio_urls.append(f"/audio/{os.path.basename(audio_path)}")
-            audio_files.append(os.path.basename(audio_path))
+            # 提取文本摘要
+            text_summary = text[:8].strip()
+            text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
+            if not text_summary:
+                text_summary = "audio"
+
+            # 构建文件名
+            speaker_part = ""
+            if speaker_name:
+                clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
+                if clean_name:
+                    speaker_part = f"_{clean_name}"
+
+            filename = f"qwen3tts_{mode}{speaker_part}_{text_summary}_{timestamp}_{i+1:02d}of{count:02d}.wav"
+            audio_path = os.path.join(OUTPUTS_DIR, filename)
+            sf.write(audio_path, audio_data, sr)
+
+            audio_urls.append(f"/audio/{filename}")
+            audio_files.append(filename)
 
             system_logger.info(f"【批量生成】Qwen3-TTS 第 {i+1}/{count} 个完成")
 
@@ -610,7 +655,8 @@ def _fix_voice_design_format(prompt: str) -> str:
 async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                                     speaker_id: str = None,
                                     voice_design_prompt: str = None,
-                                    speed: float = 1.0) -> Dict:
+                                    speed: float = 1.0,
+                                    progress_callback: Callable = None) -> Dict:
     """
     批量生成OmniVoice音频（并行版本）
     
@@ -640,11 +686,15 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
     
     system_logger.info(f"【批量生成】OmniVoice 开始并行生成 | 数量: {count} | 并发度: {OMNIVOICE_CONCURRENCY}")
     
+    # 报告初始进度
+    if progress_callback:
+        progress_callback(0, count)
+    
     # 创建异步HTTP会话
     timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         # 创建所有任务
-        tasks = []
+        pending_tasks = []
         for i in range(count):
             task = _generate_single_omnivoice(
                 session=session,
@@ -657,30 +707,40 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                 omnivoice_url=OMNIVOICE_SERVICE_URL,
                 speed=speed
             )
-            tasks.append(task)
+            pending_tasks.append(task)
         
-        # 并行执行所有任务（受信号量控制实际并发数）
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 使用 as_completed 来实时获取结果并更新进度
+        completed = 0
+        for coro in asyncio.as_completed(pending_tasks):
+            try:
+                result = await coro
+                if result.get("success"):
+                    audio_urls.append(result["audio_url"])
+                    audio_files.append(result["audio_file"])
+                completed += 1
+                # 报告进度
+                if progress_callback:
+                    progress_callback(completed, count)
+            except Exception as e:
+                system_logger.error(f"【批量生成】OmniVoice 任务异常: {e}")
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
     
-    # 处理结果
-    success_count = 0
-    for result in results:
-        if isinstance(result, Exception):
-            system_logger.error(f"【批量生成】OmniVoice 任务异常: {result}")
-            continue
-        if result.get("success"):
-            audio_urls.append(result["audio_url"])
-            audio_files.append(result["audio_file"])
-            success_count += 1
-    
+    success_count = len(audio_urls)
     system_logger.info(f"【批量生成】OmniVoice 完成 | 成功: {success_count}/{count}")
+    
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
     
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 
 async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
                                     speaker_id: str = None,
-                                    control_prompt: str = None) -> Dict:
+                                    control_prompt: str = None,
+                                    progress_callback: Callable = None) -> Dict:
     """
     批量生成CosyVoice音频（并行版本）
     
@@ -692,6 +752,11 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
     
     audio_urls = []
     audio_files = []
+    completed_count = 0
+    
+    # 检查文本长度，CosyVoice 需要至少3个字符
+    if len(text.strip()) < 3:
+        raise ValueError(f"CosyVoice 需要至少3个字符的文本，当前只有 {len(text.strip())} 个字符")
     
     COSYVOICE_SERVICE_URL = f"http://{COSYVOICE_HOST}:{COSYVOICE_PORT}/tts"
     
@@ -706,11 +771,15 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
     
     system_logger.info(f"【批量生成】CosyVoice 开始并行生成 | 数量: {count} | 并发度: {COSYVOICE_CONCURRENCY} | 模式: {mode}")
     
+    # 报告初始进度
+    if progress_callback:
+        progress_callback(0, count)
+    
     # 创建异步HTTP会话
     timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         # 创建所有任务
-        tasks = []
+        pending_tasks = []
         for i in range(count):
             task = _generate_single_cosyvoice(
                 session=session,
@@ -722,23 +791,32 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
                 instruct_text=control_prompt,
                 cosyvoice_url=COSYVOICE_SERVICE_URL
             )
-            tasks.append(task)
+            pending_tasks.append(task)
         
-        # 并行执行所有任务（受信号量控制实际并发数）
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 使用 as_completed 来实时获取结果并更新进度
+        completed = 0
+        for coro in asyncio.as_completed(pending_tasks):
+            try:
+                result = await coro
+                if result.get("success"):
+                    audio_urls.append(result["audio_url"])
+                    audio_files.append(result["audio_file"])
+                completed += 1
+                # 报告进度
+                if progress_callback:
+                    progress_callback(completed, count)
+            except Exception as e:
+                system_logger.error(f"【批量生成】CosyVoice 任务异常: {e}")
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
     
-    # 处理结果
-    success_count = 0
-    for result in results:
-        if isinstance(result, Exception):
-            system_logger.error(f"【批量生成】CosyVoice 任务异常: {result}")
-            continue
-        if result.get("success"):
-            audio_urls.append(result["audio_url"])
-            audio_files.append(result["audio_file"])
-            success_count += 1
-    
+    success_count = len(audio_urls)
     system_logger.info(f"【批量生成】CosyVoice 完成 | 成功: {success_count}/{count}")
+    
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
     
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 

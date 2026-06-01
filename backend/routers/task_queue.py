@@ -76,6 +76,8 @@ class TaskInfo(BaseModel):
     batch_results: Optional[List[Dict]] = None
     speaker_name: Optional[str] = None
     batch_count: int = 1
+    wait_time_seconds: int = 0  # 等待时长（秒）
+    execution_time_seconds: Optional[int] = None  # 执行时长（秒）
 
 
 class TaskListResponse(BaseModel):
@@ -197,6 +199,9 @@ async def list_tasks(
         tasks = task_queue.get_user_tasks(user_id, status=status, limit=limit)
 
         task_infos = []
+        from datetime import datetime as dt
+        now = dt.now()
+
         for task in tasks:
             # 获取说话人名称
             speaker_name = None
@@ -212,6 +217,35 @@ async def list_tasks(
 
             # 获取批量数量
             batch_count = task.params.get('batch_count', 1) if task.params else 1
+
+            # 计算等待时长
+            wait_time_seconds = 0
+            if task.started_at:
+                try:
+                    created = dt.fromisoformat(task.created_at)
+                    started = dt.fromisoformat(task.started_at)
+                    wait_time_seconds = int((started - created).total_seconds())
+                except:
+                    pass
+            elif task.status in ['queued', 'pending']:
+                try:
+                    created = dt.fromisoformat(task.created_at)
+                    wait_time_seconds = int((now - created).total_seconds())
+                except:
+                    pass
+
+            # 计算执行时长
+            execution_time_seconds = None
+            if task.started_at:
+                try:
+                    started = dt.fromisoformat(task.started_at)
+                    if task.completed_at:
+                        completed = dt.fromisoformat(task.completed_at)
+                        execution_time_seconds = int((completed - started).total_seconds())
+                    elif task.status == 'processing':
+                        execution_time_seconds = int((now - started).total_seconds())
+                except:
+                    pass
 
             task_infos.append(TaskInfo(
                 task_id=task.task_id,
@@ -229,7 +263,9 @@ async def list_tasks(
                 batch_completed=task.batch_completed,
                 batch_results=task.batch_results,
                 speaker_name=speaker_name,
-                batch_count=batch_count
+                batch_count=batch_count,
+                wait_time_seconds=wait_time_seconds,
+                execution_time_seconds=execution_time_seconds
             ))
 
         return TaskListResponse(

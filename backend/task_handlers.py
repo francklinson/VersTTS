@@ -37,26 +37,62 @@ def _pack_batch_results(audio_files: List[str], audio_urls: List[str], prefix: s
     }
 
 
-def _generate_meaningful_filename(model: str, mode: str, text: str, index: int = 0, batch_total: int = 1) -> str:
+def _generate_meaningful_filename(model: str, mode: str, text: str, index: int = 0, batch_total: int = 1,
+                                   speaker_name: str = None, prefix: str = None) -> str:
     """
     生成有意义的音频文件名
-    
-    格式: {model}_{mode}_{text摘要}_{timestamp}.wav
+
+    格式: {prefix}_{model}_{mode}_{speaker}_{text摘要}_{timestamp}_{batch}.wav
+
+    Args:
+        model: 模型名称
+        mode: 生成模式
+        text: 合成文本
+        index: 批量生成时的索引
+        batch_total: 批量生成总数
+        speaker_name: 说话人名称（可选）
+        prefix: 前缀（可选，用于区分不同来源）
     """
     import re
-    # 提取文本前10个字符作为摘要，去除特殊字符
-    text_summary = text[:10].strip()
-    # 移除文件名不友好字符
+
+    # 提取文本前8个字符作为摘要，去除特殊字符
+    text_summary = text[:8].strip()
+    # 移除文件名不友好字符，保留中文、英文、数字
     text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
     if not text_summary:
         text_summary = "audio"
-    
+
+    # 限制摘要长度
+    if len(text_summary) > 8:
+        text_summary = text_summary[:8]
+
+    # 处理说话人名称
+    speaker_part = ""
+    if speaker_name:
+        # 清理说话人名称
+        clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
+        if clean_name:
+            speaker_part = f"_{clean_name}"
+
+    # 生成时间戳（毫秒级）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
+    # 构建文件名各部分
+    parts = []
+    if prefix:
+        parts.append(prefix)
+    parts.append(model)
+    parts.append(mode)
+    if speaker_part:
+        parts.append(speaker_part.lstrip('_'))
+    parts.append(text_summary)
+    parts.append(timestamp)
+
+    # 批量生成时添加序号
     if batch_total > 1:
-        return f"{model}_{mode}_{text_summary}_{timestamp}_{index+1}of{batch_total}.wav"
-    else:
-        return f"{model}_{mode}_{text_summary}_{timestamp}.wav"
+        parts.append(f"{index+1:02d}of{batch_total:02d}")
+
+    return "_".join(parts) + ".wav"
 
 
 async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
@@ -72,6 +108,11 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
             import asyncio
             from backend.routers.batch import _batch_generate_voxcpm
             loop = asyncio.get_running_loop()
+
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
 
             # 定义进度回调函数
             def _progress_callback(completed: int, total: int):
@@ -101,11 +142,13 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
 
             _ref_path = None
             _speaker_ref_text = None
+            _speaker_name = None
             if _speaker_id:
                 _speaker = get_speaker_by_id(_speaker_id)
                 if _speaker:
                     _ref_path = _speaker.get("audio_path")
                     _speaker_ref_text = _speaker.get("reference_text")
+                    _speaker_name = _speaker.get("name")
 
             _model = get_voxcpm_model()
 
@@ -129,8 +172,8 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
             _audio = _model.generate(**_generate_kwargs)
             _sample_rate = _model.tts_model.sample_rate
 
-            # 使用有意义的文件名
-            _filename = _generate_meaningful_filename("voxcpm", task.mode, task.text)
+            # 使用有意义的文件名，传入说话人名称
+            _filename = _generate_meaningful_filename("voxcpm", task.mode, task.text, speaker_name=_speaker_name)
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
@@ -163,6 +206,11 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
             import asyncio
             from backend.routers.batch import _batch_generate_qwen3tts
             loop = asyncio.get_running_loop()
+
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
 
             # 定义进度回调函数
             def _progress_callback(completed: int, total: int):
@@ -200,6 +248,9 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
             _wav = None
             _sr = 24000
 
+            # 获取说话人名称（用于文件名）
+            _speaker_name = None
+
             if _mode == "voice_clone":
                 _speaker_id = params.get('speaker_id')
                 if not _speaker_id:
@@ -211,6 +262,7 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
 
                 _ref_path = _speaker_info.get("audio_path")
                 _ref_text = _speaker_info.get("reference_text", "")
+                _speaker_name = _speaker_info.get("name")
                 if not _ref_path or not os.path.exists(_ref_path):
                     raise ValueError(f"参考音频不存在: {_ref_path}")
 
@@ -229,6 +281,7 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
 
             elif _mode == "custom_voice":
                 _speaker = params.get('speaker') or params.get('speaker_id') or 'vivian'
+                _speaker_name = _speaker
                 _instruct_text = params.get('instruct_text', '')
 
                 _custom_voice_success = False
@@ -311,8 +364,8 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
                 )
                 _wav = _wavs[0] if isinstance(_wavs, list) else _wavs
 
-            # 使用有意义的文件名
-            _filename = _generate_meaningful_filename("qwen3tts", task.mode, task.text)
+            # 使用有意义的文件名，传入说话人名称
+            _filename = _generate_meaningful_filename("qwen3tts", task.mode, task.text, speaker_name=_speaker_name)
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
@@ -367,14 +420,29 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
         batch_count = params.get('batch_count', 1)
 
         if batch_count > 1:
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
             from backend.routers.batch import _batch_generate_omnivoice
+            from backend.task_queue import progress_updater
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
             result = await _batch_generate_omnivoice(
                 text=task.text,
                 mode=task.mode,
                 count=batch_count,
                 speaker_id=params.get('speaker_id'),
                 voice_design_prompt=params.get('voice_design_prompt') or params.get('control_prompt'),
-                speed=params.get('speed', 1.0)
+                speed=params.get('speed', 1.0),
+                progress_callback=_progress_callback
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])
@@ -453,17 +521,36 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
             "CosyVoice", "./start_server.sh start-cosyvoice"
         )
 
+        # 检查文本长度，CosyVoice 需要至少3个字符
+        if len(task.text.strip()) < 3:
+            raise ValueError(f"CosyVoice 需要至少3个字符的文本，当前只有 {len(task.text.strip())} 个字符")
+
         params = task.params or {}
         batch_count = params.get('batch_count', 1)
 
         if batch_count > 1:
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
             from backend.routers.batch import _batch_generate_cosyvoice
+            from backend.task_queue import progress_updater
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
             result = await _batch_generate_cosyvoice(
                 text=task.text,
                 mode=task.mode,
                 count=batch_count,
                 speaker_id=params.get('speaker_id'),
-                control_prompt=params.get('control_prompt')
+                control_prompt=params.get('control_prompt'),
+                progress_callback=_progress_callback
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])

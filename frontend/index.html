@@ -1463,9 +1463,14 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.tasks) {
-                        // 统计等待中和执行中的任务
+                        // 获取已查看的任务ID列表
+                        const viewedTasks = JSON.parse(localStorage.getItem('versTTS_viewed_tasks') || '[]');
+                        const viewedSet = new Set(viewedTasks);
+
+                        // 统计等待中和执行中的任务（排除已查看的）
                         const activeTasks = data.tasks.filter(t =>
-                            t.status === 'queued' || t.status === 'processing'
+                            (t.status === 'queued' || t.status === 'processing') &&
+                            !viewedSet.has(t.task_id)
                         );
                         const badge = document.getElementById('taskQueueBadge');
                         if (activeTasks.length > 0) {

@@ -350,6 +350,10 @@
             transition: all 0.3s ease;
             position: relative;
             overflow: hidden;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         .batch-audio-card::before {
             content: '';
@@ -399,13 +403,49 @@
         }
         .batch-audio-card audio {
             width: 100%;
-            height: 44px;
-            border-radius: 22px;
-            filter: invert(1) hue-rotate(200deg) saturate(1.5) brightness(1.1);
-            transition: filter 0.3s;
+            height: 36px;
+            border-radius: 18px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            outline: none;
+            display: block;
+            margin: 0;
+            padding: 0;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
         }
-        .batch-audio-card audio:hover {
-            filter: invert(1) hue-rotate(210deg) saturate(1.8) brightness(1.2);
+        /* Chrome/Safari/Edge */
+        .batch-audio-card audio::-webkit-media-controls-panel {
+            background: transparent;
+            border-radius: 18px;
+            padding: 0 8px;
+        }
+        .batch-audio-card audio::-webkit-media-controls-play-button {
+            background-color: #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+        }
+        .batch-audio-card audio::-webkit-media-controls-current-time-display,
+        .batch-audio-card audio::-webkit-media-controls-time-remaining-display {
+            color: #495057;
+            font-weight: 500;
+            font-size: 11px;
+        }
+        .batch-audio-card audio::-webkit-media-controls-timeline {
+            margin: 0 6px;
+            background: #dee2e6;
+            border-radius: 3px;
+            height: 4px;
+        }
+        .batch-audio-card audio::-webkit-media-controls-mute-button {
+            filter: opacity(0.6);
+        }
+        /* Firefox */
+        @supports (-moz-appearance: none) {
+            .batch-audio-card audio {
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+            }
         }
 
         /* 单音频试听美化 */
@@ -427,13 +467,49 @@
         }
         .single-audio-container audio {
             width: 100%;
-            height: 48px;
-            border-radius: 24px;
-            filter: invert(1) hue-rotate(180deg) saturate(1.5) brightness(1.1);
-            transition: filter 0.3s;
+            height: 40px;
+            border-radius: 20px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            outline: none;
+            display: block;
+            margin: 0;
+            padding: 0;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
         }
-        .single-audio-container audio:hover {
-            filter: invert(1) hue-rotate(190deg) saturate(1.8) brightness(1.2);
+        /* Chrome/Safari/Edge */
+        .single-audio-container audio::-webkit-media-controls-panel {
+            background: transparent;
+            border-radius: 20px;
+            padding: 0 10px;
+        }
+        .single-audio-container audio::-webkit-media-controls-play-button {
+            background-color: #0288d1;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+        }
+        .single-audio-container audio::-webkit-media-controls-current-time-display,
+        .single-audio-container audio::-webkit-media-controls-time-remaining-display {
+            color: #495057;
+            font-weight: 500;
+            font-size: 12px;
+        }
+        .single-audio-container audio::-webkit-media-controls-timeline {
+            margin: 0 8px;
+            background: #dee2e6;
+            border-radius: 3px;
+            height: 4px;
+        }
+        .single-audio-container audio::-webkit-media-controls-mute-button {
+            filter: opacity(0.6);
+        }
+        /* Firefox */
+        @supports (-moz-appearance: none) {
+            .single-audio-container audio {
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+            }
         }
 
         /* 任务信息标签美化 */
@@ -472,6 +548,43 @@
             background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
             color: #2e7d32;
             border: 1px solid #a5d6a7;
+        }
+        .task-tag.time-tag {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.7rem;
+        }
+        .task-tag.time-tag.waiting {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            color: #e65100;
+            border: 1px solid #ffcc80;
+        }
+        .task-tag.time-tag.running {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            color: #1565c0;
+            border: 1px solid #90caf9;
+            animation: pulse-tag 2s infinite;
+        }
+        @keyframes pulse-tag {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .task-tag.time-tag.completed {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+        .task-tag.time-tag.failed {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            color: #616161;
+            border: 1px solid #bdbdbd;
+        }
+
+        /* 时间详情 */
+        .task-time-detail {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 6px;
+            padding-left: 2px;
         }
 
         /* 进度条美化 */
@@ -712,6 +825,20 @@
         let refreshInterval = null;
         let currentTasks = [];
 
+        // 格式化时长（秒 -> 可读格式）
+        function formatDuration(seconds) {
+            if (!seconds || seconds < 0) return '0秒';
+            if (seconds < 60) return `${seconds}秒`;
+            if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return secs > 0 ? `${mins}分${secs}秒` : `${mins}分`;
+            }
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            return mins > 0 ? `${hours}时${mins}分` : `${hours}时`;
+        }
+
         // 状态映射
         const statusMap = {
             'queued': { text: '等待中', class: 'pending' },
@@ -750,10 +877,40 @@
 
         // 页面初始化
         document.addEventListener('DOMContentLoaded', () => {
+            // 清理已完成的查看记录
+            cleanupViewedTasks();
             loadTasks();
             setupAutoRefresh();
             checkHealth();
         });
+
+        // 清理已完成的查看记录（在页面加载时执行）
+        async function cleanupViewedTasks() {
+            try {
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/list?limit=100`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.tasks) {
+                        // 获取当前活跃的任务ID
+                        const activeTaskIds = data.tasks
+                            .filter(t => t.status === 'queued' || t.status === 'processing')
+                            .map(t => t.task_id);
+                        const activeSet = new Set(activeTaskIds);
+
+                        // 获取已记录的任务ID
+                        let viewedTasks = JSON.parse(localStorage.getItem('versTTS_viewed_tasks') || '[]');
+
+                        // 只保留仍在活跃状态的任务
+                        const cleanedTasks = viewedTasks.filter(id => activeSet.has(id));
+
+                        // 保存清理后的列表
+                        localStorage.setItem('versTTS_viewed_tasks', JSON.stringify(cleanedTasks));
+                    }
+                }
+            } catch (error) {
+                console.log('清理查看记录失败:', error);
+            }
+        }
 
         // 设置自动刷新
         function setupAutoRefresh() {
@@ -825,14 +982,27 @@
             // 批量进度显示
             let progressHtml = '';
             if (task.status === 'processing') {
-                const batchInfo = task.batch_total > 1 ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
+                const isBatch = task.batch_total > 1;
+                const batchInfo = isBatch ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
+                const progressText = isBatch 
+                    ? `<span>🎲</span> 批量生成中${batchInfo} - ${task.progress || 0}%`
+                    : `<span>🔧</span> 正在生成中 - ${task.progress || 0}%`;
                 progressHtml = `
                     <div class="progress-wrapper">
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${task.progress || 0}%"></div>
                         </div>
                         <div class="progress-text">
-                            <span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%
+                            ${progressText}
+                        </div>
+                    </div>
+                `;
+            } else if (task.status === 'queued' && task.batch_count > 1) {
+                // 等待中的批量任务也显示数量
+                progressHtml = `
+                    <div class="progress-wrapper" style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-color: #ffcc80;">
+                        <div class="progress-text" style="color: #e65100;">
+                            <span>⏳</span> 等待执行 - 批量生成 ×${task.batch_count}
                         </div>
                     </div>
                 `;
@@ -900,6 +1070,25 @@
                 extraMetaHtml += `<span class="task-tag batch-tag">🎲 批量×${task.batch_count}</span>`;
             }
 
+            // 构建时间信息
+            let timeInfoHtml = '';
+            if (task.status === 'queued' || task.status === 'pending') {
+                const waitTime = formatDuration(task.wait_time_seconds);
+                timeInfoHtml = `<span class="task-tag time-tag waiting">⏳ 等待 ${waitTime}</span>`;
+            } else if (task.status === 'processing' && task.execution_time_seconds !== null) {
+                const execTime = formatDuration(task.execution_time_seconds);
+                timeInfoHtml = `<span class="task-tag time-tag running">🔧 执行 ${execTime}</span>`;
+            } else if (task.status === 'completed' && task.execution_time_seconds !== null) {
+                const execTime = formatDuration(task.execution_time_seconds);
+                const waitTime = formatDuration(task.wait_time_seconds);
+                timeInfoHtml = `<span class="task-tag time-tag completed">✅ 执行 ${execTime} | 等待 ${waitTime}</span>`;
+            } else if (task.status === 'failed' || task.status === 'cancelled') {
+                if (task.execution_time_seconds !== null) {
+                    const execTime = formatDuration(task.execution_time_seconds);
+                    timeInfoHtml = `<span class="task-tag time-tag failed">⏱️ 执行 ${execTime}</span>`;
+                }
+            }
+
             return `
                 <div class="task-item ${status.class}" data-task-id="${task.task_id}" data-status="${task.status}">
                     <div class="task-header">
@@ -912,6 +1101,9 @@
                             <span class="task-tag model-tag">🤖 ${modelName}</span>
                             <span class="task-tag mode-tag">⚙️ ${modeName}</span>
                             ${extraMetaHtml}
+                            ${timeInfoHtml}
+                        </div>
+                        <div class="task-time-detail">
                             <span>🕐 ${createdTime}</span>
                         </div>
                         ${progressHtml}
@@ -944,7 +1136,10 @@
             // 3. 更新进度条（不重建，只改 width 或添加/移除）
             let progressWrapper = card.querySelector('.progress-wrapper');
             if (task.status === 'processing') {
-                const batchInfo = task.batch_total > 1 ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
+                const isBatch = task.batch_total > 1;
+                const batchInfo = isBatch ? ` (${task.batch_completed || 0}/${task.batch_total})` : '';
+                const progressIcon = isBatch ? '🎲' : '🔧';
+                const progressLabel = isBatch ? '批量生成中' : '正在生成中';
                 if (!progressWrapper) {
                     const content = card.querySelector('.task-content');
                     if (content) {
@@ -954,7 +1149,7 @@
                                     <div class="progress-fill" style="width: ${task.progress || 0}%"></div>
                                 </div>
                                 <div class="progress-text">
-                                    <span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%
+                                    <span>${progressIcon}</span> ${progressLabel}${batchInfo} - ${task.progress || 0}%
                                 </div>
                             </div>
                         `);
@@ -964,7 +1159,21 @@
                     if (fill) fill.style.width = `${task.progress || 0}%`;
                     const textEl = progressWrapper.querySelector('.progress-text');
                     if (textEl) {
-                        textEl.innerHTML = `<span>🔧</span> 正在生成中${batchInfo} - ${task.progress || 0}%`;
+                        textEl.innerHTML = `<span>${progressIcon}</span> ${progressLabel}${batchInfo} - ${task.progress || 0}%`;
+                    }
+                }
+            } else if (task.status === 'queued' && task.batch_count > 1) {
+                // 等待中的批量任务显示数量
+                if (!progressWrapper) {
+                    const content = card.querySelector('.task-content');
+                    if (content) {
+                        content.insertAdjacentHTML('beforeend', `
+                            <div class="progress-wrapper" style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-color: #ffcc80;">
+                                <div class="progress-text" style="color: #e65100;">
+                                    <span>⏳</span> 等待执行 - 批量生成 ×${task.batch_count}
+                                </div>
+                            </div>
+                        `);
                     }
                 }
             } else {
@@ -1106,6 +1315,33 @@
                     existingCards[tid].remove();
                 }
             });
+
+            // 记录已查看的活跃任务ID（用于首页红点消除）
+            recordViewedTasks(tasks);
+        }
+
+        // 记录已查看的活跃任务（queued 或 processing 状态）
+        function recordViewedTasks(tasks) {
+            const activeTaskIds = tasks
+                .filter(t => t.status === 'queued' || t.status === 'processing')
+                .map(t => t.task_id);
+
+            // 获取已记录的任务ID
+            let viewedTasks = JSON.parse(localStorage.getItem('versTTS_viewed_tasks') || '[]');
+
+            // 添加当前活跃任务到已查看列表
+            activeTaskIds.forEach(id => {
+                if (!viewedTasks.includes(id)) {
+                    viewedTasks.push(id);
+                }
+            });
+
+            // 清理已完成的任务ID（从已查看列表中移除）
+            const activeIdsSet = new Set(activeTaskIds);
+            viewedTasks = viewedTasks.filter(id => activeIdsSet.has(id));
+
+            // 保存回 localStorage
+            localStorage.setItem('versTTS_viewed_tasks', JSON.stringify(viewedTasks));
         }
 
         // 更新统计

@@ -106,13 +106,62 @@ class TaskRecord:
         return asdict(self)
 
 
+class ModelState:
+    """模型状态跟踪"""
+    def __init__(self, model_name: str):
+        self.model_name = model_name
+        self.is_busy = False
+        self.current_task_id: Optional[str] = None
+        self.task_start_time: Optional[str] = None
+        self.completed_count = 0
+        self.failed_count = 0
+        self.total_execution_time = 0.0  # 秒
+
+    def start_task(self, task_id: str):
+        """开始执行任务"""
+        self.is_busy = True
+        self.current_task_id = task_id
+        self.task_start_time = datetime.now().isoformat()
+
+    def end_task(self, success: bool = True, execution_time: float = 0.0):
+        """结束任务"""
+        self.is_busy = False
+        self.current_task_id = None
+        self.task_start_time = None
+        if success:
+            self.completed_count += 1
+        else:
+            self.failed_count += 1
+        self.total_execution_time += execution_time
+
+    def to_dict(self) -> Dict:
+        """转换为字典"""
+        return {
+            "model_name": self.model_name,
+            "is_busy": self.is_busy,
+            "current_task_id": self.current_task_id,
+            "task_start_time": self.task_start_time,
+            "completed_count": self.completed_count,
+            "failed_count": self.failed_count,
+            "total_execution_time": round(self.total_execution_time, 2)
+        }
+
+
 class TaskQueue:
-    """任务队列管理器"""
-    
+    """任务队列管理器 - 支持模型级并发控制"""
+
+    # 模型并发配置：每个模型允许的最大并发数
+    DEFAULT_MODEL_CONCURRENCY = {
+        "voxcpm": 1,      # 本地GPU模型，串行执行
+        "qwen3tts": 1,    # 本地GPU模型，串行执行
+        "omnivoice": 2,   # 独立HTTP服务，可有限并行
+        "cosyvoice": 2,   # 独立HTTP服务，可有限并行
+    }
+
     def __init__(self, max_workers: int = 1, storage_dir: str = None):
         """
         初始化任务队列
-        
+
         Args:
             max_workers: 最大并发工作线程数（TTS模型通常只能串行执行）
             storage_dir: 任务记录存储目录
@@ -120,27 +169,58 @@ class TaskQueue:
         self.max_workers = max_workers
         self.storage_dir = storage_dir or os.path.join(OUTPUTS_DIR, "task_records")
         os.makedirs(self.storage_dir, exist_ok=True)
-        
+
         # 内存中的任务存储
         self.tasks: Dict[str, TaskRecord] = {}
         # 使用列表+锁实现真正的优先级队列（asyncio.Queue不支持优先级排序）
         self._pending_list: List[tuple] = []
         self._queue_event = asyncio.Event()
         self.processing_tasks: Dict[str, TaskRecord] = {}
-        
+
         # 执行控制
         self._running = False
         self._worker_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
         self._cleanup_task: Optional[asyncio.Task] = None
-        
+
         # 任务处理器映射
         self._handlers: Dict[str, Callable] = {}
-        
+
+        # 模型状态跟踪
+        self._model_states: Dict[str, ModelState] = {}
+        self._model_concurrency: Dict[str, int] = {}
+        self._init_model_config()
+
         # 加载历史任务
         self._load_tasks()
-        
+
         system_logger.info(f"【任务队列】初始化完成，存储目录: {self.storage_dir}")
+
+    def _init_model_config(self):
+        """初始化模型并发配置"""
+        # 从环境变量读取配置，或使用默认值
+        for model, default_concurrency in self.DEFAULT_MODEL_CONCURRENCY.items():
+            env_key = f"MAX_CONCURRENT_{model.upper()}"
+            concurrency = int(os.environ.get(env_key, default_concurrency))
+            self._model_concurrency[model] = concurrency
+            self._model_states[model] = ModelState(model)
+            system_logger.info(f"【任务队列】模型 {model} 并发数: {concurrency}")
+
+    def get_model_state(self, model: str) -> Optional[ModelState]:
+        """获取模型状态"""
+        return self._model_states.get(model)
+
+    def get_all_model_states(self) -> Dict[str, Dict]:
+        """获取所有模型状态"""
+        return {name: state.to_dict() for name, state in self._model_states.items()}
+
+    def _get_model_running_count(self, model: str) -> int:
+        """获取指定模型正在运行的任务数"""
+        count = 0
+        for task in self.processing_tasks.values():
+            if task.model == model:
+                count += 1
+        return count
     
     def _get_pending_count(self) -> int:
         """获取等待中的任务数量"""
@@ -338,48 +418,45 @@ class TaskQueue:
                 for tid, t in list(self.processing_tasks.items()):
                     running_models[t.model] = running_models.get(t.model, 0) + 1
 
-                # 并发控制策略：
-                # 基于实际测试数据，双模型并行时速度下降50-100%，
-                # 因此默认采用单模型串行，保证最大吞吐量。
-                # 如需启用多模型并行，可通过环境变量调整。
-                MAX_CONCURRENT_MODELS = int(os.environ.get('MAX_CONCURRENT_MODELS', '1'))
-                current_model_count = len(running_models)
-
                 # 调试日志
                 if self._pending_list:
                     pending_models = [t.model for (_, _, t) in self._pending_list]
-                    system_logger.info(f"【任务队列】调试: running_models={running_models}, pending={pending_models}, 并发限制={MAX_CONCURRENT_MODELS}")
+                    system_logger.info(f"【任务队列】调试: running_models={running_models}, pending={pending_models}")
 
-                # 如果已达到并发限制，等待
-                if current_model_count >= MAX_CONCURRENT_MODELS:
-                    system_logger.info(f"【任务队列】已达到最大并发数({MAX_CONCURRENT_MODELS})，等待空闲: {list(running_models.keys())}")
-                    await asyncio.sleep(0.3)
-                    continue
-
-                # 一次性收集所有可执行的任务（不同模型的）
+                # 一次性收集所有可执行的任务（检查每个模型的并发限制）
                 tasks_to_dispatch = []
                 async with self._lock:
                     # 遍历 pending_list 找到所有可执行的任务
                     remaining = []
+                    # 跟踪每个模型在本次派发中已分配的任务数
+                    model_dispatch_count = {}
+
                     while self._pending_list:
                         item = heapq.heappop(self._pending_list)
                         _, _, candidate = item
-                        # 如果该模型没有正在运行的任务，则可以执行
-                        if running_models.get(candidate.model, 0) == 0:
+                        model = candidate.model
+
+                        # 获取该模型的并发限制
+                        max_concurrent = self._model_concurrency.get(model, 1)
+                        currently_running = running_models.get(model, 0)
+                        already_dispatched = model_dispatch_count.get(model, 0)
+
+                        # 检查是否还可以派发该模型的任务
+                        if currently_running + already_dispatched < max_concurrent:
                             tasks_to_dispatch.append(candidate)
-                            # 标记该模型即将运行（防止同模型任务同时派发）
-                            running_models[candidate.model] = 1
-                            system_logger.info(f"【任务队列】调试: 选中任务 {candidate.task_id} [模型={candidate.model}]")
+                            model_dispatch_count[model] = already_dispatched + 1
+                            system_logger.info(f"【任务队列】调试: 选中任务 {candidate.task_id} [模型={model}, 并发={currently_running + already_dispatched + 1}/{max_concurrent}]")
                         else:
                             remaining.append(item)
-                            system_logger.info(f"【任务队列】调试: 跳过任务 {candidate.task_id} [模型={candidate.model}] - 模型繁忙")
+                            system_logger.info(f"【任务队列】调试: 跳过任务 {candidate.task_id} [模型={model}] - 已达并发限制({max_concurrent})")
+
                     # 把剩下的放回去
                     for item in remaining:
                         heapq.heappush(self._pending_list, item)
 
                 if not tasks_to_dispatch:
                     # 所有任务都被同模型任务阻塞，等待一下
-                    system_logger.info(f"【任务队列】模型繁忙中，等待空闲: {list(running_models.keys())}")
+                    system_logger.info(f"【任务队列】所有模型繁忙中，等待空闲: {list(running_models.keys())}")
                     await asyncio.sleep(0.3)
                     continue
 
@@ -392,6 +469,11 @@ class TaskQueue:
                         self.processing_tasks[task.task_id] = task
                     self._save_task(task)
 
+                    # 更新模型状态
+                    model_state = self._model_states.get(task.model)
+                    if model_state:
+                        model_state.start_task(task.task_id)
+
                 for task in tasks_to_dispatch:
                     # 检查任务是否已被取消
                     if task.status == TaskStatus.CANCELLED.value:
@@ -399,6 +481,10 @@ class TaskQueue:
                         # 从processing_tasks中移除
                         async with self._lock:
                             self.processing_tasks.pop(task.task_id, None)
+                        # 恢复模型状态
+                        model_state = self._model_states.get(task.model)
+                        if model_state:
+                            model_state.end_task(success=False)
                         continue
 
                     system_logger.info(f"【任务队列】派发任务: {task.task_id} [模型={task.model}]")
@@ -413,15 +499,22 @@ class TaskQueue:
 
     async def _execute_task(self, task: TaskRecord):
         """执行单个任务"""
+        import time
+        start_time = time.time()
+
         handler = self._handlers.get(task.model)
         if not handler:
             task.status = TaskStatus.FAILED.value
             task.error_message = f"未找到模型 {task.model} 的处理器"
             task.completed_at = datetime.now().isoformat()
             self._save_task(task)
+            # 更新模型状态
+            model_state = self._model_states.get(task.model)
+            if model_state:
+                model_state.end_task(success=False)
             system_logger.error(f"【任务队列】任务执行失败 {task.task_id}: {task.error_message}")
             return
-        
+
         # 更新状态为执行中
         task.status = TaskStatus.PROCESSING.value
         task.started_at = datetime.now().isoformat()
@@ -429,9 +522,9 @@ class TaskQueue:
         async with self._lock:
             self.processing_tasks[task.task_id] = task
         self._save_task(task)
-        
+
         system_logger.info(f"【任务队列】开始执行任务: {task.task_id} [模型={task.model}, 模式={task.mode}]")
-        
+
         # 记录当前并发执行的任务数
         running_count = len(self.processing_tasks)
         running_models = set()
@@ -439,11 +532,12 @@ class TaskQueue:
             running_models.add(t.model)
         if running_count > 1:
             system_logger.info(f"【任务队列】当前并发任务数: {running_count}, 运行的模型: {running_models}")
-        
+
+        success = False
         try:
             # 执行处理函数
             result = await handler(task)
-            
+
             # 更新成功状态
             task.status = TaskStatus.COMPLETED.value
             task.audio_file = result.get('audio_file')
@@ -451,20 +545,26 @@ class TaskQueue:
             task.batch_results = result.get('batch_results')
             task.progress = 100
             task.completed_at = datetime.now().isoformat()
-            
+            success = True
+
             system_logger.info(f"【任务队列】任务完成: {task.task_id} | 文件: {task.audio_file}")
-            
+
         except Exception as e:
             task.status = TaskStatus.FAILED.value
             task.error_message = str(e)
             task.completed_at = datetime.now().isoformat()
             system_logger.error(f"【任务队列】任务失败 {task.task_id}: {e}")
-        
+
         finally:
+            execution_time = time.time() - start_time
             async with self._lock:
                 if task.task_id in self.processing_tasks:
                     del self.processing_tasks[task.task_id]
             self._save_task(task)
+            # 更新模型状态
+            model_state = self._model_states.get(task.model)
+            if model_state:
+                model_state.end_task(success=success, execution_time=execution_time)
             # 任务执行完后清理显存
             try:
                 import torch
@@ -522,6 +622,9 @@ class TaskQueue:
         for task in self.processing_tasks.values():
             processing_models[task.model] = processing_models.get(task.model, 0) + 1
 
+        # 获取模型状态
+        model_states = self.get_all_model_states()
+
         return {
             "pending_count": self._get_pending_count(),
             "processing_count": len(self.processing_tasks),
@@ -530,7 +633,9 @@ class TaskQueue:
             "max_workers": self.max_workers,
             "model_counts": model_counts,
             "processing_models": processing_models,
-            "concurrent_models": list(processing_models.keys())
+            "concurrent_models": list(processing_models.keys()),
+            "model_states": model_states,
+            "model_concurrency": self._model_concurrency
         }
     
     async def cancel_task(self, task_id: str, user_id: str) -> bool:

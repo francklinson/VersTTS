@@ -224,6 +224,26 @@ class MockAPI {
     await this.mockTaskCancel();
     await this.mockTaskRetry();
     await this.mockTaskDelete();
+    
+    // 添加一个通用的 fallback，捕获所有未匹配的 API 请求
+    await this.page.route('**/*', async (route) => {
+      const url = route.request().url();
+      // 只拦截 API 请求，不拦截静态资源
+      if (url.includes('/health') || 
+          url.includes('/speakers') || 
+          url.includes('/tasks/') || 
+          url.includes('/tts/') ||
+          url.includes('/batch/')) {
+        // 这些应该已经被上面的 mock 处理了，如果没处理，返回一个通用的成功响应
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, message: 'Mock 响应' }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
   }
 }
 

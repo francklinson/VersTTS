@@ -615,13 +615,116 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
         raise
 
 
+async def handle_pilottts_task(task: TaskRecord) -> Dict[str, Any]:
+    """处理PilotTTS任务 — 通过独立服务调用"""
+    try:
+        import aiohttp
+        from backend.services import get_speaker_by_id
+        from backend.config import PILOTTS_HOST, PILOTTS_PORT
+
+        await _check_subservice_health(
+            PILOTTS_HOST, PILOTTS_PORT,
+            "PilotTTS", "./start_server.sh start-pilottts"
+        )
+
+        params = task.params or {}
+        batch_count = params.get('batch_count', 1)
+
+        if batch_count > 1:
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
+            from backend.routers.batch import _batch_generate_pilottts
+            from backend.task_queue import progress_updater
+
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
+            result = await _batch_generate_pilottts(
+                text=task.text,
+                mode=task.mode,
+                count=batch_count,
+                speaker_id=params.get('speaker_id'),
+                emotion=params.get('emotion'),
+                language=params.get('language', 'zh'),
+                progress_callback=_progress_callback
+            )
+            audio_files = result.get('audio_files', [])
+            audio_urls = result.get('audio_urls', [])
+            if not audio_files:
+                raise Exception("批量生成未产生任何音频")
+            return _pack_batch_results(audio_files, audio_urls, "pilottts")
+
+        # 获取说话人
+        speaker_id = params.get('speaker_id')
+        speaker_name = None
+        ref_path = None
+        if speaker_id:
+            speaker = get_speaker_by_id(speaker_id)
+            if speaker:
+                ref_path = speaker.get("audio_path")
+                speaker_name = speaker.get("name")
+            if not ref_path or not os.path.exists(ref_path):
+                raise ValueError(f"参考音频不存在: {ref_path}")
+
+        # 构建请求数据
+        form_data = aiohttp.FormData()
+        form_data.add_field('text', task.text)
+        form_data.add_field('mode', task.mode)
+        form_data.add_field('ref_path', ref_path)
+        form_data.add_field('language', params.get('language', 'zh'))
+
+        emotion = params.get('emotion')
+        if task.mode == "emotion" and emotion:
+            form_data.add_field('emotion', emotion)
+
+        # 调用 PilotTTS 独立服务
+        url = f"http://{PILOTTS_HOST}:{PILOTTS_PORT}/tts"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=form_data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(f"PilotTTS服务错误: {error_text}")
+
+                result = await response.json()
+
+                if not result.get("success"):
+                    raise Exception(result.get("message", "PilotTTS生成失败"))
+
+                audio_path = result.get('audio_path')
+                if not audio_path or not os.path.exists(audio_path):
+                    raise Exception(f"PilotTTS返回的音频文件不存在: {audio_path}")
+
+                # 使用有意义的文件名并复制到 outputs 目录
+                filename = _generate_meaningful_filename("pilottts", task.mode, task.text,
+                                                         speaker_name=speaker_name)
+                dest_path = os.path.join(OUTPUTS_DIR, filename)
+                import shutil
+                shutil.copy2(audio_path, dest_path)
+
+                return {
+                    'audio_file': dest_path,
+                    'audio_url': f"/audio/{filename}"
+                }
+
+    except Exception as e:
+        system_logger.error(f"【任务处理器】PilotTTS任务失败: {e}")
+        raise
+
+
 def register_all_handlers():
     """注册所有任务处理器"""
     task_queue.register_handler("voxcpm", handle_voxcpm_task)
     task_queue.register_handler("qwen3tts", handle_qwen3tts_task)
     task_queue.register_handler("omnivoice", handle_omnivoice_task)
     task_queue.register_handler("cosyvoice", handle_cosyvoice_task)
-    
+    task_queue.register_handler("pilottts", handle_pilottts_task)
+
     system_logger.info("【任务处理器】所有处理器已注册")
 
 

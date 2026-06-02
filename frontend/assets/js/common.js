@@ -213,4 +213,4 @@ const VersTTS = {
 const checkHealth = () => VersTTS.checkHealth();
 const showStatus = (msg, err) => VersTTS.showStatus(msg, err);
 const initPage = () => VersTTS.initPage();
-const switchMode = (mode) => VersTTS.switchMode(mode);
+// 注意：switchMode 不再提供全局快捷方式，各页面应使用 VersTTS.switchMode() 或自行定义

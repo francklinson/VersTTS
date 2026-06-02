@@ -19,6 +19,10 @@ OMNIVOICE_PORT = int(os.environ.get("OMNIVOICE_PORT", "8001"))
 COSYVOICE_HOST = os.environ.get("COSYVOICE_HOST", "127.0.0.1")
 COSYVOICE_PORT = int(os.environ.get("COSYVOICE_PORT", "8002"))
 
+# PilotTTS 独立服务配置
+PILOTTS_HOST = os.environ.get("PILOTTS_HOST", "127.0.0.1")
+PILOTTS_PORT = int(os.environ.get("PILOTTS_PORT", "8003"))
+
 # 日志配置
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOG_MAX_SIZE = int(os.environ.get("LOG_MAX_SIZE", "50"))
@@ -72,6 +76,7 @@ MODEL_PATHS = {
     'voxcpm': os.path.join(MODELS_DIR, 'VoxCPM'),
     'omnivoice': os.path.join(MODELS_DIR, 'OmniVoice'),
     'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2', 'pretrained_models'),
+    'pilottts': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'pretrained_models'),
 }
 
 # ========== 算法路径配置 ==========
@@ -88,6 +93,9 @@ ALGORITHM_PATHS = {
     'indextts': os.path.join(ALGORITHMS_DIR, 'IndexTTS'),
     'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2'),
     'omnivoice': os.path.join(ALGORITHMS_DIR, 'OmniVoice'),
+    'pilottts': os.path.join(ALGORITHMS_DIR, 'PilotTTS'),
+    'pilottts_third_party': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'third_party'),
+    'pilottts_matcha': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'third_party', 'Matcha-TTS'),
 }
 
 # ========== F5-TTS 默认参考音频 ==========
@@ -117,6 +125,11 @@ def setup_algorithm_paths():
     f5tts_path = ALGORITHM_PATHS['f5tts']
     if f5tts_path not in sys.path:
         sys.path.insert(0, f5tts_path)
+
+    # PilotTTS 需要 third_party 和 Matcha-TTS 在 sys.path 最前面
+    for pp in [ALGORITHM_PATHS.get('pilottts_third_party'), ALGORITHM_PATHS.get('pilottts_matcha')]:
+        if pp and pp not in sys.path:
+            sys.path.insert(0, pp)
 
 
 def ensure_directories():

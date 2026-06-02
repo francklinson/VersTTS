@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PilotTTS - VersTTS</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/logo.svg">
+    <link rel="stylesheet" href="../assets/css/common.css?v=7">
+    <style>
+        .pilot-theme { --primary-color: #00bcd4; }
+        .btn-generate.pilottts { background: linear-gradient(135deg, #00bcd4 0%, #00838f 100%); }
+        .btn-generate.pilottts:hover { box-shadow: 0 8px 25px rgba(0, 188, 212, 0.4); }
+        .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; }
+        .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
+        .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
+        .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
+        .mode-tab.active { color: #00bcd4; border-bottom-color: #00bcd4; font-weight: 600; }
+        .mode-content { display: none; }
+        .mode-content.active { display: block; }
+        .info-box { padding: 12px 16px; margin-bottom: 20px; border-radius: 8px; font-size: 0.9rem; line-height: 1.6; }
+        .info-box.cyan { background: #e0f7fa; border-left: 4px solid #00bcd4; color: #006064; }
+        .info-box.orange { background: #fff3e0; border-left: 4px solid #ff9800; color: #e65100; }
+        .info-box.green { background: #e8f5e9; border-left: 4px solid #4caf50; color: #1b5e20; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #e0f7fa; border-radius: 8px; border-left: 4px solid #00bcd4; }
+        .speaker-section label { font-weight: 600; color: #006064; display: block; margin-bottom: 10px; }
+        .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
+        .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
+        .emotion-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
+        .emotion-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .emotion-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+        @media (max-width: 768px) { .emotion-grid { grid-template-columns: repeat(3, 1fr); } }
+        .emotion-chip { padding: 8px 10px; background: #ffe0b2; border-radius: 8px; font-size: 0.82rem; color: #e65100; cursor: pointer; text-align: center; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
+        .emotion-chip:hover { background: #ffcc80; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .emotion-chip.selected { background: #ff9800; color: white; border-color: #e65100; box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2); }
+        .dialect-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50; }
+        .dialect-section label { font-weight: 600; color: #1b5e20; display: block; margin-bottom: 10px; }
+        .paralang-section { margin-bottom: 20px; padding: 15px; background: #ede7f6; border-radius: 8px; border-left: 4px solid #7c4dff; }
+        .paralang-section label { font-weight: 600; color: #311b92; display: block; margin-bottom: 10px; }
+        .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .tag-chip { padding: 8px 16px; background: #d1c4e9; border-radius: 8px; font-size: 0.85rem; color: #4527a0; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
+        .tag-chip:hover { background: #b39ddb; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .tag-chip:active { transform: scale(0.95); }
+        .input-section { margin-bottom: 20px; }
+        .input-section textarea { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; font-family: inherit; resize: vertical; min-height: 100px; box-sizing: border-box; }
+        .input-section textarea:focus { outline: none; border-color: #00bcd4; box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.1); }
+        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
+        .batch-count-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .batch-count-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+        .batch-count-hint { font-size: 0.85rem; color: #888; margin-top: 8px; }
+        .button-group { display: flex; gap: 15px; margin-bottom: 20px; }
+        .button-group button { flex: 1; padding: 14px 24px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 15px 0; display: none; }
+        .progress-bar.active { display: block; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #00bcd4, #4dd0e1); width: 0%; transition: width 0.3s ease; }
+        .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
+        .progress-text.active { display: block; }
+        .batch-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
+        .batch-result-item { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent; transition: all 0.3s; }
+        .batch-result-item:hover { border-color: #00bcd4; box-shadow: 0 4px 15px rgba(0, 188, 212, 0.2); }
+        .batch-result-item.selected { border-color: #ff9800; background: #fff8e1; }
+        .batch-result-item .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .batch-result-item .result-number { font-weight: 700; color: #00bcd4; font-size: 1.1rem; }
+        .batch-result-item .select-checkbox { width: 20px; height: 20px; cursor: pointer; }
+        .batch-result-item audio { width: 100%; margin-bottom: 10px; }
+        .batch-result-item .result-actions { display: flex; gap: 10px; }
+        .batch-result-item .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-align: center; }
+        .btn-download-small { background: #4caf50; color: white; }
+        .btn-download-small:hover { background: #45a049; }
+        .batch-actions { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 10px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
+        .batch-actions button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-select-all { background: #2196f3; color: white; }
+        .btn-select-all:hover { background: #1976d2; }
+        .btn-download-selected { background: #ff9800; color: white; }
+        .btn-download-selected:hover { background: #f57c00; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+        .selected-count { color: #666; font-size: 0.9rem; }
+        .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+    </style>
+</head>
+<body class="pilot-theme">
+    <div class="sound-waves">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="floating-notes">
+        <div class="note">♪</div><div class="note">♫</div><div class="note">♬</div><div class="note">♭</div>
+        <div class="note">♮</div><div class="note">♯</div><div class="note">𝄞</div><div class="note">𝄢</div>
+    </div>
+
+    <div class="app-container">
+        <div class="header-actions">
+            <div class="health-status">
+                <div class="health-dot online" id="healthDot"></div>
+                <span id="healthText">在线</span>
+            </div>
+        </div>
+        <div class="container">
+            <a href="../index.html" class="nav-back">← 返回模型列表</a>
+            <header>
+                <h1>🎤 PilotTTS</h1>
+                <p>基于LLM的全开源TTS系统 | 零样本克隆 · 11种情感 · 14种方言 · 副语言控制</p>
+            </header>
+
+            <div class="main-interface">
+                <div class="model-badge"><span>🎤</span><span>PilotTTS</span></div>
+
+                <div id="statusMessage" class="status-message"></div>
+
+                <!-- 模式选择标签页 -->
+                <div class="mode-tabs">
+                    <button class="mode-tab active" onclick="switchMode('voice_clone')">🎙️ 声音克隆</button>
+                    <button class="mode-tab" onclick="switchMode('emotion')">😊 情感合成</button>
+                    <!-- 方言合成暂未开源，后续开放 -->
+                    <!-- <button class="mode-tab" onclick="switchMode('dialect')">🗣️ 方言合成</button> -->
+                    <button class="mode-tab" onclick="switchMode('paralanguage')">💬 副语言合成</button>
+                </div>
+
+                <!-- 模式说明 -->
+                <div id="mode-voice_clone" class="mode-content active">
+                    <div class="info-box cyan">
+                        <strong>💡 声音克隆模式：</strong>使用基础模型 (pilot_tts.pt)，提供参考音频即可零样本克隆任意说话人声音。适用于中文普通话。
+                    </div>
+                </div>
+
+                <div id="mode-emotion" class="mode-content">
+                    <div class="info-box orange">
+                        <strong>😊 情感合成模式：</strong>使用指令模型 (pilot_tts_instruct.pt)，支持11种情感控制。请先选择情感标签，再输入文本。
+                    </div>
+                </div>
+
+                <!-- 方言模式暂未开源，后续开放 -->
+                <!--
+                <div id="mode-dialect" class="mode-content">
+                    <div class="info-box green">
+                        <strong>🗣️ 方言合成模式：</strong>使用指令模型，支持14种中文方言。选择目标方言后输入对应方言文本效果更佳。
+                    </div>
+                </div>
+                -->
+
+                <div id="mode-paralanguage" class="mode-content">
+                    <div class="info-box orange">
+                        <strong>💬 副语言合成模式：</strong>在文本中插入副语言标签（如笑声、哭声、咳嗽、呼吸）。点击下方标签插入，或手动输入 &lt;|LAUGH|&gt; 等标签。
+                    </div>
+                </div>
+
+                <!-- 情感选择 (emotion模式) -->
+                <div id="emotionSection" class="emotion-section" style="display:none;">
+                    <label>🎭 选择情感</label>
+                    <div class="emotion-grid" id="emotionGrid"></div>
+                </div>
+
+                <!-- 方言选择暂时屏蔽，等待模型权重开源 -->
+                <!--
+                <div id="dialectSection" class="dialect-section" style="display:none;">
+                    <label>🗣️ 选择方言</label>
+                    <select id="dialectSelect" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:1rem;background:white;">
+                        <option value="zh-dongbei">东北话</option>
+                        <option value="zh-shandong">山东话</option>
+                        <option value="zh-henan">河南话</option>
+                        <option value="zh-shan1xi">山西话</option>
+                        <option value="zh-minnan">闽南语</option>
+                        <option value="zh-gansu">甘肃话</option>
+                        <option value="zh-ningxia">宁夏话</option>
+                        <option value="zh-shanghai">上海话</option>
+                        <option value="zh-chongqing">重庆话</option>
+                        <option value="zh-hubei">湖北话</option>
+                        <option value="zh-hunan">湖南话</option>
+                        <option value="zh-jiangxi">江西话</option>
+                        <option value="zh-guizhou">贵州话</option>
+                        <option value="zh-yunnan">云南话</option>
+                    </select>
+                </div>
+                -->
+
+                <!-- 副语言标签 (paralanguage模式) -->
+                <div id="paralangSection" class="paralang-section" style="display:none;">
+                    <label>💬 副语言标签（在文本中插入）</label>
+                    <div class="tag-grid">
+                        <span class="tag-chip" onclick="insertTag('<|LAUGH|>')">😂 笑声</span>
+                        <span class="tag-chip" onclick="insertTag('<|CRY|>')">😢 哭声</span>
+                        <span class="tag-chip" onclick="insertTag('<|BREATH|>')">💨 呼吸</span>
+                        <span class="tag-chip" onclick="insertTag('<|COUGH|>')">🤧 咳嗽</span>
+                    </div>
+                </div>
+
+                <!-- 说话人选择 -->
+                <div class="speaker-section">
+                    <label>🎙️ 选择说话人（参考音频来源）</label>
+                    <div class="speaker-select-wrapper">
+                        <select id="speakerSelect" class="speaker-select" onchange="onSpeakerChange()">
+                            <option value="">-- 请选择说话人 --</option>
+                        </select>
+                    </div>
+                    <div id="speakerInfo" class="speaker-info-display" style="display:none;"></div>
+                    <div id="noSpeakerWarning" class="no-speaker-warning" style="display:none;">
+                        ⚠️ 暂无可用说话人，请先在说话人管理中上传参考音频
+                    </div>
+                </div>
+
+                <!-- 合成文本 -->
+                <div class="input-section">
+                    <label for="textInput">合成文本</label>
+                    <textarea id="textInput" placeholder="请输入要合成的中文文本..."></textarea>
+                </div>
+
+                <!-- 批量生成数量设置 -->
+                <div class="batch-count-section">
+                    <label>🎲 批量生成数量</label>
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="5" max="100" onblur="validateBatchCount()">
+                    <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-100个）</p>
+                </div>
+
+                <!-- 进度条 -->
+                <div id="progressBar" class="progress-bar">
+                    <div id="progressBarFill" class="progress-bar-fill"></div>
+                </div>
+                <div id="progressText" class="progress-text">准备生成...</div>
+
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button class="btn-generate pilottts" id="generateBtn" onclick="addToQueue()">
+                        <span id="btnText">🎙️ 生成语音</span>
+                    </button>
+                    <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
+                        <span id="batchBtnText">🎲 批量生成</span>
+                    </button>
+                </div>
+                <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">
+                    💡 点击"生成语音"将自动加入任务队列
+                </p>
+                <div style="margin-top: 10px;">
+                    <button class="btn-secondary" onclick="window.location.href='tasks.html'" style="background: #f0f0f0; color: #333; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
+                        📋 查看任务队列
+                    </button>
+                </div>
+
+                <!-- 单条生成结果 -->
+                <div id="resultSection" class="result-section" style="display: none;">
+                    <h3>🎵 生成结果</h3>
+                    <div id="resultStatus" style="margin-bottom: 10px; padding: 10px; border-radius: 6px; font-size: 0.9rem;"></div>
+                    <audio id="audioPlayer" class="audio-player" controls style="display:none; width:100%;"></audio>
+                    <a id="downloadLink" class="btn-download" href="#" download style="display: none; margin-top: 10px;"><span>⬇️</span><span>下载音频</span></a>
+                </div>
+
+                <!-- 批量生成结果 -->
+                <div id="batchResultSection" style="display: none;">
+                    <h3>🎲 批量生成结果</h3>
+                    <div class="batch-actions">
+                        <button class="btn-select-all" onclick="toggleSelectAll()">全选/取消全选</button>
+                        <button class="btn-download-selected" onclick="downloadSelectedBatch()">⬇️ 下载选中</button>
+                        <span class="selected-count">已选择 <span id="selectedCount">0</span> 个</span>
+                    </div>
+                    <div id="batchResults" class="batch-results"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/js/common.js"></script>
+    <script>
+        let currentMode = 'voice_clone';
+        let selectedEmotion = '';
+        let pollingInterval = null;
+        let savedSpeakers = [];
+        let selectedSpeakerId = null;
+        let batchResults = [];
+        let selectedFiles = new Set();
+
+        const emotions = [
+            {tag:'happy',label:'😊 开心'},{tag:'sad',label:'😢 悲伤'},{tag:'angry',label:'😠 愤怒'},
+            {tag:'surprise',label:'😲 惊讶'},{tag:'fear',label:'😨 恐惧'},{tag:'disgust',label:'🤢 厌恶'},
+            {tag:'serious',label:'😐 严肃'},{tag:'concern',label:'🤔 关切'},{tag:'blue',label:'😔 忧郁'},
+            {tag:'disdain',label:'😏 轻蔑'},{tag:'neutral',label:'😶 中性'},{tag:'psychology',label:'🧠 心理'}
+        ];
+
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            buildEmotionGrid();
+            loadSpeakers();
+            VersTTS.checkHealth();
+        });
+
+        function buildEmotionGrid() {
+            const grid = document.getElementById('emotionGrid');
+            grid.innerHTML = emotions.map(e => `
+                <div class="emotion-chip" data-emotion="${e.tag}" onclick="selectEmotion('${e.tag}', this)">
+                    ${e.label}
+                </div>
+            `).join('');
+        }
+
+        // ==================== 模式切换 ====================
+        function switchMode(mode) {
+            currentMode = mode;
+            selectedEmotion = '';
+
+            // 标签页切换
+            document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.remove('active'));
+            const targetTab = document.querySelector(`.mode-tab[onclick*="${mode}"]`);
+            if (targetTab) targetTab.classList.add('active');
+
+            // 内容区切换
+            document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+            const content = document.getElementById(`mode-${mode}`);
+            if (content) content.classList.add('active');
+
+            // 条件区域
+            document.getElementById('emotionSection').style.display = mode === 'emotion' ? 'block' : 'none';
+            // 方言暂时屏蔽
+            // document.getElementById('dialectSection').style.display = mode === 'dialect' ? 'block' : 'none';
+            document.getElementById('paralangSection').style.display = mode === 'paralanguage' ? 'block' : 'none';
+
+            // 重置情感选中
+            document.querySelectorAll('.emotion-chip').forEach(e => e.classList.remove('selected'));
+            selectedEmotion = '';
+        }
+
+        function selectEmotion(tag, el) {
+            document.querySelectorAll('.emotion-chip').forEach(e => e.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedEmotion = tag;
+        }
+
+        function insertTag(tag) {
+            const input = document.getElementById('textInput');
+            const start = input.selectionStart;
+            const end = input.selectionEnd;
+            const text = input.value;
+            input.value = text.substring(0, start) + tag + text.substring(end);
+            input.focus();
+            input.setSelectionRange(start + tag.length, start + tag.length);
+        }
+
+        // ==================== 说话人 ====================
+        async function loadSpeakers() {
+            const select = document.getElementById('speakerSelect');
+            if (!select) {
+                console.error('[PilotTTS] 找不到 speakerSelect 元素');
+                return;
+            }
+
+            try {
+                console.log('[PilotTTS] 加载说话人列表...');
+                const response = await fetch(`${VersTTS.API_BASE}/speakers`);
+                console.log('[PilotTTS] 说话人API响应:', response.status, response.statusText);
+
+                if (!response.ok) {
+                    console.error('[PilotTTS] 说话人API请求失败: HTTP', response.status);
+                    document.getElementById('noSpeakerWarning').style.display = 'block';
+                    return;
+                }
+
+                const data = await response.json();
+                console.log('[PilotTTS] 说话人数据:', data);
+
+                // 保留当前选中值
+                const currentValue = select.value;
+                select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
+
+                if (data.success && data.speakers && data.speakers.length > 0) {
+                    savedSpeakers = data.speakers;
+                    document.getElementById('noSpeakerWarning').style.display = 'none';
+                    savedSpeakers.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.id;
+                        opt.textContent = s.name;
+                        select.appendChild(opt);
+                    });
+                    // 恢复之前选中的值（如果还存在）
+                    if (currentValue && savedSpeakers.some(s => s.id === currentValue)) {
+                        select.value = currentValue;
+                    } else {
+                        selectedSpeakerId = null;
+                        document.getElementById('speakerInfo').style.display = 'none';
+                    }
+                    console.log('[PilotTTS] 说话人列表加载完成，共', savedSpeakers.length, '个');
+                } else {
+                    document.getElementById('noSpeakerWarning').style.display = 'block';
+                    selectedSpeakerId = null;
+                    document.getElementById('speakerInfo').style.display = 'none';
+                    console.log('[PilotTTS] 说话人列表为空');
+                }
+            } catch (e) {
+                console.error('[PilotTTS] 加载说话人失败:', e);
+                document.getElementById('noSpeakerWarning').style.display = 'block';
+            }
+        }
+
+        // 说话人选择变更
+        function onSpeakerChange() {
+            const select = document.getElementById('speakerSelect');
+            const speakerInfo = document.getElementById('speakerInfo');
+            selectedSpeakerId = select.value || null;
+
+            if (selectedSpeakerId) {
+                const speaker = savedSpeakers.find(s => s.id === selectedSpeakerId);
+                if (speaker) {
+                    let infoHtml = `<strong>已选择:</strong> ${speaker.name}<br>`;
+                    infoHtml += `<small>创建于: ${formatDate(speaker.created_at)}</small>`;
+                    if (speaker.has_reference_text && speaker.reference_text) {
+                        infoHtml += `<br><small>参考文本: ${speaker.reference_text}</small>`;
+                    }
+                    speakerInfo.innerHTML = infoHtml;
+                    speakerInfo.style.display = 'block';
+                }
+            } else {
+                speakerInfo.style.display = 'none';
+            }
+        }
+
+        // 格式化日期（供说话人模块使用）
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ==================== 单次生成（加入任务队列） ====================
+        async function addToQueue() {
+            const text = document.getElementById('textInput').value.trim();
+            const speakerId = document.getElementById('speakerSelect').value;
+
+            if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
+            if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
+            if (currentMode === 'emotion' && !selectedEmotion) { VersTTS.showStatus('请选择情感标签', true); return; }
+
+            document.getElementById('audioPlayer').style.display = 'none';
+            document.getElementById('downloadLink').style.display = 'none';
+            document.getElementById('batchResultSection').style.display = 'none';
+            stopPolling();
+
+            try {
+                const formData = buildRequestFormData();
+
+                const response = await fetch(`${VersTTS.API_BASE}/tasks/submit`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const queueMsg = data.queue_position !== null ? ` (队列位置: ${data.queue_position + 1})` : '';
+                    VersTTS.showStatus(`已加入生成队列${queueMsg}，生成完成后将自动显示结果...`);
+                    startPollingTask(data.task_id);
+                } else {
+                    throw new Error(data.message || data.detail || '提交失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('提交任务失败: ' + error.message, true);
+            }
+        }
+
+        // ==================== 批量生成 ====================
+        async function batchGenerateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            const speakerId = document.getElementById('speakerSelect').value;
+
+            // 验证数量
+            validateBatchCount();
+            const count = parseInt(document.getElementById('batchCount').value);
+
+            if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
+            if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
+            if (currentMode === 'emotion' && !selectedEmotion) { VersTTS.showStatus('请选择情感标签', true); return; }
+
+            const btn = document.getElementById('batchGenerateBtn');
+            const btnText = document.getElementById('batchBtnText');
+            VersTTS.setButtonLoading(btn, btnText, true);
+
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('model', 'pilottts');
+                formData.append('mode', currentMode);
+                formData.append('count', count);
+                formData.append('speaker_id', speakerId);
+                if (currentMode === 'emotion') formData.append('emotion', selectedEmotion);
+                formData.append('language', 'zh');
+
+                const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    VersTTS.showStatus(`已提交批量生成任务到队列（数量: ${data.count}），请前往任务列表查看进度`);
+                    document.getElementById('batchResultSection').style.display = 'none';
+                } else {
+                    throw new Error(data.message || data.detail || '批量生成失败');
+                }
+            } catch (error) {
+                VersTTS.showStatus('批量生成失败: ' + error.message, true);
+            } finally {
+                VersTTS.setButtonLoading(btn, btnText, false);
+            }
+        }
+
+        // ==================== 构建请求参数 ====================
+        function buildRequestFormData() {
+            const formData = new FormData();
+            formData.append('text', document.getElementById('textInput').value.trim());
+            formData.append('model', 'pilottts');
+            formData.append('mode', currentMode);
+            formData.append('speaker_id', document.getElementById('speakerSelect').value);
+            if (currentMode === 'emotion') formData.append('emotion', selectedEmotion);
+            if (currentMode === 'dialect') formData.append('language', document.getElementById('dialectSelect').value);
+            return formData;
+        }
+
+        // ==================== 批量生成数量验证 ====================
+        function validateBatchCount() {
+            const input = document.getElementById('batchCount');
+            let value = parseInt(input.value);
+
+            // 如果不是有效数字，默认为10
+            if (isNaN(value)) {
+                value = 10;
+            }
+
+            // 限制范围在5-100之间
+            if (value < 5) {
+                value = 5;
+            } else if (value > 100) {
+                value = 100;
+            }
+
+            input.value = value;
+            return value;
+        }
+
+        // ==================== 任务轮询 ====================
+        function startPollingTask(taskId) {
+            stopPolling();
+            let attempts = 0;
+            const maxAttempts = 100;
+
+            pollingInterval = setInterval(async () => {
+                attempts++;
+                try {
+                    const resp = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/status`);
+                    const data = await resp.json();
+                    const resultStatus = document.getElementById('resultStatus');
+
+                    if (data.status === 'completed') {
+                        stopPolling();
+                        displayTaskResult(data);
+                    } else if (data.status === 'failed') {
+                        stopPolling();
+                        resultStatus.innerHTML = `❌ 生成失败: ${data.error_message || '未知错误'}`;
+                        resultStatus.style.background = '#ffebee';
+                        resultStatus.style.color = '#c62828';
+                        document.getElementById('generateBtn').disabled = false;
+                    } else if (data.status === 'processing') {
+                        resultStatus.innerHTML = '🔧 正在生成音频，请稍候...';
+                        resultStatus.style.background = '#fff3e0';
+                        resultStatus.style.color = '#e65100';
+                    }
+
+                    if (attempts >= maxAttempts) {
+                        stopPolling();
+                        resultStatus.innerHTML = '⏰ 任务处理时间较长，请前往 <a href="tasks.html">任务列表</a> 查看结果';
+                        resultStatus.style.background = '#fff3e0';
+                        resultStatus.style.color = '#e65100';
+                        document.getElementById('generateBtn').disabled = false;
+                    }
+                } catch (e) {
+                    console.error('轮询失败:', e);
+                }
+            }, 3000);
+        }
+
+        function stopPolling() {
+            if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+        }
+
+        function displayTaskResult(taskData) {
+            const resultStatus = document.getElementById('resultStatus');
+            resultStatus.innerHTML = '✅ 生成完成！';
+            resultStatus.style.background = '#e8f5e9';
+            resultStatus.style.color = '#2e7d32';
+
+            if (taskData.audio_url) {
+                const audioUrl = taskData.audio_url.startsWith('http')
+                    ? taskData.audio_url
+                    : `${VersTTS.API_BASE}${taskData.audio_url}`;
+
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = audioUrl;
+                audioPlayer.style.display = 'block';
+
+                const downloadLink = document.getElementById('downloadLink');
+                downloadLink.href = audioUrl;
+                downloadLink.download = `pilottts_${currentMode}_${Date.now()}.wav`;
+                downloadLink.style.display = 'inline-flex';
+            }
+            document.getElementById('generateBtn').disabled = false;
+        }
+
+        // ==================== 批量结果管理 ====================
+        function toggleSelectAll() {
+            if (selectedFiles.size === batchResults.length) {
+                selectedFiles.clear();
+            } else {
+                batchResults.forEach(r => selectedFiles.add(r.filename));
+            }
+            renderBatchResults();
+        }
+
+        function toggleSelectFile(filename) {
+            if (selectedFiles.has(filename)) {
+                selectedFiles.delete(filename);
+            } else {
+                selectedFiles.add(filename);
+            }
+            renderBatchResults();
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedFiles.size;
+        }
+
+        function renderBatchResults() {
+            const container = document.getElementById('batchResults');
+            container.innerHTML = batchResults.map((r, i) => `
+                <div class="batch-result-item${selectedFiles.has(r.filename) ? ' selected' : ''}">
+                    <div class="result-header">
+                        <span class="result-number">#${i + 1}</span>
+                        <input type="checkbox" class="select-checkbox"
+                               ${selectedFiles.has(r.filename) ? 'checked' : ''}
+                               onchange="toggleSelectFile('${r.filename}')">
+                    </div>
+                    <audio controls src="${r.url}"></audio>
+                    <div class="result-actions">
+                        <a class="btn-small btn-download-small" href="${r.url}" download="${r.filename}">⬇️ 下载</a>
+                    </div>
+                </div>
+            `).join('');
+            updateSelectedCount();
+        }
+
+        async function downloadSelectedBatch() {
+            if (selectedFiles.size === 0) { VersTTS.showStatus('请先选择要下载的音频', true); return; }
+            try {
+                const formData = new FormData();
+                Array.from(selectedFiles).forEach(f => formData.append('files', f));
+                formData.append('zip_name', `pilottts_batch_${Date.now()}.zip`);
+
+                const resp = await fetch(`${VersTTS.API_BASE}/tts/batch/download-zip`, { method: 'POST', body: formData });
+                if (resp.ok) {
+                    const blob = await resp.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `pilottts_batch_${Date.now()}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    VersTTS.showStatus(`已下载 ${selectedFiles.size} 个音频的ZIP包`);
+                } else {
+                    throw new Error('下载失败');
+                }
+            } catch (e) {
+                VersTTS.showStatus('批量下载失败: ' + e.message, true);
+            }
+        }
+    </script>
+
+</body>
+</html>

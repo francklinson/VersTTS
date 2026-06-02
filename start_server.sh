@@ -26,6 +26,8 @@ MAIN_GPU="${MAIN_GPU:-0}"
 OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
 # CosyVoice 独立服务 GPU 配置
 COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
+# PilotTTS 独立服务 GPU 配置
+PILOTTS_GPU="${PILOTTS_GPU:-0}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -45,6 +47,13 @@ COSYVOICE_PORT="${COSYVOICE_PORT:-8002}"
 COSYVOICE_PID_FILE="$SCRIPT_DIR/.cosyvoice.pid"
 COSYVOICE_LOG_FILE="$SCRIPT_DIR/logs/cosyvoice_service.log"
 COSYVOICE_SCRIPT="$SCRIPT_DIR/cosyvoice_service.py"
+
+# PilotTTS 独立服务配置
+PILOTTS_HOST="127.0.0.1"
+PILOTTS_PORT="${PILOTTS_PORT:-8003}"
+PILOTTS_PID_FILE="$SCRIPT_DIR/.pilottts.pid"
+PILOTTS_LOG_FILE="$SCRIPT_DIR/logs/pilottts_service.log"
+PILOTTS_SCRIPT="$SCRIPT_DIR/pilottts_service.py"
 
 # HTTPS 配置（留空则使用 HTTP）
 # 生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
@@ -89,6 +98,7 @@ OFFLINE_MODE=false
 PRELOAD_MODELS="${PRELOAD_MODELS:-qwen3tts_base,voxcpm}"
 PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加载
+PRELOAD_PILOTTS="${PRELOAD_PILOTTS:-0}"       # 1=启动时加载, 0=按需加载
 
 # 颜色定义
 RED='\033[0;31m'
@@ -140,6 +150,12 @@ usage() {
     echo "  stop-cosyvoice       停止 CosyVoice 独立服务"
     echo "  restart-cosyvoice    重启 CosyVoice 独立服务"
     echo "  status-cosyvoice     查看 CosyVoice 服务状态"
+    echo ""
+    echo "PilotTTS 独立服务命令:"
+    echo "  start-pilottts       启动 PilotTTS 独立服务"
+    echo "  stop-pilottts        停止 PilotTTS 独立服务"
+    echo "  restart-pilottts     重启 PilotTTS 独立服务"
+    echo "  status-pilottts      查看 PilotTTS 服务状态"
     echo ""
     echo "选项 (仅 start/restart 有效):"
     echo "  -h, --help       显示帮助信息"
@@ -243,6 +259,7 @@ do_start() {
     export PRELOAD_MODELS
     export PRELOAD_OMNIVOICE
     export PRELOAD_COSYVOICE
+    export PRELOAD_PILOTTS
 
     # 检查 Python
     PYTHON_VERSION=$(python --version 2>&1)
@@ -389,6 +406,50 @@ else:
                     fi
                 fi
 
+                # 自动启动 PilotTTS 独立服务
+                echo "----------------------------------------"
+                print_step "正在检查 PilotTTS 独立服务..."
+
+                if is_pilottts_running; then
+                    local pt_pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+                    print_success "PilotTTS 已在运行 (PID: $pt_pid)"
+                else
+                    if [ ! -f "$PILOTTS_SCRIPT" ]; then
+                        print_warn "PilotTTS 服务脚本不存在，跳过"
+                    else
+                        print_step "正在启动 PilotTTS 独立服务 (端口: $PILOTTS_PORT, GPU: $PILOTTS_GPU, 预加载: $PRELOAD_PILOTTS)..."
+
+                        cd "$SCRIPT_DIR"
+                        CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
+                        local pt_pid=$!
+                        echo "$pt_pid" > "$PILOTTS_PID_FILE"
+
+                        if [ "$PRELOAD_PILOTTS" = "1" ]; then
+                            local pt_max_wait=120
+                        else
+                            local pt_max_wait=30
+                        fi
+
+                        local pt_count=0
+                        local pt_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        while [ $pt_count -lt $pt_max_wait ]; do
+                            if kill -0 "$pt_pid" 2>/dev/null; then
+                                if curl -s "http://127.0.0.1:$PILOTTS_PORT/health" >/dev/null 2>&1; then
+                                    print_success "PilotTTS 已启动 (PID: $pt_pid, 端口: $PILOTTS_PORT)"
+                                    break
+                                fi
+                            else
+                                print_warn "PilotTTS 启动失败，请检查日志: $PILOTTS_LOG_FILE"
+                                rm -f "$PILOTTS_PID_FILE"
+                                break
+                            fi
+                            sleep 1
+                            pt_count=$((pt_count + 1))
+                            printf "\r  %s  PilotTTS 启动中... %d/%d 秒" "${pt_spin:$((pt_count % 10)):1}" "$pt_count" "$pt_max_wait"
+                        done
+                    fi
+                fi
+
                 # 自动启动 CosyVoice 独立服务
                 echo "----------------------------------------"
                 print_step "正在检查 CosyVoice 独立服务..."
@@ -441,6 +502,7 @@ else:
                 print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT, GPU: $MAIN_GPU)"
                 print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)"
                 print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)"
+                print_info "PilotTTS 服务: 运行中 (PID: $pt_pid, 端口: $PILOTTS_PORT, GPU: $PILOTTS_GPU)"
                 print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
                 echo ""
@@ -542,6 +604,10 @@ do_stop() {
     do_stop_omnivoice
 
     echo ""
+    # 停止 PilotTTS 独立服务
+    do_stop_pilottts
+
+    echo ""
     # 停止 CosyVoice 独立服务
     do_stop_cosyvoice
 }
@@ -604,8 +670,13 @@ do_restart() {
     echo "----------------------------------------"
     do_stop_omnivoice
 
-    # 阶段1.6: 停止 CosyVoice
-    echo "【阶段 3/4】停止 CosyVoice 服务"
+    # 阶段1.6: 停止 PilotTTS
+    echo "【阶段 3/5】停止 PilotTTS 服务"
+    echo "----------------------------------------"
+    do_stop_pilottts
+
+    # 阶段1.7: 停止 CosyVoice
+    echo "【阶段 4/5】停止 CosyVoice 服务"
     echo "----------------------------------------"
     do_stop_cosyvoice
 
@@ -613,8 +684,8 @@ do_restart() {
     print_success "全部服务停止完成"
     echo ""
 
-    # 阶段2: 启动服务（会自动启动 OmniVoice 和 CosyVoice）
-    echo "【阶段 4/4】启动全部服务"
+    # 阶段2: 启动服务（会自动启动 OmniVoice、PilotTTS 和 CosyVoice）
+    echo "【阶段 5/5】启动全部服务"
     echo "----------------------------------------"
     do_start
 }
@@ -708,6 +779,27 @@ do_status() {
         print_warn "OmniVoice 未运行"
     fi
 
+    # 检查 PilotTTS 服务状态
+    echo "----------------------------------------"
+    print_step "PilotTTS 独立服务状态:"
+    echo "----------------------------------------"
+    if is_pilottts_running; then
+        local pt_pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+        print_success "PilotTTS 运行中 (PID: $pt_pid, 端口: $PILOTTS_PORT)"
+
+        local pt_health
+        pt_health=$(curl -s "http://127.0.0.1:$PILOTTS_PORT/health" 2>/dev/null || echo "")
+        if [ -n "$pt_health" ]; then
+            print_success "PilotTTS 健康检查通过"
+            echo "$pt_health" | python -m json.tool 2>/dev/null || echo "$pt_health"
+        else
+            print_error "PilotTTS 健康检查失败"
+        fi
+        print_info "PilotTTS 日志: $PILOTTS_LOG_FILE"
+    else
+        print_warn "PilotTTS 未运行"
+    fi
+
     # 检查 CosyVoice 服务状态
     echo "----------------------------------------"
     print_step "CosyVoice 独立服务状态:"
@@ -715,7 +807,7 @@ do_status() {
     if is_cosyvoice_running; then
         local cv_pid=$(cat "$COSYVOICE_PID_FILE" 2>/dev/null)
         print_success "CosyVoice 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
-        
+
         local cv_health
         cv_health=$(curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" 2>/dev/null || echo "")
         if [ -n "$cv_health" ]; then
@@ -1196,6 +1288,239 @@ do_status_cosyvoice() {
     print_info "查看日志: tail -f $COSYVOICE_LOG_FILE"
 }
 
+# ============ PilotTTS 独立服务管理 ============
+
+# 检查 PilotTTS 服务是否运行
+is_pilottts_running() {
+    if [ -f "$PILOTTS_PID_FILE" ]; then
+        local pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 启动 PilotTTS 独立服务
+do_start_pilottts() {
+    echo ""
+    echo "========================================"
+    echo "      PilotTTS 独立服务启动"
+    echo "========================================"
+    echo ""
+
+    # 检查是否已在运行
+    if is_pilottts_running; then
+        local current_pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+        print_warn "PilotTTS 服务已在运行中"
+        print_info "当前PID: $current_pid"
+        print_info "服务端口: $PILOTTS_PORT"
+        print_info "健康检查: http://127.0.0.1:$PILOTTS_PORT/health"
+        exit 0
+    fi
+
+    # 检查服务脚本是否存在
+    if [ ! -f "$PILOTTS_SCRIPT" ]; then
+        print_error "PilotTTS 服务脚本不存在: $PILOTTS_SCRIPT"
+        exit 1
+    fi
+
+    # 检查 transformers4 目录
+    if [ ! -d "$SCRIPT_DIR/lib/transformers4" ]; then
+        print_error "transformers4 目录不存在: $SCRIPT_DIR/lib/transformers4"
+        print_info "请先安装: pip install --target $SCRIPT_DIR/lib/transformers4 transformers==4.51.3"
+        exit 1
+    fi
+
+    print_step "激活虚拟环境..."
+    source "$VENV_PATH/bin/activate"
+    print_success "虚拟环境已激活"
+
+    # 加载离线模式环境变量
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用"
+    fi
+
+    # 导出环境变量供 PilotTTS 服务使用
+    export PILOTTS_HOST
+    export PILOTTS_PORT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+    export HF_HOME
+    export HUGGINGFACE_HUB_CACHE
+    export TRANSFORMERS_CACHE
+    export PRELOAD_PILOTTS
+
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    print_info "Python 版本: $(python --version 2>&1)"
+    echo ""
+    print_step "启动 PilotTTS 独立服务..."
+    print_info "服务端口: $PILOTTS_PORT"
+    print_info "GPU设备: $PILOTTS_GPU"
+    print_info "日志文件: $PILOTTS_LOG_FILE"
+    echo ""
+
+    # 后台启动
+    cd "$SCRIPT_DIR"
+    CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$PILOTTS_PID_FILE"
+
+    print_step "等待服务启动 (PID: $new_pid)..."
+    echo ""
+
+    # 等待服务启动
+    local count=0
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while [ $count -lt 120 ]; do
+        if kill -0 "$new_pid" 2>/dev/null; then
+            if curl -s "http://127.0.0.1:$PILOTTS_PORT/health" >/dev/null 2>&1; then
+                echo ""
+                echo ""
+                echo "========================================"
+                echo "      PilotTTS 服务启动成功"
+                echo "========================================"
+                print_success "服务状态: 运行中"
+                print_info "进程PID:  $new_pid"
+                print_info "服务端口: $PILOTTS_PORT"
+                print_info "健康检查: http://127.0.0.1:$PILOTTS_PORT/health"
+                print_info "日志文件: $PILOTTS_LOG_FILE"
+                echo ""
+                print_info "常用命令:"
+                echo "  查看状态: $0 status-pilottts"
+                echo "  查看日志: tail -f $PILOTTS_LOG_FILE"
+                echo "  停止服务: $0 stop-pilottts"
+                echo "========================================"
+                exit 0
+            fi
+        else
+            echo ""
+            echo ""
+            print_error "PilotTTS 服务启动失败 - 进程已退出"
+            print_info "查看错误日志:"
+            echo "  tail -n 50 $PILOTTS_LOG_FILE"
+            rm -f "$PILOTTS_PID_FILE"
+            exit 1
+        fi
+        sleep 1
+        count=$((count + 1))
+        printf "\r  %s  等待中... %d/120 秒" "${spin:$((count % 10)):1}" "$count"
+    done
+
+    echo ""
+    echo ""
+    print_warn "PilotTTS 服务启动超时 (120秒)"
+    print_info "可能原因:"
+    echo "  1. 模型加载时间较长 (PilotTTS 模型约 6GB)"
+    echo "  2. 端口被占用: $PILOTTS_PORT"
+    echo "  3. transformers4 依赖不完整"
+    echo ""
+    print_info "查看详细日志:"
+    echo "  tail -n 100 $PILOTTS_LOG_FILE"
+    exit 1
+}
+
+# 停止 PilotTTS 独立服务
+do_stop_pilottts() {
+    echo "----------------------------------------"
+    echo "      PilotTTS 独立服务停止"
+    echo "----------------------------------------"
+
+    local pid=""
+
+    # 先尝试从 PID 文件获取 PID
+    if is_pilottts_running; then
+        pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+        print_info "发现运行中的 PilotTTS 服务 (PID: $pid)"
+    else
+        # PID 文件不存在或进程已失效，尝试查找实际运行的进程
+        pid=$(pgrep -f "python.*pilottts_service.py" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            print_warn "PID 文件不存在，但找到运行中的 PilotTTS 进程 (PID: $pid)"
+        else
+            print_info "PilotTTS 服务未运行"
+            if [ -f "$PILOTTS_PID_FILE" ]; then
+                rm -f "$PILOTTS_PID_FILE"
+            fi
+            return 0
+        fi
+    fi
+
+    print_step "正在停止服务..."
+
+    # 优雅终止
+    kill "$pid" 2>/dev/null || true
+
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo ""
+            print_success "PilotTTS 服务已停止"
+            rm -f "$PILOTTS_PID_FILE"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        echo -n "."
+    done
+
+    echo ""
+    print_warn "优雅终止超时，执行强制停止..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_success "PilotTTS 服务已强制停止"
+        rm -f "$PILOTTS_PID_FILE"
+    else
+        print_error "无法停止 PilotTTS 服务 (PID: $pid)"
+    fi
+}
+
+# 查看 PilotTTS 服务状态
+do_status_pilottts() {
+    echo ""
+    echo "========================================"
+    echo "      PilotTTS 独立服务状态"
+    echo "========================================"
+    echo ""
+
+    if ! is_pilottts_running; then
+        print_warn "PilotTTS 服务未运行"
+        if [ -f "$PILOTTS_PID_FILE" ]; then
+            rm -f "$PILOTTS_PID_FILE"
+        fi
+        echo ""
+        print_info "启动服务:"
+        echo "  $0 start-pilottts"
+        exit 0
+    fi
+
+    local pid=$(cat "$PILOTTS_PID_FILE" 2>/dev/null)
+    print_success "PilotTTS 服务运行中"
+    print_info "进程PID:  $pid"
+    print_info "服务端口: $PILOTTS_PORT"
+    echo ""
+
+    print_step "执行健康检查..."
+    local health
+    health=$(curl -s "http://127.0.0.1:$PILOTTS_PORT/health" 2>/dev/null || echo "")
+    if [ -n "$health" ]; then
+        print_success "健康检查通过"
+        echo ""
+        echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
+    else
+        print_error "健康检查失败"
+        print_info "服务进程存在但无法响应请求"
+    fi
+    echo ""
+    print_info "日志文件: $PILOTTS_LOG_FILE"
+    print_info "查看日志: tail -f $PILOTTS_LOG_FILE"
+}
+
 # ============ 主逻辑 ============
 
 # 解析命令
@@ -1281,6 +1606,20 @@ case "$COMMAND" in
         ;;
     status-cosyvoice)
         do_status_cosyvoice
+        ;;
+    start-pilottts)
+        do_start_pilottts
+        ;;
+    stop-pilottts)
+        do_stop_pilottts
+        ;;
+    restart-pilottts)
+        do_stop_pilottts
+        sleep 2
+        do_start_pilottts
+        ;;
+    status-pilottts)
+        do_status_pilottts
         ;;
     *)
         print_error "未知命令: $COMMAND"

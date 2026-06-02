@@ -35,6 +35,7 @@ GPU_MODEL_CONCURRENCY = 1
 # 创建信号量控制并发
 omnivoice_semaphore = asyncio.Semaphore(OMNIVOICE_CONCURRENCY)
 cosyvoice_semaphore = asyncio.Semaphore(COSYVOICE_CONCURRENCY)
+pilottts_semaphore = asyncio.Semaphore(GPU_MODEL_CONCURRENCY)  # PilotTTS 是 GPU 模型，串行执行
 
 
 class BatchTTSRequest(BaseModel):
@@ -138,7 +139,9 @@ async def batch_generate(
     speaker_id: str = Form(None, description="说话人ID"),
     voice_design_prompt: str = Form(None, description="音色设计描述"),
     control_prompt: str = Form(None, description="控制指令"),
-    speed: float = Form(1.0, description="语速(0.5-2.0)")
+    speed: float = Form(1.0, description="语速(0.5-2.0)"),
+    emotion: str = Form(None, description="情感标签（PilotTTS）"),
+    language: str = Form("zh", description="方言代码（PilotTTS）"),
 ):
     """
     批量生成（抽卡模式）- 提交一个批量任务到队列
@@ -148,6 +151,7 @@ async def batch_generate(
     - qwen3tts: base, voice_clone, custom_voice, voice_design
     - omnivoice: voice_clone, voice_design
     - cosyvoice: zero_shot, instruct, cross_lingual
+    - pilottts: voice_clone, emotion, dialect, paralanguage
     """
     try:
         from backend.task_queue import task_queue
@@ -170,6 +174,8 @@ async def batch_generate(
             "voice_design_prompt": voice_design_prompt,
             "control_prompt": control_prompt,
             "speed": speed,
+            "emotion": emotion,
+            "language": language,
             "batch_count": count
         }
         # 移除None值
@@ -558,9 +564,11 @@ async def _generate_single_omnivoice(
                     system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个音频文件未生成")
                     return {"success": False, "index": index}
                 
-                # 保存音频到 outputs 目录
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                output_path = os.path.join(OUTPUTS_DIR, f"omnivoice_{timestamp}.wav")
+                # 保存音频到 outputs 目录（使用有意义的文件名）
+                import re
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
+                output_path = os.path.join(OUTPUTS_DIR, f"omnivoice_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
                 
@@ -875,9 +883,11 @@ async def _generate_single_cosyvoice(
                     system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个音频文件未生成")
                     return {"success": False, "index": index}
                 
-                # 保存音频到 outputs 目录
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                output_path = os.path.join(OUTPUTS_DIR, f"cosyvoice_{timestamp}.wav")
+                # 保存音频到 outputs 目录（使用有意义的文件名）
+                import re
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
+                output_path = os.path.join(OUTPUTS_DIR, f"cosyvoice_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
                 
@@ -900,6 +910,155 @@ async def _generate_single_cosyvoice(
             return {"success": False, "index": index, "error": "timeout"}
         except Exception as e:
             system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个失败: {e}")
+            return {"success": False, "index": index, "error": str(e)}
+
+
+async def _batch_generate_pilottts(text: str, mode: str, count: int,
+                                    speaker_id: str = None,
+                                    emotion: str = None,
+                                    language: str = "zh",
+                                    progress_callback: Callable = None) -> Dict:
+    """
+    批量生成PilotTTS音频（并行版本）
+
+    使用异步并行生成，并发数由 GPU_MODEL_CONCURRENCY 控制（默认1，串行）
+    PilotTTS 是独立 GPU 服务，串行执行避免显存冲突
+    """
+    from backend.services import get_speaker_by_id
+    from backend.config import PILOTTS_HOST, PILOTTS_PORT
+
+    audio_urls = []
+    audio_files = []
+
+    PILOTTS_SERVICE_URL = f"http://{PILOTTS_HOST}:{PILOTTS_PORT}/tts"
+
+    # 获取说话人信息
+    ref_path = None
+    if speaker_id:
+        speaker = get_speaker_by_id(speaker_id)
+        if speaker:
+            ref_path = speaker.get("audio_path")
+
+    system_logger.info(f"【批量生成】PilotTTS 开始并行生成 | 数量: {count} | 模式: {mode}")
+
+    # 报告初始进度
+    if progress_callback:
+        progress_callback(0, count)
+
+    # 创建异步HTTP会话
+    timeout = aiohttp.ClientTimeout(total=300)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        # 创建所有任务
+        pending_tasks = []
+        for i in range(count):
+            task = _generate_single_pilottts(
+                session=session,
+                text=text,
+                mode=mode,
+                index=i,
+                ref_path=ref_path,
+                emotion=emotion,
+                language=language,
+                pilottts_url=PILOTTS_SERVICE_URL
+            )
+            pending_tasks.append(task)
+
+        # 使用 as_completed 来实时获取结果并更新进度
+        completed = 0
+        for coro in asyncio.as_completed(pending_tasks):
+            try:
+                result = await coro
+                if result.get("success"):
+                    audio_urls.append(result["audio_url"])
+                    audio_files.append(result["audio_file"])
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+            except Exception as e:
+                system_logger.error(f"【批量生成】PilotTTS 任务异常: {e}")
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+
+    success_count = len(audio_urls)
+    system_logger.info(f"【批量生成】PilotTTS 完成 | 成功: {success_count}/{count}")
+
+    if progress_callback:
+        progress_callback(count, count)
+
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _generate_single_pilottts(
+    session: aiohttp.ClientSession,
+    text: str,
+    mode: str,
+    index: int,
+    ref_path: str = None,
+    emotion: str = None,
+    language: str = "zh",
+    pilottts_url: str = ""
+) -> Dict:
+    """单个PilotTTS生成任务（受信号量控制）"""
+    import soundfile as sf
+    import re
+
+    async with pilottts_semaphore:
+        try:
+            # 构建请求数据
+            data = {
+                "text": text,
+                "mode": mode,
+                "ref_path": ref_path or "",
+                "language": language,
+            }
+            if mode == "emotion" and emotion:
+                data["emotion"] = emotion
+
+            # 异步HTTP请求（超时300秒，PilotTTS生成较慢）
+            timeout = aiohttp.ClientTimeout(total=300)
+            async with session.post(pilottts_url, data=data, timeout=timeout) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个失败: {error_text}")
+                    return {"success": False, "index": index}
+
+                result = await response.json()
+                if not result.get("success"):
+                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个合成失败")
+                    return {"success": False, "index": index}
+
+                temp_audio_path = result.get("audio_path")
+                if not temp_audio_path or not os.path.exists(temp_audio_path):
+                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个音频文件未生成")
+                    return {"success": False, "index": index}
+
+                # 保存音频到 outputs 目录
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
+                output_path = os.path.join(OUTPUTS_DIR, f"pilottts_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+                audio_data, sample_rate = sf.read(temp_audio_path)
+                sf.write(output_path, audio_data, samplerate=sample_rate)
+
+                # 清理临时文件
+                try:
+                    os.remove(temp_audio_path)
+                except:
+                    pass
+
+                system_logger.info(f"【批量生成】PilotTTS 第 {index+1} 个完成")
+                return {
+                    "success": True,
+                    "index": index,
+                    "audio_url": f"/audio/{os.path.basename(output_path)}",
+                    "audio_file": os.path.basename(output_path)
+                }
+
+        except asyncio.TimeoutError:
+            system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个超时")
+            return {"success": False, "index": index, "error": "timeout"}
+        except Exception as e:
+            system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个失败: {e}")
             return {"success": False, "index": index, "error": str(e)}
 
 

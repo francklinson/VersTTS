@@ -11,7 +11,7 @@ import torch
 from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
-from backend.config import models, ALGORITHM_PATHS, MODEL_PATHS
+from backend.config import models, ALGORITHM_PATHS, MODEL_PATHS, PROJECT_ROOT
 
 # PilotTTS 引擎缓存
 _pilottts_engines = {}
@@ -58,7 +58,7 @@ def get_pilottts_engine(model_type: str = "base"):
         import yaml
         from pilot_voice.engine import InferenceEngine
 
-        pretrained_dir = MODEL_PATHS.get('pilottts', os.path.join(pilottts_dir, 'pretrained_models'))
+        pretrained_dir = MODEL_PATHS.get('pilottts', os.path.join(PROJECT_ROOT, 'models', 'PilotTTS'))
 
         if model_type == "instruct":
             config_path = os.path.join(pilottts_dir, "configs", "infer_pilot_tts_instruct.yaml")
@@ -95,7 +95,10 @@ def get_pilottts_engine(model_type: str = "base"):
         # 修正 campplus 路径为绝对路径
         campplus_path = config.get("spk_embedding", {}).get("campplus_path", "")
         if campplus_path and not os.path.isabs(campplus_path):
-            abs_campplus = os.path.join(pilottts_dir, campplus_path)
+            if campplus_path.startswith("pretrained_models/"):
+                abs_campplus = os.path.join(pretrained_dir, campplus_path.replace("pretrained_models/", ""))
+            else:
+                abs_campplus = os.path.join(pilottts_dir, campplus_path)
             if os.path.exists(abs_campplus):
                 config["spk_embedding"]["campplus_path"] = abs_campplus
 

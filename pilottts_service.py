@@ -59,7 +59,7 @@ logger.propagate = False
 
 # ========== 路径初始化 ==========
 PILOTTS_DIR = os.path.join(PROJECT_ROOT, "algorithms", "PilotTTS")
-PRETRAINED_DIR = os.path.join(PILOTTS_DIR, "pretrained_models")
+PRETRAINED_DIR = os.path.join(PROJECT_ROOT, "models", "PilotTTS")
 
 # 添加 PilotTTS 及其依赖路径
 for p in [
@@ -137,7 +137,10 @@ def _load_engine(model_type: str):
     # 修正 campplus 路径
     campplus_path = config.get("spk_embedding", {}).get("campplus_path", "")
     if campplus_path and not os.path.isabs(campplus_path):
-        abs_campplus = os.path.join(PILOTTS_DIR, campplus_path)
+        if campplus_path.startswith("pretrained_models/"):
+            abs_campplus = os.path.join(PRETRAINED_DIR, campplus_path.replace("pretrained_models/", ""))
+        else:
+            abs_campplus = os.path.join(PILOTTS_DIR, campplus_path)
         if os.path.exists(abs_campplus):
             config["spk_embedding"]["campplus_path"] = abs_campplus
 

@@ -7,8 +7,10 @@ VersTTS API 测试脚本
 import requests
 import sys
 import os
+import argparse
 
 API_BASE = "http://localhost:8000"
+NON_INTERACTIVE = False
 
 def test_health():
     """测试健康检查接口"""
@@ -154,11 +156,12 @@ def run_all_tests():
     print("注意: 以下测试需要服务已启动并加载模型")
     print("=" * 60)
 
-    # 提示用户确认
-    response = input("\n是否继续测试TTS接口? (y/n): ")
-    if response.lower() != 'y':
-        print("跳过TTS测试")
-        return results
+    # 提示用户确认（非交互模式跳过）
+    if not NON_INTERACTIVE:
+        response = input("\n是否继续测试TTS接口? (y/n): ")
+        if response.lower() != 'y':
+            print("跳过TTS测试")
+            return results
 
     results["chattts"] = test_chattts()
     results["cosyvoice"] = test_cosyvoice()
@@ -181,8 +184,15 @@ def run_all_tests():
     return results
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        API_BASE = sys.argv[1]
+    parser = argparse.ArgumentParser(description="VersTTS API 测试")
+    parser.add_argument("--non-interactive", action="store_true", help="非交互模式（自动执行所有测试）")
+    parser.add_argument("--base-url", type=str, default="http://localhost:8000", help="API基础URL")
+    args, unknown = parser.parse_known_args()
+
+    NON_INTERACTIVE = args.non_interactive
+    API_BASE = args.base_url
+    if unknown:
+        API_BASE = unknown[0]
 
     print(f"API地址: {API_BASE}")
     run_all_tests()

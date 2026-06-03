@@ -511,11 +511,60 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
   通过 run_in_executor 在线程池中执行，避免单音频生成阻塞事件循环导致后续请求卡顿
 
 
+[80] 任务队列优化 - 已完成
+[1]同时有多个任务执行时,任务列表页面的批量生成缺少进度提示 ✅
+- 前端: 添加批量生成进度显示 "🎲 批量生成中" + "X / Y 完成" + 进度条 + 百分比
+- 后端: 添加 model_states/model_concurrency/processing_models 到队列状态API
+[2]是否不应该用顺序队列,而是有的任务可以并发执行? 类似任务池, 维护各模型是否忙碌的状态 ✅
+- 实现模型级并发控制: GPU模型并发=1, HTTP服务并发=2
+- 前端: 添加模型状态仪表盘，实时显示各模型忙碌/空闲状态
+[3]任务列表页面的任务信息应当更明确一些 ✅
+- 添加模型状态卡片: 忙/闲状态、当前任务、完成/失败计数、总执行时间、队列深度
+[4]生成音频文件的命名应当更有意义一些 ✅
+- 修改 save_temp_audio() 支持 mode/text/speaker_name 参数
+- 文件名格式: {prefix}_{mode}_{speaker}_{text_summary}_{timestamp}.wav
+- 工作记录: records/2026-06-02_12-30-00_任务队列优化完成.md
+
+[81] 集成 PilotTTS - 已完成
+✅ 代码部署: 克隆仓库到 algorithms/PilotTTS/
+✅ 模型下载: 通过 hf-mirror.com 下载所有模型文件 (约6GB)
+  - pilot_tts.pt (基础模型, 零样本克隆)
+  - pilot_tts_instruct.pt (指令模型, 情感/方言/副语言)
+  - Qwen3-0.6B (LLM骨干网络)
+  - w2v-bert-2.0 (特征提取器)
+  - Fun-CosyVoice3-0.5B (声码器)
+✅ 后端引擎: backend/engines/pilottts_engine.py
+  - 支持 base/instruct 两种模型类型
+  - 模型互斥加载 (显存有限, 自动切换)
+  - 路径自动修正 (tokenizer/campplus/模型路径)
+  - CUDA_VISIBLE_DEVICES 空字符串修复
+✅ 后端API: backend/routers/tts/pilottts.py
+  - POST /tts/pilottts 支持 4 种模式:
+    * voice_clone: 零样本声音克隆
+    * emotion: 11种情感合成 (happy/sad/angry/surprise/fear/disgust/serious/concern/blue/disdain/neutral/psychology)
+    * dialect: 14种方言合成 (东北话/山东话/河南话/山西话/闽南语/甘肃话/宁夏话/上海话/重庆话/湖北话/湖南话/江西话/贵州话/云南话)
+    * paralanguage: 副语言合成 (笑声/哭声/呼吸/咳嗽)
+  - 支持 clone_speaker_id 参数, 适配说话人管理模块
+✅ 任务处理器: 注册 handle_pilottts_task() 到任务队列
+✅ 前端页面: frontend/pages/pilottts.html
+  - 模式选择下拉框, 情感网格选择器, 方言下拉框, 副语言标签按钮
+  - 支持说话人选择, 单次/批量生成模式
+  - 任务轮询和结果展示
+✅ 前端入口: frontend/index.html 添加 PilotTTS 模型卡片
+✅ 模型并发: 任务队列配置 pilottts 并发数为 1
+
+
+已完成:
+[82]检查algorithm目录模型权重文件统一迁移到models目录 - 已完成
+- 扫描全部13个TTS项目模型文件存放位置
+- 发现PilotTTS的6.8GB模型在algorithms/PilotTTS/pretrained_models/需迁移
+- 迁移到models/PilotTTS/并更新所有代码引用路径
+- 修改文件: backend/config.py, pilottts_service.py, backend/engines/pilottts_engine.py
+- 静态验证所有模型路径、YAML配置解析、campplus/声码器路径均正确
+- FireRedTTS2等其余项目无本地模型文件(从HF加载)，无需迁移
+- 工作记录: records/2026-06-03_21-00-00_模型文件统一迁移.md
+
 待办:
-[1]同时有多个任务执行时,任务列表页面的批量生成缺少进度提示
-[2]是否不应该用顺序队列,而是有的任务可以并发执行? 类似任务池, 维护各模型是否忙碌的状态
-[3]任务列表页面的任务信息应当更明确一些
-[4]生成音频文件的命名应当更有意义一些
 
 
 其他:

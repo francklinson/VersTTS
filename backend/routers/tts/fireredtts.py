@@ -103,9 +103,16 @@ async def tts_fireredtts(
         # 按照GitHub示例，采样率为24000Hz
         sr = 24000
 
-        # 保存音频 - 按照GitHub示例使用torchaudio.save()
+        # 保存音频 - 使用有意义的文件名
+        import re
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        audio_path = f"outputs/fireredtts_{timestamp}.wav"
+        text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
+        speaker_part = ""
+        if speaker and speaker.get("name"):
+            clean_name = re.sub(r'[^\w一-鿿]', '', speaker.get("name", ""))[:6]
+            if clean_name:
+                speaker_part = f"_{clean_name}"
+        audio_path = f"outputs/fireredtts_{mode}{speaker_part}_{text_summary}_{timestamp}.wav"
 
         # 确保音频是torch tensor并移至CPU
         if hasattr(audio, 'cpu'):

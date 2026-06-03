@@ -33,10 +33,14 @@
         .emotion-chip { padding: 8px 10px; background: #ffe0b2; border-radius: 8px; font-size: 0.82rem; color: #e65100; cursor: pointer; text-align: center; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
         .emotion-chip:hover { background: #ffcc80; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
         .emotion-chip.selected { background: #ff9800; color: white; border-color: #e65100; box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2); }
+        .emotion-chip.no-emotion { background: #f5f5f5; color: #888; border: 2px dashed #ccc; }
+        .emotion-chip.no-emotion.selected { background: #9e9e9e; color: white; border-color: #616161; box-shadow: 0 0 0 3px rgba(158, 158, 158, 0.2); }
         .dialect-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50; }
         .dialect-section label { font-weight: 600; color: #1b5e20; display: block; margin-bottom: 10px; }
         .paralang-section { margin-bottom: 20px; padding: 15px; background: #ede7f6; border-radius: 8px; border-left: 4px solid #7c4dff; }
         .paralang-section label { font-weight: 600; color: #311b92; display: block; margin-bottom: 10px; }
+        .paralang-section.inline { margin-top: 12px; }
+        .combined-section { margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #fff3e0 0%, #ede7f6 100%); border-radius: 8px; border-left: 4px solid #ff9800; }
         .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
         .tag-chip { padding: 8px 16px; background: #d1c4e9; border-radius: 8px; font-size: 0.85rem; color: #4527a0; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
         .tag-chip:hover { background: #b39ddb; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
@@ -100,7 +104,7 @@
             <a href="../index.html" class="nav-back">← 返回模型列表</a>
             <header>
                 <h1>🎤 PilotTTS</h1>
-                <p>基于LLM的全开源TTS系统 | 零样本克隆 · 11种情感 · 14种方言 · 副语言控制</p>
+                <p>基于LLM的全开源TTS系统 | 零样本克隆 · 11种情感+副语言控制</p>
             </header>
 
             <div class="main-interface">
@@ -111,10 +115,9 @@
                 <!-- 模式选择标签页 -->
                 <div class="mode-tabs">
                     <button class="mode-tab active" onclick="switchMode('voice_clone')">🎙️ 声音克隆</button>
-                    <button class="mode-tab" onclick="switchMode('emotion')">😊 情感合成</button>
+                    <button class="mode-tab" onclick="switchMode('combined')">🎭 情感与副语言</button>
                     <!-- 方言合成暂未开源，后续开放 -->
                     <!-- <button class="mode-tab" onclick="switchMode('dialect')">🗣️ 方言合成</button> -->
-                    <button class="mode-tab" onclick="switchMode('paralanguage')">💬 副语言合成</button>
                 </div>
 
                 <!-- 模式说明 -->
@@ -124,64 +127,29 @@
                     </div>
                 </div>
 
-                <div id="mode-emotion" class="mode-content">
+                <div id="mode-combined" class="mode-content">
                     <div class="info-box orange">
-                        <strong>😊 情感合成模式：</strong>使用指令模型 (pilot_tts_instruct.pt)，支持11种情感控制。请先选择情感标签，再输入文本。
+                        <strong>🎭 情感与副语言模式：</strong>使用指令模型 (pilot_tts_instruct.pt)，支持 <strong>11种情感控制</strong> 和 <strong>4种副语言</strong>（笑声/哭声/呼吸/咳嗽）。
+                        两者<strong>可同时使用</strong> — 选择情感后，在文本中插入副语言标签即可。
                     </div>
                 </div>
 
-                <!-- 方言模式暂未开源，后续开放 -->
-                <!--
-                <div id="mode-dialect" class="mode-content">
-                    <div class="info-box green">
-                        <strong>🗣️ 方言合成模式：</strong>使用指令模型，支持14种中文方言。选择目标方言后输入对应方言文本效果更佳。
+                <!-- 情感+副语言合并区域 (combined模式) -->
+                <div id="combinedSection" class="combined-section" style="display:none;">
+                    <!-- 情感选择 -->
+                    <div class="emotion-section" style="margin-bottom:0; padding:0; background:none; border:none;">
+                        <label>🎭 选择情感（可选，不选则为纯副语言模式）</label>
+                        <div class="emotion-grid" id="emotionGrid"></div>
                     </div>
-                </div>
-                -->
-
-                <div id="mode-paralanguage" class="mode-content">
-                    <div class="info-box orange">
-                        <strong>💬 副语言合成模式：</strong>在文本中插入副语言标签（如笑声、哭声、咳嗽、呼吸）。点击下方标签插入，或手动输入 &lt;|LAUGH|&gt; 等标签。
-                    </div>
-                </div>
-
-                <!-- 情感选择 (emotion模式) -->
-                <div id="emotionSection" class="emotion-section" style="display:none;">
-                    <label>🎭 选择情感</label>
-                    <div class="emotion-grid" id="emotionGrid"></div>
-                </div>
-
-                <!-- 方言选择暂时屏蔽，等待模型权重开源 -->
-                <!--
-                <div id="dialectSection" class="dialect-section" style="display:none;">
-                    <label>🗣️ 选择方言</label>
-                    <select id="dialectSelect" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:6px;font-size:1rem;background:white;">
-                        <option value="zh-dongbei">东北话</option>
-                        <option value="zh-shandong">山东话</option>
-                        <option value="zh-henan">河南话</option>
-                        <option value="zh-shan1xi">山西话</option>
-                        <option value="zh-minnan">闽南语</option>
-                        <option value="zh-gansu">甘肃话</option>
-                        <option value="zh-ningxia">宁夏话</option>
-                        <option value="zh-shanghai">上海话</option>
-                        <option value="zh-chongqing">重庆话</option>
-                        <option value="zh-hubei">湖北话</option>
-                        <option value="zh-hunan">湖南话</option>
-                        <option value="zh-jiangxi">江西话</option>
-                        <option value="zh-guizhou">贵州话</option>
-                        <option value="zh-yunnan">云南话</option>
-                    </select>
-                </div>
-                -->
-
-                <!-- 副语言标签 (paralanguage模式) -->
-                <div id="paralangSection" class="paralang-section" style="display:none;">
-                    <label>💬 副语言标签（在文本中插入）</label>
-                    <div class="tag-grid">
-                        <span class="tag-chip" onclick="insertTag('<|LAUGH|>')">😂 笑声</span>
-                        <span class="tag-chip" onclick="insertTag('<|CRY|>')">😢 哭声</span>
-                        <span class="tag-chip" onclick="insertTag('<|BREATH|>')">💨 呼吸</span>
-                        <span class="tag-chip" onclick="insertTag('<|COUGH|>')">🤧 咳嗽</span>
+                    <!-- 副语言标签 -->
+                    <div id="paralangSection" class="paralang-section inline" style="margin-bottom:0;">
+                        <label>💬 副语言标签（点击插入到文本中，可与情感同时使用）</label>
+                        <div class="tag-grid">
+                            <span class="tag-chip" onclick="insertTag('<|LAUGH|>')">😂 笑声 LAUGH</span>
+                            <span class="tag-chip" onclick="insertTag('<|CRY|>')">😢 哭声 CRY</span>
+                            <span class="tag-chip" onclick="insertTag('<|BREATH|>')">💨 呼吸 BREATH</span>
+                            <span class="tag-chip" onclick="insertTag('<|COUGH|>')">🤧 咳嗽 COUGH</span>
+                        </div>
                     </div>
                 </div>
 
@@ -272,7 +240,8 @@
             {tag:'happy',label:'😊 开心'},{tag:'sad',label:'😢 悲伤'},{tag:'angry',label:'😠 愤怒'},
             {tag:'surprise',label:'😲 惊讶'},{tag:'fear',label:'😨 恐惧'},{tag:'disgust',label:'🤢 厌恶'},
             {tag:'serious',label:'😐 严肃'},{tag:'concern',label:'🤔 关切'},{tag:'blue',label:'😔 忧郁'},
-            {tag:'disdain',label:'😏 轻蔑'},{tag:'neutral',label:'😶 中性'},{tag:'psychology',label:'🧠 心理'}
+            {tag:'disdain',label:'😏 轻蔑'},{tag:'neutral',label:'😶 中性'},{tag:'psychology',label:'🧠 心理'},
+            {tag:'',label:'🚫 无情感',cls:'no-emotion'}
         ];
 
         // ==================== 初始化 ====================
@@ -284,11 +253,12 @@
 
         function buildEmotionGrid() {
             const grid = document.getElementById('emotionGrid');
-            grid.innerHTML = emotions.map(e => `
-                <div class="emotion-chip" data-emotion="${e.tag}" onclick="selectEmotion('${e.tag}', this)">
+            grid.innerHTML = emotions.map(e => {
+                const cls = e.cls ? ` ${e.cls}` : '';
+                return `<div class="emotion-chip${cls}" data-emotion="${e.tag}" onclick="selectEmotion('${e.tag}', this)">
                     ${e.label}
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
         }
 
         // ==================== 模式切换 ====================
@@ -306,11 +276,9 @@
             const content = document.getElementById(`mode-${mode}`);
             if (content) content.classList.add('active');
 
-            // 条件区域
-            document.getElementById('emotionSection').style.display = mode === 'emotion' ? 'block' : 'none';
-            // 方言暂时屏蔽
-            // document.getElementById('dialectSection').style.display = mode === 'dialect' ? 'block' : 'none';
-            document.getElementById('paralangSection').style.display = mode === 'paralanguage' ? 'block' : 'none';
+            // 条件区域: combined模式显示情感+副语言，其他隐藏
+            const isCombined = (mode === 'combined');
+            document.getElementById('combinedSection').style.display = isCombined ? 'block' : 'none';
 
             // 重置情感选中
             document.querySelectorAll('.emotion-chip').forEach(e => e.classList.remove('selected'));
@@ -424,12 +392,20 @@
 
             if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
             if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
-            if (currentMode === 'emotion' && !selectedEmotion) { VersTTS.showStatus('请选择情感标签', true); return; }
 
             document.getElementById('audioPlayer').style.display = 'none';
             document.getElementById('downloadLink').style.display = 'none';
             document.getElementById('batchResultSection').style.display = 'none';
             stopPolling();
+
+            // 显示结果区域和初始状态
+            const resultSection = document.getElementById('resultSection');
+            const resultStatus = document.getElementById('resultStatus');
+            resultSection.style.display = 'block';
+            resultStatus.innerHTML = '⏳ 任务已提交到队列，正在等待执行...';
+            resultStatus.style.background = '#e3f2fd';
+            resultStatus.style.color = '#1565c0';
+            resultSection.scrollIntoView({ behavior: 'smooth' });
 
             try {
                 const formData = buildRequestFormData();
@@ -464,20 +440,24 @@
 
             if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
             if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
-            if (currentMode === 'emotion' && !selectedEmotion) { VersTTS.showStatus('请选择情感标签', true); return; }
 
             const btn = document.getElementById('batchGenerateBtn');
             const btnText = document.getElementById('batchBtnText');
             VersTTS.setButtonLoading(btn, btnText, true);
 
             try {
+                // 确定实际后端mode (combined → emotion或paralanguage)
+                const actualMode = (currentMode === 'combined')
+                    ? (selectedEmotion ? 'emotion' : 'paralanguage')
+                    : currentMode;
+
                 const formData = new FormData();
                 formData.append('text', text);
                 formData.append('model', 'pilottts');
-                formData.append('mode', currentMode);
+                formData.append('mode', actualMode);
                 formData.append('count', count);
                 formData.append('speaker_id', speakerId);
-                if (currentMode === 'emotion') formData.append('emotion', selectedEmotion);
+                if (actualMode === 'emotion') formData.append('emotion', selectedEmotion);
                 formData.append('language', 'zh');
 
                 const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
@@ -505,10 +485,14 @@
             const formData = new FormData();
             formData.append('text', document.getElementById('textInput').value.trim());
             formData.append('model', 'pilottts');
-            formData.append('mode', currentMode);
+            // combined模式: 有情感→emotion, 无情感→paralanguage
+            if (currentMode === 'combined') {
+                formData.append('mode', selectedEmotion ? 'emotion' : 'paralanguage');
+                if (selectedEmotion) formData.append('emotion', selectedEmotion);
+            } else {
+                formData.append('mode', currentMode);
+            }
             formData.append('speaker_id', document.getElementById('speakerSelect').value);
-            if (currentMode === 'emotion') formData.append('emotion', selectedEmotion);
-            if (currentMode === 'dialect') formData.append('language', document.getElementById('dialectSelect').value);
             return formData;
         }
 
@@ -579,7 +563,10 @@
         }
 
         function displayTaskResult(taskData) {
+            const resultSection = document.getElementById('resultSection');
             const resultStatus = document.getElementById('resultStatus');
+
+            resultSection.style.display = 'block';
             resultStatus.innerHTML = '✅ 生成完成！';
             resultStatus.style.background = '#e8f5e9';
             resultStatus.style.color = '#2e7d32';
@@ -598,6 +585,8 @@
                 downloadLink.download = `pilottts_${currentMode}_${Date.now()}.wav`;
                 downloadLink.style.display = 'inline-flex';
             }
+
+            resultSection.scrollIntoView({ behavior: 'smooth' });
             document.getElementById('generateBtn').disabled = false;
         }
 

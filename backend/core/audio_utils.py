@@ -50,35 +50,60 @@ def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> n
     return normalized_audio
 
 
-def save_temp_audio(audio_data: np.ndarray, sample_rate: int, 
+def save_temp_audio(audio_data: np.ndarray, sample_rate: int,
                     suffix: str = ".wav", normalize: bool = True,
-                    prefix: str = "tts") -> str:
+                    prefix: str = "tts", mode: str = None,
+                    text: str = None, speaker_name: str = None) -> str:
     """
     保存临时音频文件
-    
+
     Args:
         audio_data: 音频数据数组
         sample_rate: 采样率
         suffix: 文件后缀
         normalize: 是否进行音量归一化，默认True
         prefix: 文件名前缀，默认"tts"
+        mode: 生成模式（可选，用于更有意义的文件名）
+        text: 合成文本（可选，用于提取文本摘要到文件名）
+        speaker_name: 说话人名称（可选）
     """
+    import re
     from backend.config import OUTPUTS_DIR
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    temp_path = os.path.join(OUTPUTS_DIR, f"{prefix}_{timestamp}{suffix}")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 生成有意义的文件名
+    if mode or text or speaker_name:
+        parts = [prefix]
+        if mode:
+            parts.append(mode)
+        if speaker_name:
+            clean_name = re.sub(r'[^\w一-鿿]', '', speaker_name)[:6]
+            if clean_name:
+                parts.append(clean_name)
+        if text:
+            text_summary = text[:8].strip()
+            text_summary = re.sub(r'[^\w一-鿿]', '', text_summary)
+            if text_summary:
+                parts.append(text_summary)
+        parts.append(timestamp)
+        filename = "_".join(parts) + suffix
+    else:
+        filename = f"{prefix}_{timestamp}{suffix}"
+
+    temp_path = os.path.join(OUTPUTS_DIR, filename)
 
     # 音量归一化处理
     if normalize:
         audio_data = normalize_audio_volume(audio_data)
 
     sf.write(temp_path, audio_data, sample_rate)
-    
+
     # 记录文件操作
     audio_size = os.path.getsize(temp_path)
     OperationLogger.log_file_operation("保存音频", temp_path, audio_size, "成功")
-    
+
     return temp_path
 
 

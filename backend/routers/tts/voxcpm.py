@@ -17,7 +17,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_voxcpm_model
 from backend.services import get_speaker_by_id
-from backend.core import audio_to_base64, cleanup_memory, log_gpu_memory_usage
+from backend.core import audio_to_base64, cleanup_memory, log_gpu_memory_usage, save_temp_audio
 
 router = APIRouter()
 
@@ -221,11 +221,13 @@ async def tts_voxcpm(
         
         actual_params["generation_duration"] = round(gen_duration, 3)
 
-        # 保存音频
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        audio_path = f"outputs/voxcpm_{timestamp}.wav"
+        # 保存音频（使用有意义的文件名）
         save_start = time.time()
-        sf.write(audio_path, audio_data, samplerate=48000)
+        speaker_name_val = speaker.get('name') if speaker else None
+        audio_path = save_temp_audio(
+            audio_data, 48000, prefix="voxcpm", mode=mode,
+            text=text, speaker_name=speaker_name_val
+        )
         save_duration = time.time() - save_start
         file_size = os.path.getsize(audio_path)
         system_logger.info(f"【VoxCPM】音频保存完成: {audio_path} | 大小: {file_size / 1024:.2f} KB | 耗时: {save_duration:.3f}s")

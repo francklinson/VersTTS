@@ -522,6 +522,12 @@ else:
                 echo "  单独停止: $0 stop-cosyvoice"
                 echo "  查看状态: $0 status-cosyvoice"
                 echo "  查看日志: tail -f $COSYVOICE_LOG_FILE"
+                echo ""
+                print_info "PilotTTS 独立服务:"
+                echo "  单独启动: $0 start-pilottts"
+                echo "  单独停止: $0 stop-pilottts"
+                echo "  查看状态: $0 status-pilottts"
+                echo "  查看日志: tail -f $PILOTTS_LOG_FILE"
                 echo "========================================"
                 exit 0
             fi

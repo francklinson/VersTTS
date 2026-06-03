@@ -156,6 +156,7 @@ class TaskQueue:
         "qwen3tts": 1,    # 本地GPU模型，串行执行
         "omnivoice": 2,   # 独立HTTP服务，可有限并行
         "cosyvoice": 2,   # 独立HTTP服务，可有限并行
+        "pilottts": 1,    # 本地GPU模型，串行执行
     }
 
     def __init__(self, max_workers: int = 1, storage_dir: str = None):
@@ -612,10 +613,11 @@ class TaskQueue:
     
     def get_queue_status(self) -> Dict:
         """获取队列状态"""
-        # 统计各模型的任务数
+        # 统计各模型排队中/等待中的任务数（不包含已完成/失败/取消）
         model_counts = {}
         for task in self.tasks.values():
-            model_counts[task.model] = model_counts.get(task.model, 0) + 1
+            if task.status in (TaskStatus.PENDING.value, TaskStatus.QUEUED.value):
+                model_counts[task.model] = model_counts.get(task.model, 0) + 1
 
         # 统计正在处理中的模型
         processing_models = {}

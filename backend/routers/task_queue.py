@@ -94,6 +94,11 @@ class QueueStatusResponse(BaseModel):
     total_tasks: int
     is_running: bool
     max_workers: int
+    model_counts: dict = {}
+    processing_models: dict = {}
+    concurrent_models: list = []
+    model_states: dict = {}
+    model_concurrency: dict = {}
 
 
 # ============ 辅助函数 ============
@@ -277,6 +282,37 @@ async def list_tasks(
     except Exception as e:
         system_logger.error(f"【任务API】获取任务列表失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
+
+
+@router.get("/queue/status", response_model=QueueStatusResponse)
+async def get_queue_status():
+    """
+    获取队列状态
+    注意: 必须定义在 /{task_id}/status 之前，否则 "queue" 会被 {task_id} 捕获
+    """
+    try:
+        status = task_queue.get_queue_status()
+        return QueueStatusResponse(**status)
+    except Exception as e:
+        system_logger.error(f"【任务API】获取队列状态失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取队列状态失败: {str(e)}")
+
+
+@router.delete("/cleanup")
+async def cleanup_old_tasks(days: int = Query(7, ge=1, le=30, description="保留天数")):
+    """
+    清理旧任务记录（管理接口）
+    注意: 必须定义在 /{task_id} 路由之前
+    """
+    try:
+        task_queue.cleanup_old_tasks(days)
+        return {
+            "success": True,
+            "message": f"已清理 {days} 天前的任务记录"
+        }
+    except Exception as e:
+        system_logger.error(f"【任务API】清理任务失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清理任务失败: {str(e)}")
 
 
 @router.get("/{task_id}/status")
@@ -532,32 +568,3 @@ async def delete_task(task_id: str, request: Request):
     except Exception as e:
         system_logger.error(f"【任务API】删除任务失败: {e}")
         raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
-
-
-@router.get("/queue/status", response_model=QueueStatusResponse)
-async def get_queue_status():
-    """
-    获取队列状态
-    """
-    try:
-        status = task_queue.get_queue_status()
-        return QueueStatusResponse(**status)
-    except Exception as e:
-        system_logger.error(f"【任务API】获取队列状态失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取队列状态失败: {str(e)}")
-
-
-@router.delete("/cleanup")
-async def cleanup_old_tasks(days: int = Query(7, ge=1, le=30, description="保留天数")):
-    """
-    清理旧任务记录（管理接口）
-    """
-    try:
-        task_queue.cleanup_old_tasks(days)
-        return {
-            "success": True,
-            "message": f"已清理 {days} 天前的任务记录"
-        }
-    except Exception as e:
-        system_logger.error(f"【任务API】清理任务失败: {e}")
-        raise HTTPException(status_code=500, detail=f"清理任务失败: {str(e)}")

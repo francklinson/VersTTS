@@ -76,7 +76,7 @@ MODEL_PATHS = {
     'voxcpm': os.path.join(MODELS_DIR, 'VoxCPM'),
     'omnivoice': os.path.join(MODELS_DIR, 'OmniVoice'),
     'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2', 'pretrained_models'),
-    'pilottts': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'pretrained_models'),
+    'pilottts': os.path.join(MODELS_DIR, 'PilotTTS'),
 }
 
 # ========== 算法路径配置 ==========

@@ -1004,6 +1004,23 @@ select:focus, input:focus {
     color: #f06292;
 }
 
+.model-card[data-model="pilottts"] .model-icon {
+    background: linear-gradient(135deg, #e0f7fa 0%, #80deea 100%);
+    box-shadow: 0 4px 15px rgba(0, 188, 212, 0.3);
+}
+.model-card[data-model="pilottts"] .btn-select {
+    border-color: #00bcd4;
+    color: #00bcd4;
+}
+.model-card[data-model="pilottts"] .btn-select:hover {
+    background: #00bcd4;
+    color: white;
+    box-shadow: 0 8px 20px rgba(0, 188, 212, 0.3);
+}
+.model-card[data-model="pilottts"] .model-desc li::before {
+    color: #00bcd4;
+}
+
 /* ==================== 说话人管理样式 ==================== */
 
 /* 模态框样式 */

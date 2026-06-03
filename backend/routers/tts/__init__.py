@@ -15,6 +15,7 @@ from .voxcpm import router as voxcpm_router
 from .indextts import router as indextts_router
 from .fireredtts import router as fireredtts_router
 from .omnivoice import router as omnivoice_router
+from .pilottts import router as pilottts_router
 
 # TTS 主路由
 router = APIRouter()
@@ -30,5 +31,6 @@ router.include_router(voxcpm_router, prefix="/voxcpm")
 router.include_router(indextts_router, prefix="/indextts")
 router.include_router(fireredtts_router, prefix="/fireredtts")
 router.include_router(omnivoice_router, prefix="/omnivoice")
+router.include_router(pilottts_router, prefix="/pilottts")
 
 __all__ = ['router']

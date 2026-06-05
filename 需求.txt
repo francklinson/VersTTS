@@ -564,7 +564,17 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - FireRedTTS2等其余项目无本地模型文件(从HF加载)，无需迁移
 - 工作记录: records/2026-06-03_21-00-00_模型文件统一迁移.md
 
-待办:
+[83]修复任务列表时间显示与排队任务取消逻辑 - 已完成
+- [1] 修复任务列表页面时间显示规范化:
+  * 根因: formatDuration函数未截断浮点数秒值，导致显示"2分42.377777777秒"
+  * 修复: 在formatDuration开头添加 Math.floor(seconds) 截断为整数
+  * 修改文件: frontend/pages/tasks.html
+- [2] 修复排队中任务的取消逻辑:
+  * 根因: dispatch循环中任务先设置为PROCESSING再检查CANCELLED，导致取消检查为死代码
+  * 修复1: 先过滤已取消任务（从self.tasks重新读取状态），再设置PROCESSING状态
+  * 修复2: _execute_task开头添加兜底取消检查，确保不会执行已取消任务
+  * 修改文件: backend/task_queue.py
+- 工作记录: records/2026-06-05_20-13-44_任务列表时间显示修复与取消任务逻辑完善.md
 
 
 其他:

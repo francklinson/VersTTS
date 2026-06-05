@@ -922,6 +922,7 @@
         // 格式化时长（秒 -> 可读格式）
         function formatDuration(seconds) {
             if (!seconds || seconds < 0) return '0秒';
+            seconds = Math.floor(seconds);  // 截断为整数，避免出现浮点小数（如 2分42.377777777秒）
             if (seconds < 60) return `${seconds}秒`;
             if (seconds < 3600) {
                 const mins = Math.floor(seconds / 60);

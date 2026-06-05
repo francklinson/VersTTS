@@ -462,8 +462,17 @@ class TaskQueue:
                     continue
 
                 # 批量派发所有可并行执行的任务
-                # 先将所有任务标记为执行中，防止同模型任务被重复派发
+                # 先过滤掉已取消的任务（从 self.tasks 重新读取状态，cancel_task 可能已修改）
+                valid_tasks = []
                 for task in tasks_to_dispatch:
+                    current = self.tasks.get(task.task_id)
+                    if current and current.status == TaskStatus.CANCELLED.value:
+                        system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
+                        continue
+                    valid_tasks.append(task)
+
+                # 将有效任务标记为执行中，防止同模型任务被重复派发
+                for task in valid_tasks:
                     task.status = TaskStatus.PROCESSING.value
                     task.started_at = datetime.now().isoformat()
                     async with self._lock:
@@ -475,19 +484,7 @@ class TaskQueue:
                     if model_state:
                         model_state.start_task(task.task_id)
 
-                for task in tasks_to_dispatch:
-                    # 检查任务是否已被取消
-                    if task.status == TaskStatus.CANCELLED.value:
-                        system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
-                        # 从processing_tasks中移除
-                        async with self._lock:
-                            self.processing_tasks.pop(task.task_id, None)
-                        # 恢复模型状态
-                        model_state = self._model_states.get(task.model)
-                        if model_state:
-                            model_state.end_task(success=False)
-                        continue
-
+                for task in valid_tasks:
                     system_logger.info(f"【任务队列】派发任务: {task.task_id} [模型={task.model}]")
                     # 使用 asyncio.create_task 让不同模型的任务可以并行执行
                     asyncio.create_task(self._execute_task(task))
@@ -502,6 +499,18 @@ class TaskQueue:
         """执行单个任务"""
         import time
         start_time = time.time()
+
+        # 检查任务是否已被取消（在dispatch和execute之间可能被取消）
+        current = self.tasks.get(task.task_id)
+        if current and current.status == TaskStatus.CANCELLED.value:
+            system_logger.info(f"【任务队列】任务已被取消，跳过执行: {task.task_id}")
+            async with self._lock:
+                self.processing_tasks.pop(task.task_id, None)
+            # 恢复模型状态
+            model_state = self._model_states.get(task.model)
+            if model_state:
+                model_state.end_task(success=False)
+            return
 
         handler = self._handlers.get(task.model)
         if not handler:

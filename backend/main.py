@@ -37,6 +37,13 @@ if os.environ.get('TRANSFORMERS_OFFLINE') == '1' or os.environ.get('HF_HUB_OFFLI
 if 'HF_HOME' in os.environ:
     print(f"[配置] HF_HOME: {os.environ['HF_HOME']}")
 
+# ========== torch.compile 编译进程数限制 ==========
+# VoxCPM 等引擎使用 torch.compile，Inductor 默认启动 min(32, CPU核数) 个
+# compile_worker 子进程并行编译。设为 1 时走主进程内同步编译，不创建任何子进程。
+# 代价: 首次冷启动编译变慢；命中 Inductor 磁盘缓存后的启动几乎不受影响。
+# 必须在导入 torch 之前设置（import transformers 会间接导入 torch）
+os.environ.setdefault('TORCHINDUCTOR_COMPILE_THREADS', '1')
+
 # ========== Transformers 兼容性补丁 ==========
 # 必须在导入 transformers 之前加载
 try:

@@ -901,7 +901,7 @@
             listEl.innerHTML = savedSpeakers.map(speaker => {
                 const hasRefText = speaker.has_reference_text;
                 const refTextPreview = hasRefText ? (speaker.reference_text || '').substring(0, 50) + '...' : '';
-                
+
                 return `
                 <div class="speaker-item" data-id="${speaker.id}">
                     <div class="speaker-icon">🎙️</div>
@@ -909,9 +909,15 @@
                         <div class="speaker-name">${escapeHtml(speaker.name)}</div>
                         <div class="speaker-meta">
                             创建于 ${formatDate(speaker.created_at)}
-                            ${hasRefText ? '<span style="color: #0ea5e9; margin-left: 8px;">✓ 有参考文本</span>' : ''}
+                            ${hasRefText ? '<span style="color: #0ea5e9; margin-left: 8px;">✓ 有参考文本</span>' : '<span style="color: #f59e0b; margin-left: 8px;">⚠ 缺少参考文本</span>'}
                         </div>
                         ${hasRefText ? `<div class="speaker-ref-text" style="font-size: 0.85rem; color: #64748b; margin-top: 4px; font-style: italic;">${escapeHtml(refTextPreview)}</div>` : ''}
+                        ${!hasRefText ? `<div id="refTextEdit_${speaker.id}" style="margin-top: 6px;">
+                            <input type="text" id="refTextInput_${speaker.id}" placeholder="请输入参考音频对应的文本内容..." style="width: 80%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem;">
+                            <button onclick="saveRefText('${speaker.id}')" style="padding: 6px 12px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">保存</button>
+                        </div>` : `<div id="refTextEdit_${speaker.id}" style="margin-top: 4px;">
+                            <a href="javascript:void(0)" onclick="showRefTextEdit('${speaker.id}')" style="font-size: 0.8rem; color: #0ea5e9;">编辑参考文本</a>
+                        </div>`}
                     </div>
                     <div class="speaker-actions">
                         <button class="btn-icon btn-use" onclick="useSpeaker('${speaker.id}')" title="使用此说话人">
@@ -1033,6 +1039,58 @@
         // 删除说话人（显示确认弹窗）
         function deleteSpeaker(speakerId) {
             showDeleteConfirm(speakerId);
+        }
+
+        // 保存参考文本
+        async function saveRefText(speakerId) {
+            const input = document.getElementById(`refTextInput_${speakerId}`);
+            if (!input) return;
+            const refText = input.value.trim();
+            if (!refText) {
+                showSpeakerStatus('参考文本不能为空', 'error');
+                return;
+            }
+            try {
+                const formData = new FormData();
+                formData.append('reference_text', refText);
+                const response = await fetch(`${VersTTS.API_BASE}/speakers/${speakerId}`, {
+                    method: 'PATCH',
+                    body: formData,
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showSpeakerStatus('参考文本已保存', 'success');
+                    loadSpeakersList();  // 刷新列表
+                } else {
+                    showSpeakerStatus(data.detail || '保存失败', 'error');
+                }
+            } catch (error) {
+                showSpeakerStatus('保存失败: ' + error.message, 'error');
+            }
+        }
+
+        // 显示参考文本编辑框（已有参考文本的说话人）
+        function showRefTextEdit(speakerId) {
+            const container = document.getElementById(`refTextEdit_${speakerId}`);
+            if (!container) return;
+            const speaker = savedSpeakers.find(s => s.id === speakerId);
+            const currentText = speaker ? (speaker.reference_text || '') : '';
+            container.innerHTML = `
+                <input type="text" id="refTextInput_${speakerId}" value="${escapeHtml(currentText)}" placeholder="请输入参考音频对应的文本内容..." style="width: 80%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem;">
+                <button onclick="saveRefText('${speakerId}')" style="padding: 6px 12px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">保存</button>
+                <a href="javascript:void(0)" onclick="cancelRefTextEdit('${speakerId}')" style="font-size: 0.8rem; color: #64748b; margin-left: 6px;">取消</a>
+            `;
+            document.getElementById(`refTextInput_${speakerId}`).focus();
+        }
+
+        // 取消编辑参考文本
+        function cancelRefTextEdit(speakerId) {
+            const speaker = savedSpeakers.find(s => s.id === speakerId);
+            const refTextPreview = (speaker.reference_text || '').substring(0, 50) + '...';
+            const container = document.getElementById(`refTextEdit_${speakerId}`);
+            if (container) {
+                container.innerHTML = `<a href="javascript:void(0)" onclick="showRefTextEdit('${speakerId}')" style="font-size: 0.8rem; color: #0ea5e9;">编辑参考文本</a>`;
+            }
         }
 
         // 更新 ChatTTS 的说话人选择下拉框

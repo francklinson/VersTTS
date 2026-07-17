@@ -21,6 +21,11 @@
         .info-box { background: #ffebee; border-left: 4px solid #f44336; padding: 12px; margin-bottom: 20px; border-radius: 4px; font-size: 0.9rem; color: #c62828; }
         .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
         .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+        .version-info { margin-top: 12px; padding: 12px 15px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 6px; font-size: 0.85rem; color: #555; line-height: 1.7; }
+        .version-info .vi-tag { display: inline-block; background: #ff9800; color: white; padding: 1px 8px; border-radius: 3px; font-size: 0.78rem; margin-right: 4px; }
+        .version-info .vi-tag.sr { background: #4caf50; }
+        .version-info .vi-tag.lang { background: #2196f3; }
+        .version-info .vi-tag.vocoder { background: #9c27b0; }
     </style>
 </head>
 <body class="gptsovits-theme">
@@ -86,9 +91,11 @@
                     <div class="param-grid">
                         <div class="param-item">
                             <label for="version">模型版本</label>
-                            <select id="version">
+                            <select id="version" onchange="onVersionChange()">
                                 <option value="v2">V2（推荐）</option>
                                 <option value="v1">V1</option>
+                                <option value="v2Pro">V2 Pro</option>
+                                <option value="v2ProPlus">V2 Pro+</option>
                                 <option value="v3">V3</option>
                                 <option value="v4">V4</option>
                             </select>
@@ -145,6 +152,7 @@
                             </select>
                         </div>
                     </div>
+                    <div id="versionInfo" class="version-info" style="display:none;"></div>
                 </div>
 
                 <button class="btn-generate gptsovits" id="generateBtn" onclick="generateTTS()">
@@ -164,6 +172,73 @@
     <script>
         let selectedSpeakerId = null;
         let savedSpeakers = [];
+
+        // 版本信息映射
+        const VERSION_INFO = {
+            v1: {
+                name: 'V1',
+                desc: '初代版本，训练数据较少，仅支持中/英/日三语',
+                sr: '32kHz',
+                langs: '中/英/日',
+                vocoder: '内置HiFi-GAN',
+                note: '适合简单场景，质量低于V2',
+            },
+            v2: {
+                name: 'V2',
+                desc: '主力版本，训练数据大幅增加，质量稳定可靠',
+                sr: '32kHz',
+                langs: '中/英/日/粤/韩',
+                vocoder: '内置HiFi-GAN',
+                note: '综合表现最佳，推荐日常使用',
+            },
+            v2Pro: {
+                name: 'V2 Pro',
+                desc: 'V2增强版，引入说话人验证(SV)嵌入，提升音色一致性',
+                sr: '32kHz',
+                langs: '中/英/日/粤/韩',
+                vocoder: '内置HiFi-GAN + SV',
+                note: '多说话人场景音色更稳定',
+            },
+            v2ProPlus: {
+                name: 'V2 Pro+',
+                desc: 'V2增强版Plus，更强的SV嵌入模型，音色保真度更高',
+                sr: '32kHz',
+                langs: '中/英/日/粤/韩',
+                vocoder: '内置HiFi-GAN + SV',
+                note: '音色还原度最高的V2系版本',
+            },
+            v3: {
+                name: 'V3',
+                desc: '第三代架构，使用BigVGAN声码器，音频质量提升',
+                sr: '24kHz',
+                langs: '中/英/日/粤/韩',
+                vocoder: 'BigVGAN',
+                note: '音质更自然，但采样率较低',
+            },
+            v4: {
+                name: 'V4',
+                desc: '最新第四代，自研声码器，采样率最高',
+                sr: '48kHz',
+                langs: '中/英/日/粤/韩',
+                vocoder: '自研Generator',
+                note: '最高音质，推荐对音质有要求的场景',
+            },
+        };
+
+        function onVersionChange() {
+            const ver = document.getElementById('version').value;
+            const box = document.getElementById('versionInfo');
+            const info = VERSION_INFO[ver];
+            if (!info) { box.style.display = 'none'; return; }
+            box.innerHTML = `
+                <strong>${info.name}</strong>：${info.desc}<br>
+                <span class="vi-tag sr">采样率 ${info.sr}</span>
+                <span class="vi-tag lang">${info.langs}</span>
+                <span class="vi-tag vocoder">${info.vocoder}</span><br>
+                <span style="color:#e65100;">💡 ${info.note}</span>
+            `;
+            box.style.display = 'block';
+        }
 
         // 加载说话人列表
         async function loadSpeakers() {
@@ -280,6 +355,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             initPage();
             loadSpeakers();
+            onVersionChange();
         });
     </script>
 </body>

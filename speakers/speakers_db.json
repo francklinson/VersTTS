@@ -1,0 +1,28 @@
+{
+  "speakers": [
+    {
+      "id": "4d977e62",
+      "name": "阿可",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1778245351_阿可.wav",
+      "reference_text": "明月几时有？把酒问青天。不知天上宫阙，今夕是何年。",
+      "created_at": "2026-05-08T21:02:31"
+    },
+    {
+      "id": "ed0c5bdb",
+      "name": "鼠哥",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1778245308_鼠哥.wav",
+      "reference_text": "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。",
+      "created_at": "2026-05-08T21:01:48"
+    },
+    {
+      "id": "ec2c4d5f",
+      "name": "男声2",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1778245770_男声2.wav",
+      "reference_text": "今日上午，我国新一代载人飞船试验船在文昌航天发射场成功发射，标志着我国载人航天工程进入新的发展阶段。",
+      "created_at": "2026-05-08T21:09:30"
+    }
+  ]
+}

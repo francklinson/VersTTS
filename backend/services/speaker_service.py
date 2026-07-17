@@ -105,3 +105,17 @@ def delete_speaker(speaker_id: str) -> bool:
         system_logger.info(f"【说话人管理】删除说话人: {speaker_id}")
         return True
     return False
+
+
+def update_speaker(speaker_id: str, **updates) -> Optional[Dict]:
+    """更新说话人信息（如参考文本等）"""
+    db = load_speakers_db()
+    for speaker in db["speakers"]:
+        if speaker["id"] == speaker_id:
+            for key, value in updates.items():
+                if key in ("reference_text", "name", "audio_path"):
+                    speaker[key] = value
+            save_speakers_db(db)
+            system_logger.info(f"【说话人管理】更新说话人: {speaker_id}, 字段: {list(updates.keys())}")
+            return speaker
+    return None

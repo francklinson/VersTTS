@@ -67,12 +67,9 @@ if ERES2NET_PATH not in sys.path:
     sys.path.insert(0, ERES2NET_PATH)
 
 # 创建 fast_langdetect 缓存目录（langsegmenter.py 指定了该路径作为 cache_dir）
+# langsegmenter.py 使用 Path(__file__).parent.parent.parent 定位，即 GPTSOVITS_MODULE
 FAST_LANGDETECT_CACHE = os.path.join(GPTSOVITS_MODULE, "pretrained_models", "fast_langdetect")
 os.makedirs(FAST_LANGDETECT_CACHE, exist_ok=True)
-
-# 创建 sv 预训练模型目录
-SV_PRETRAINED_DIR = os.path.join(GPTSOVITS_MODULE, "pretrained_models", "sv")
-os.makedirs(SV_PRETRAINED_DIR, exist_ok=True)
 
 # 设置环境变量
 os.environ["bert_path"] = os.path.join(
@@ -80,8 +77,48 @@ os.environ["bert_path"] = os.path.join(
 )
 # 注意：不要预先创建 G2PWModel 目录，否则 download_and_decompress 会跳过下载
 
+# 模型路径
+MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
+MODEL_PATH = os.path.join(MODELS_DIR, "GPT-SoVITS")
+
+# 默认版本
+DEFAULT_VERSION = os.environ.get("GPTSOVITS_VERSION", "v2")
+
 # 延迟导入
 pipeline = None
+current_version = None  # 当前已加载的版本
+
+
+# ========== 各版本模型路径映射 ==========
+VERSION_MODEL_MAP = {
+    "v1": {
+        "t2s_weights_path": "s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt",
+        "vits_weights_path": "s2G488k.pth",
+    },
+    "v2": {
+        "t2s_weights_path": os.path.join("gsv-v2final-pretrained", "s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt"),
+        "vits_weights_path": os.path.join("gsv-v2final-pretrained", "s2G2333k.pth"),
+    },
+    "v2Pro": {
+        "t2s_weights_path": "s1v3.ckpt",
+        "vits_weights_path": os.path.join("v2Pro", "s2Gv2Pro.pth"),
+    },
+    "v2ProPlus": {
+        "t2s_weights_path": "s1v3.ckpt",
+        "vits_weights_path": os.path.join("v2Pro", "s2Gv2ProPlus.pth"),
+    },
+    "v3": {
+        "t2s_weights_path": "s1v3.ckpt",
+        "vits_weights_path": "s2Gv3.pth",
+    },
+    "v4": {
+        "t2s_weights_path": "s1v3.ckpt",
+        "vits_weights_path": os.path.join("gsv-v4-pretrained", "s2Gv4.pth"),
+    },
+}
+
+# SV 模型路径（v2Pro/v2ProPlus/v3/v4 需要）
+SV_MODEL_PATH = os.path.join(MODEL_PATH, "sv", "pretrained_eres2netv2w24s4ep4.ckpt")
 
 
 @asynccontextmanager
@@ -113,41 +150,48 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GPT-SoVITS 独立服务", lifespan=lifespan)
 
-# 模型路径
-MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
-MODEL_PATH = os.path.join(MODELS_DIR, "GPT-SoVITS")
 
-# 默认版本
-DEFAULT_VERSION = os.environ.get("GPTSOVITS_VERSION", "v2")
+def load_model(version=None):
+    """加载 GPT-SoVITS 模型，支持版本切换"""
+    global pipeline, current_version
 
+    target_version = version or DEFAULT_VERSION
 
-def load_model():
-    """加载 GPT-SoVITS 模型，带重试机制"""
-    global pipeline
-    if pipeline is not None:
+    # 如果模型已加载且版本一致，无需重新加载
+    if pipeline is not None and current_version == target_version:
         return
 
-    from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
+    # 如果模型已加载但版本不同，先卸载
+    if pipeline is not None and current_version != target_version:
+        logger.info(f"【版本切换】{current_version} -> {target_version}，正在卸载旧模型...")
+        pipeline = None
+        current_version = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-    logger.info(f"【模型加载】模型路径: {MODEL_PATH}")
-    start_time = time.time()
-
-    # 加载配置文件
-    config_path = os.path.join(GPTSOVITS_MODULE, "configs", "tts_infer.yaml")
-    logger.info(f"【模型加载】配置文件: {config_path}")
-
-    # 切换工作目录到 GPT-SoVITS 根目录（TTS 内部有相对路径依赖）
+    # 关键：在 import TTS 之前先 chdir 到 ALGORITHMS_PATH
+    # TTS.py 中 now_dir = os.getcwd() 是模块级变量，在 import 时确定
+    # sv.py 和 init_vocoder 使用 now_dir + "GPT_SoVITS/pretrained_models/..." 构建路径
+    # 所以必须在 import 前让 cwd 为 ALGORITHMS_PATH
     original_cwd = os.getcwd()
     os.chdir(ALGORITHMS_PATH)
 
     try:
+        from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
+
+        logger.info(f"【模型加载】模型路径: {MODEL_PATH} | 目标版本: {target_version}")
+        start_time = time.time()
+
+        # 加载配置文件
+        config_path = os.path.join(GPTSOVITS_MODULE, "configs", "tts_infer.yaml")
+        logger.info(f"【模型加载】配置文件: {config_path}")
+
         tts_config = TTS_Config(config_path)
 
         # 设置版本
-        version = DEFAULT_VERSION
-        if version in tts_config.default_configs:
-            tts_config.configs = tts_config.default_configs[version].copy()
-            tts_config.version = version
+        if target_version in tts_config.default_configs:
+            tts_config.configs = tts_config.default_configs[target_version].copy()
+            tts_config.version = target_version
 
         # 防硬编码：通过代码设置模型绝对路径（yaml 中保留上游默认相对路径）
         bert_path = os.path.join(MODEL_PATH, "chinese-roberta-wwm-ext-large")
@@ -158,28 +202,44 @@ def load_model():
         tts_config.configs["bert_base_path"] = bert_path
         tts_config.configs["cnhuhbert_base_path"] = cnhubert_path
 
-        version_model_map = {
-            "v1": {
-                "t2s_weights_path": os.path.join(MODEL_PATH, "s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt"),
-                "vits_weights_path": os.path.join(MODEL_PATH, "s2G488k.pth"),
-            },
-            "v2": {
-                "t2s_weights_path": os.path.join(MODEL_PATH, "gsv-v2final-pretrained", "s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt"),
-                "vits_weights_path": os.path.join(MODEL_PATH, "gsv-v2final-pretrained", "s2G2333k.pth"),
-            },
-            "v3": {
-                "t2s_weights_path": os.path.join(MODEL_PATH, "s1v3.ckpt"),
-                "vits_weights_path": os.path.join(MODEL_PATH, "s2Gv3.pth"),
-            },
-            "v4": {
-                "t2s_weights_path": os.path.join(MODEL_PATH, "s1v3.ckpt"),
-                "vits_weights_path": os.path.join(MODEL_PATH, "gsv-v4-pretrained", "s2Gv4.pth"),
-            },
-        }
-        if version in version_model_map:
-            for key, value in version_model_map[version].items():
-                setattr(tts_config, key, value)
-                tts_config.configs[key] = value
+        # 设置版本对应的模型路径
+        if target_version in VERSION_MODEL_MAP:
+            for key, rel_path in VERSION_MODEL_MAP[target_version].items():
+                abs_path = os.path.join(MODEL_PATH, rel_path)
+                setattr(tts_config, key, abs_path)
+                tts_config.configs[key] = abs_path
+
+        # 设置 SV 模型路径（v2Pro/v2ProPlus/v3/v4 需要）
+        # now_dir = ALGORITHMS_PATH (因为之前 chdir 了)
+        # sv.py 使用 now_dir + "/GPT_SoVITS/pretrained_models/sv/..."
+        if target_version in ("v2Pro", "v2ProPlus", "v3", "v4"):
+            sv_dir = os.path.join(GPTSOVITS_MODULE, "pretrained_models", "sv")
+            os.makedirs(sv_dir, exist_ok=True)
+            sv_expected = os.path.join(sv_dir, "pretrained_eres2netv2w24s4ep4.ckpt")
+            if not os.path.exists(sv_expected) and os.path.exists(SV_MODEL_PATH):
+                import shutil
+                shutil.copy2(SV_MODEL_PATH, sv_expected)
+                logger.info(f"【模型加载】已复制 SV 模型到: {sv_expected}")
+
+        # 设置 v3 bigvgan 声码器路径（v3 需要）
+        if target_version == "v3":
+            bigvgan_src = os.path.join(MODEL_PATH, "models--nvidia--bigvgan_v2_24khz_100band_256x")
+            bigvgan_dst = os.path.join(GPTSOVITS_MODULE, "pretrained_models", "models--nvidia--bigvgan_v2_24khz_100band_256x")
+            if not os.path.exists(bigvgan_dst) and os.path.exists(bigvgan_src):
+                import shutil
+                shutil.copytree(bigvgan_src, bigvgan_dst)
+                logger.info(f"【模型加载】已复制 bigvgan 到: {bigvgan_dst}")
+
+        # 设置 v4 vocoder 路径（v4 需要）
+        if target_version == "v4":
+            v4_vocoder_src = os.path.join(MODEL_PATH, "gsv-v4-pretrained", "vocoder.pth")
+            v4_vocoder_dst_dir = os.path.join(GPTSOVITS_MODULE, "pretrained_models", "gsv-v4-pretrained")
+            os.makedirs(v4_vocoder_dst_dir, exist_ok=True)
+            v4_vocoder_dst = os.path.join(v4_vocoder_dst_dir, "vocoder.pth")
+            if not os.path.exists(v4_vocoder_dst) and os.path.exists(v4_vocoder_src):
+                import shutil
+                shutil.copy2(v4_vocoder_src, v4_vocoder_dst)
+                logger.info(f"【模型加载】已复制 v4 vocoder 到: {v4_vocoder_dst}")
 
         # 使用CUDA
         if torch.cuda.is_available():
@@ -189,6 +249,8 @@ def load_model():
             tts_config.is_half = True
 
         logger.info(f"【模型加载】版本: {tts_config.version} | 设备: {tts_config.device} | 半精度: {tts_config.is_half}")
+        logger.info(f"【模型加载】T2S: {tts_config.t2s_weights_path}")
+        logger.info(f"【模型加载】VITS: {tts_config.vits_weights_path}")
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -199,6 +261,7 @@ def load_model():
                     logger.info(f"【模型加载】已清理GPU缓存，尝试 {attempt + 1}/{max_retries}")
 
                 pipeline = TTS(tts_config)
+                current_version = target_version
 
                 duration = time.time() - start_time
                 logger.info(f"【模型加载】完成 | 版本: {tts_config.version} | 耗时: {duration:.2f}s")
@@ -221,7 +284,27 @@ def load_model():
 @app.get("/health")
 async def health():
     """健康检查"""
-    return {"status": "ok", "model_loaded": pipeline is not None}
+    return {
+        "status": "ok",
+        "model_loaded": pipeline is not None,
+        "current_version": current_version,
+        "available_versions": list(VERSION_MODEL_MAP.keys()),
+    }
+
+
+@app.get("/versions")
+async def versions():
+    """列出所有可用版本及其模型路径"""
+    result = {}
+    for ver, paths in VERSION_MODEL_MAP.items():
+        result[ver] = {
+            k: os.path.join(MODEL_PATH, v) for k, v in paths.items()
+        }
+        # 检查文件是否存在
+        result[ver]["available"] = all(
+            os.path.exists(os.path.join(MODEL_PATH, v)) for v in paths.values()
+        )
+    return result
 
 
 @app.post("/tts")
@@ -241,7 +324,12 @@ async def tts(
     output_format: str = Form("url")
 ):
     """GPT-SoVITS TTS 合成"""
-    load_model()
+    # 验证版本参数
+    valid_versions = list(VERSION_MODEL_MAP.keys())
+    if version not in valid_versions:
+        raise HTTPException(status_code=400, detail=f"不支持的版本: {version}，支持: {valid_versions}")
+
+    load_model(version=version)
 
     start_time = time.time()
     logger.info(f"【TTS请求】文本: {text[:50]}... | 版本: {version} | 参考音频: {ref_audio_path}")

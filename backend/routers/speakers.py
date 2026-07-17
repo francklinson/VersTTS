@@ -19,6 +19,7 @@ from backend.services.speaker_service import (
     check_speaker_name_exists,
     add_speaker,
     delete_speaker,
+    update_speaker,
 )
 
 router = APIRouter()
@@ -291,3 +292,45 @@ async def delete_speaker_api(speaker_id: str):
     except Exception as e:
         system_logger.error(f"【说话人管理】删除失败: {e}")
         raise HTTPException(status_code=500, detail=f"删除说话人失败: {str(e)}")
+
+
+@router.patch("/{speaker_id}")
+async def update_speaker_api(
+        speaker_id: str,
+        reference_text: Optional[str] = Form(None),
+        name: Optional[str] = Form(None),
+):
+    """更新说话人信息（如参考文本、名称）"""
+    try:
+        updates = {}
+        if reference_text is not None:
+            updates["reference_text"] = reference_text
+        if name is not None:
+            if check_speaker_name_exists(name):
+                # 排除自身
+                existing = get_speaker_by_id(speaker_id)
+                if not existing or existing["name"] != name:
+                    raise HTTPException(status_code=400, detail=f"名称 '{name}' 已被使用")
+            updates["name"] = name
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="没有需要更新的字段")
+
+        result = update_speaker(speaker_id, **updates)
+        if not result:
+            raise HTTPException(status_code=404, detail="说话人不存在")
+
+        return {
+            "success": True,
+            "message": "更新成功",
+            "speaker": {
+                "id": result["id"],
+                "name": result["name"],
+                "reference_text": result.get("reference_text", ""),
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"【说话人管理】更新失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新说话人失败: {str(e)}")

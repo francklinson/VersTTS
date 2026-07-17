@@ -112,7 +112,7 @@ async def tts_gptsovits(
             raise HTTPException(status_code=400, detail="请提供参考音频或选择说话人")
 
         if not prompt_text:
-            raise HTTPException(status_code=400, detail="请提供参考音频文本")
+            raise HTTPException(status_code=400, detail="该说话人缺少参考文本，请在说话人管理中补充参考文本")
 
         # 调用独立服务
         data = {

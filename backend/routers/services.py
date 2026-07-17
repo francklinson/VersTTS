@@ -108,6 +108,7 @@ async def evict_service(req: EvictRequest):
     驱逐同 GPU 上最久未使用的模型，为新模型腾出显存
 
     按 LRU (Least Recently Used) 顺序驱逐，直到释放足够显存或无可驱逐服务
+    支持驱逐独立服务（HTTP 调用 /model/unload）和主进程内模型（model_manager.unload）
     """
     import requests as http_requests
 
@@ -132,23 +133,37 @@ async def evict_service(req: EvictRequest):
         if freed_mb >= req.needed_mb:
             break
 
-        host = info.get("host", "127.0.0.1")
-        port = info.get("port", 0)
-
         try:
             logger.info(f"【OOM驱逐】正在驱逐 {sid} (GPU: {req.gpu_id}, 已释放: {freed_mb}MB/{req.needed_mb}MB)")
-            resp = http_requests.post(
-                f"http://{host}:{port}/model/unload",
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                freed_mb += info.get("vram_used_mb", 0)
-                evicted_services.append(sid)
-                _service_registry[sid]["model_loaded"] = False
-                _service_registry[sid]["vram_used_mb"] = 0
-                logger.info(f"【OOM驱逐】{sid} 已卸载，释放约 {info.get('vram_used_mb', 0)}MB")
+
+            if sid.startswith("main_"):
+                # 主进程内模型：直接通过 model_manager 卸载
+                model_key = sid[len("main_"):]
+                from backend.core.model_manager import model_manager
+                if model_manager.unload(model_key):
+                    freed_mb += info.get("vram_used_mb", 0)
+                    evicted_services.append(sid)
+                    _service_registry[sid]["model_loaded"] = False
+                    _service_registry[sid]["vram_used_mb"] = 0
+                    logger.info(f"【OOM驱逐】主进程模型 {sid} 已卸载，释放约 {info.get('vram_used_mb', 0)}MB")
+                else:
+                    logger.warning(f"【OOM驱逐】主进程模型 {sid} 卸载失败")
             else:
-                logger.warning(f"【OOM驱逐】{sid} 卸载失败: {resp.status_code}")
+                # 独立服务：通过 HTTP 调用 /model/unload
+                host = info.get("host", "127.0.0.1")
+                port = info.get("port", 0)
+                resp = http_requests.post(
+                    f"http://{host}:{port}/model/unload",
+                    timeout=15,
+                )
+                if resp.status_code == 200:
+                    freed_mb += info.get("vram_used_mb", 0)
+                    evicted_services.append(sid)
+                    _service_registry[sid]["model_loaded"] = False
+                    _service_registry[sid]["vram_used_mb"] = 0
+                    logger.info(f"【OOM驱逐】{sid} 已卸载，释放约 {info.get('vram_used_mb', 0)}MB")
+                else:
+                    logger.warning(f"【OOM驱逐】{sid} 卸载失败: {resp.status_code}")
         except Exception as e:
             logger.warning(f"【OOM驱逐】{sid} 卸载请求失败: {e}")
 
@@ -200,3 +215,45 @@ async def services_status():
             "total_vram_used_mb": total_vram,
         }
     return result
+
+
+# ========== 主进程内模型管理 ==========
+
+class MainModelUnloadRequest(BaseModel):
+    model_key: str  # 模型 key，如 "chattts", "qwen3tts_1.7B_Base" 等
+
+
+@router.post("/main/unload")
+async def main_model_unload(req: MainModelUnloadRequest):
+    """卸载主进程内指定的模型"""
+    from backend.core.model_manager import model_manager
+
+    if model_manager.unload(req.model_key):
+        # 同步更新注册表
+        sid = f"main_{req.model_key}"
+        if sid in _service_registry:
+            _service_registry[sid]["model_loaded"] = False
+            _service_registry[sid]["vram_used_mb"] = 0
+        return {"success": True, "message": f"模型 {req.model_key} 已卸载"}
+    else:
+        return {"success": False, "message": f"模型 {req.model_key} 未加载或卸载失败"}
+
+
+@router.get("/main/status")
+async def main_model_status():
+    """获取主进程内所有模型的状态"""
+    from backend.core.model_manager import model_manager
+    return model_manager.get_status()
+
+
+@router.post("/main/unload_all")
+async def main_model_unload_all():
+    """卸载主进程内所有模型"""
+    from backend.core.model_manager import model_manager
+    model_manager.unload_all()
+    # 同步更新注册表
+    for sid in list(_service_registry.keys()):
+        if sid.startswith("main_"):
+            _service_registry[sid]["model_loaded"] = False
+            _service_registry[sid]["vram_used_mb"] = 0
+    return {"success": True, "message": "所有主进程模型已卸载"}

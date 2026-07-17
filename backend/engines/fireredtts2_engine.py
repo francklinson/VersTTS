@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, ALGORITHM_PATHS
+from backend.core.model_manager import model_manager
 
 
 def get_fireredtts2_model():
@@ -33,12 +34,27 @@ def get_fireredtts2_model():
             system_logger.info(f"【模型加载】FireRedTTS2 从路径: {model_path}")
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            models["fireredtts2"] = FireRedTTS2(
-                pretrained_dir=model_path,
-                gen_type="monologue",
-                device=device
-            )
 
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    models["fireredtts2"] = FireRedTTS2(
+                        pretrained_dir=model_path,
+                        gen_type="monologue",
+                        device=device
+                    )
+                    break
+                except RuntimeError as e:
+                    if "CUDA" in str(e) or "out of memory" in str(e).lower():
+                        system_logger.warning("【模型加载】FireRedTTS2 OOM，尝试驱逐其他模型...")
+                        model_manager.request_eviction(needed_mb=2000, exclude_key="fireredtts2")
+                        time.sleep(3)
+                        if attempt == max_retries - 1:
+                            raise
+                    else:
+                        raise
+
+            model_manager.touch("fireredtts2")
             duration = time.time() - start_time
             gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0
             OperationLogger.log_model_load("FireRedTTS2", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
@@ -48,4 +64,5 @@ def get_fireredtts2_model():
             system_logger.error(f"【模型加载】FireRedTTS2 失败: {e}")
             raise HTTPException(status_code=500, detail=f"FireRedTTS2模型加载失败: {str(e)}")
 
+    model_manager.touch("fireredtts2")
     return models["fireredtts2"]

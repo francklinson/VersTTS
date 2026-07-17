@@ -341,7 +341,7 @@ else:
 
     # 后台启动并记录 PID
     cd "$SCRIPT_DIR"
-    CUDA_VISIBLE_DEVICES="$MAIN_GPU" nohup "${cmd[@]}" >> "$LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$MAIN_GPU" GPU_ID="$MAIN_GPU" nohup "${cmd[@]}" >> "$LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$PID_FILE"
 

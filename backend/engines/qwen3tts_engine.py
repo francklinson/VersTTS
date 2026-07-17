@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, MODEL_PATHS
+from backend.core.model_manager import model_manager
 
 def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
     """获取或加载Qwen3-TTS模型
@@ -32,6 +33,16 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
         )
 
     key = f"qwen3tts_{model_size}_{model_type}"
+
+    # 根据 model_type 确定 display_name 和 estimated_vram_mb
+    vram_map = {
+        "Base": 3000,
+        "CustomVoice": 3000,
+        "VoiceDesign": 3500,
+    }
+    display_name = f"Qwen3-TTS-{model_size}-{model_type}"
+    estimated_vram_mb = vram_map.get(model_type, 3000)
+
     if key not in models:
         start_time = time.time()
         OperationLogger.log_model_load(f"Qwen3-TTS-{model_size}-{model_type}", "开始加载")
@@ -67,23 +78,38 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
         if is_offline:
             system_logger.info("【模型加载】Qwen3-TTS 离线模式，强制使用本地文件")
 
-        # 兼容不同 transformers 版本
-        try:
-            models[key] = Qwen3TTSModel.from_pretrained(
-                model_path,
-                device_map=device,
-                torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-                attn_implementation=attn_impl,
-                local_files_only=is_offline
-            )
-        except TypeError:
-            # 旧版本 transformers 使用 dtype 参数
-            models[key] = Qwen3TTSModel.from_pretrained(
-                model_path,
-                device_map=device,
-                attn_implementation=attn_impl,
-                local_files_only=is_offline
-            )
+        # 兼容不同 transformers 版本，并添加 OOM 驱逐重试
+        oom_retried = False
+        while True:
+            try:
+                try:
+                    models[key] = Qwen3TTSModel.from_pretrained(
+                        model_path,
+                        device_map=device,
+                        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
+                        attn_implementation=attn_impl,
+                        local_files_only=is_offline
+                    )
+                except TypeError:
+                    # 旧版本 transformers 使用 dtype 参数
+                    models[key] = Qwen3TTSModel.from_pretrained(
+                        model_path,
+                        device_map=device,
+                        attn_implementation=attn_impl,
+                        local_files_only=is_offline
+                    )
+                break  # 加载成功，跳出循环
+            except RuntimeError as e:
+                if ("CUDA" in str(e) or "out of memory" in str(e).lower()) and not oom_retried:
+                    system_logger.warning(f"【模型加载】{display_name} OOM，尝试驱逐其他模型...")
+                    model_manager.request_eviction(needed_mb=estimated_vram_mb, exclude_key=key)
+                    time.sleep(3)
+                    models.pop(key, None)
+                    oom_retried = True
+                else:
+                    raise
+
+        model_manager.touch(key)  # 加载后更新使用时间
 
         duration = time.time() - start_time
         gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0
@@ -91,4 +117,5 @@ def get_qwen3tts_model(model_size: str = "1.7B", model_type: str = "Base"):
                                        f"GPU内存: {gpu_mem:.2f}GB")
         OperationLogger.log_performance("Qwen3-TTS加载", duration, 0, gpu_mem)
 
+    model_manager.touch(key)  # 每次获取都更新使用时间
     return models[key]

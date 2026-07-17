@@ -28,6 +28,8 @@ OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
 COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
 # PilotTTS 独立服务 GPU 配置
 PILOTTS_GPU="${PILOTTS_GPU:-0}"
+# GPT-SoVITS 独立服务 GPU 配置
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -54,6 +56,13 @@ PILOTTS_PORT="${PILOTTS_PORT:-8003}"
 PILOTTS_PID_FILE="$SCRIPT_DIR/.pilottts.pid"
 PILOTTS_LOG_FILE="$SCRIPT_DIR/logs/pilottts_service.log"
 PILOTTS_SCRIPT="$SCRIPT_DIR/pilottts_service.py"
+
+# GPT-SoVITS 独立服务配置
+GPTSOVITS_HOST="127.0.0.1"
+GPTSOVITS_PORT="${GPTSOVITS_PORT:-8004}"
+GPTSOVITS_PID_FILE="$SCRIPT_DIR/.gptsovits.pid"
+GPTSOVITS_LOG_FILE="$SCRIPT_DIR/logs/gptsovits_service.log"
+GPTSOVITS_SCRIPT="$SCRIPT_DIR/gptsovits_service.py"
 
 # HTTPS 配置（留空则使用 HTTP）
 # 生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
@@ -87,6 +96,7 @@ OFFLINE_MODE=false
 # 【独立服务模型】
 # - OmniVoice (端口 8001): omnivoice - 使用 transformers 5.x
 # - CosyVoice (端口 8002): cosyvoice - 使用 transformers 4.51.3
+# - GPT-SoVITS (端口 8004): gptsovits - 使用 transformers 4.51.3
 #
 # 示例配置:
 #   PRELOAD_MODELS="qwen3tts_base,voxcpm"              # 主服务: Base+VoxCPM
@@ -94,11 +104,13 @@ OFFLINE_MODE=false
 #   PRELOAD_MODELS="none"                              # 主服务: 不预加载
 #   PRELOAD_OMNIVOICE="1"                              # OmniVoice: 预加载
 #   PRELOAD_COSYVOICE="1"                              # CosyVoice: 预加载
+#   PRELOAD_GPTSOVITS="1"                              # GPT-SoVITS: 预加载
 #
 PRELOAD_MODELS="${PRELOAD_MODELS:-qwen3tts_base,voxcpm}"
 PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_PILOTTS="${PRELOAD_PILOTTS:-0}"       # 1=启动时加载, 0=按需加载
+PRELOAD_GPTSOVITS="${PRELOAD_GPTSOVITS:-0}"   # 1=启动时加载, 0=按需加载
 
 # 颜色定义
 RED='\033[0;31m'
@@ -156,6 +168,12 @@ usage() {
     echo "  stop-pilottts        停止 PilotTTS 独立服务"
     echo "  restart-pilottts     重启 PilotTTS 独立服务"
     echo "  status-pilottts      查看 PilotTTS 服务状态"
+    echo ""
+    echo "GPT-SoVITS 独立服务命令:"
+    echo "  start-gptsovits     启动 GPT-SoVITS 独立服务"
+    echo "  stop-gptsovits      停止 GPT-SoVITS 独立服务"
+    echo "  restart-gptsovits   重启 GPT-SoVITS 独立服务"
+    echo "  status-gptsovits    查看 GPT-SoVITS 服务状态"
     echo ""
     echo "选项 (仅 start/restart 有效):"
     echo "  -h, --help       显示帮助信息"
@@ -450,6 +468,50 @@ else:
                     fi
                 fi
 
+                # 自动启动 GPT-SoVITS 独立服务
+                echo "----------------------------------------"
+                print_step "正在检查 GPT-SoVITS 独立服务..."
+
+                if is_gptsovits_running; then
+                    local gs_pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+                    print_success "GPT-SoVITS 已在运行 (PID: $gs_pid)"
+                else
+                    if [ ! -f "$GPTSOVITS_SCRIPT" ]; then
+                        print_warn "GPT-SoVITS 服务脚本不存在，跳过"
+                    else
+                        print_step "正在启动 GPT-SoVITS 独立服务 (端口: $GPTSOVITS_PORT, GPU: $GPTSOVITS_GPU, 预加载: $PRELOAD_GPTSOVITS)..."
+
+                        cd "$SCRIPT_DIR"
+                        CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
+                        local gs_pid=$!
+                        echo "$gs_pid" > "$GPTSOVITS_PID_FILE"
+
+                        if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
+                            local gs_max_wait=120
+                        else
+                            local gs_max_wait=30
+                        fi
+
+                        local gs_count=0
+                        local gs_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        while [ $gs_count -lt $gs_max_wait ]; do
+                            if kill -0 "$gs_pid" 2>/dev/null; then
+                                if curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" >/dev/null 2>&1; then
+                                    print_success "GPT-SoVITS 已启动 (PID: $gs_pid, 端口: $GPTSOVITS_PORT)"
+                                    break
+                                fi
+                            else
+                                print_warn "GPT-SoVITS 启动失败，请检查日志: $GPTSOVITS_LOG_FILE"
+                                rm -f "$GPTSOVITS_PID_FILE"
+                                break
+                            fi
+                            sleep 1
+                            gs_count=$((gs_count + 1))
+                            printf "\r  %s  GPT-SoVITS 启动中... %d/%d 秒" "${gs_spin:$((gs_count % 10)):1}" "$gs_count" "$gs_max_wait"
+                        done
+                    fi
+                fi
+
                 # 自动启动 CosyVoice 独立服务
                 echo "----------------------------------------"
                 print_step "正在检查 CosyVoice 独立服务..."
@@ -528,6 +590,12 @@ else:
                 echo "  单独停止: $0 stop-pilottts"
                 echo "  查看状态: $0 status-pilottts"
                 echo "  查看日志: tail -f $PILOTTS_LOG_FILE"
+                echo ""
+                print_info "GPT-SoVITS 独立服务:"
+                echo "  单独启动: $0 start-gptsovits"
+                echo "  单独停止: $0 stop-gptsovits"
+                echo "  查看状态: $0 status-gptsovits"
+                echo "  查看日志: tail -f $GPTSOVITS_LOG_FILE"
                 echo "========================================"
                 exit 0
             fi
@@ -612,6 +680,10 @@ do_stop() {
     echo ""
     # 停止 PilotTTS 独立服务
     do_stop_pilottts
+
+    echo ""
+    # 停止 GPT-SoVITS 独立服务
+    do_stop_gptsovits
 
     echo ""
     # 停止 CosyVoice 独立服务
@@ -1527,6 +1599,216 @@ do_status_pilottts() {
     print_info "查看日志: tail -f $PILOTTS_LOG_FILE"
 }
 
+# ============ GPT-SoVITS 独立服务管理 ============
+
+# 检查 GPT-SoVITS 服务是否在运行
+is_gptsovits_running() {
+    if [ -f "$GPTSOVITS_PID_FILE" ]; then
+        local pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 启动 GPT-SoVITS 独立服务
+do_start_gptsovits() {
+    echo ""
+    echo "========================================"
+    echo "      GPT-SoVITS 独立服务启动"
+    echo "========================================"
+    echo ""
+
+    if is_gptsovits_running; then
+        local current_pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+        print_warn "GPT-SoVITS 服务已在运行中"
+        print_info "当前PID: $current_pid"
+        print_info "服务端口: $GPTSOVITS_PORT"
+        print_info "健康检查: http://127.0.0.1:$GPTSOVITS_PORT/health"
+        exit 0
+    fi
+
+    if [ ! -f "$GPTSOVITS_SCRIPT" ]; then
+        print_error "GPT-SoVITS 服务脚本不存在: $GPTSOVITS_SCRIPT"
+        exit 1
+    fi
+
+    if [ ! -d "$SCRIPT_DIR/lib/transformers4" ]; then
+        print_error "transformers4 目录不存在: $SCRIPT_DIR/lib/transformers4"
+        print_info "请先安装: pip install --target $SCRIPT_DIR/lib/transformers4 transformers==4.51.3"
+        exit 1
+    fi
+
+    print_step "激活虚拟环境..."
+    source "$VENV_PATH/bin/activate"
+    print_success "虚拟环境已激活"
+
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用"
+    fi
+
+    export GPTSOVITS_HOST
+    export GPTSOVITS_PORT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+    export HF_HOME
+    export HUGGINGFACE_HUB_CACHE
+    export TRANSFORMERS_CACHE
+    export PRELOAD_GPTSOVITS
+
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    print_info "Python 版本: $(python --version 2>&1)"
+    echo ""
+    print_step "启动 GPT-SoVITS 独立服务..."
+    print_info "服务端口: $GPTSOVITS_PORT"
+    print_info "GPU设备: $GPTSOVITS_GPU"
+    print_info "日志文件: $GPTSOVITS_LOG_FILE"
+    echo ""
+
+    cd "$SCRIPT_DIR"
+    CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$GPTSOVITS_PID_FILE"
+
+    print_step "等待服务启动 (PID: $new_pid)..."
+    echo ""
+
+    local count=0
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while [ $count -lt 120 ]; do
+        if kill -0 "$new_pid" 2>/dev/null; then
+            if curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" >/dev/null 2>&1; then
+                echo ""
+                echo ""
+                echo "========================================"
+                echo "      GPT-SoVITS 服务启动成功"
+                echo "========================================"
+                print_success "服务状态: 运行中"
+                print_info "进程PID:  $new_pid"
+                print_info "服务端口: $GPTSOVITS_PORT"
+                print_info "健康检查: http://127.0.0.1:$GPTSOVITS_PORT/health"
+                print_info "日志文件: $GPTSOVITS_LOG_FILE"
+                echo ""
+                print_info "常用命令:"
+                echo "  查看状态: $0 status-gptsovits"
+                echo "  查看日志: tail -f $GPTSOVITS_LOG_FILE"
+                echo "  停止服务: $0 stop-gptsovits"
+                echo "========================================"
+                exit 0
+            fi
+        else
+            echo ""
+            echo ""
+            print_error "GPT-SoVITS 服务启动失败 - 进程已退出"
+            print_info "查看错误日志:"
+            echo "  tail -n 50 $GPTSOVITS_LOG_FILE"
+            exit 1
+        fi
+        sleep 1
+        count=$((count + 1))
+        printf "\r${spin:$((count % 10)):1} 等待中... (%ds)" "$count"
+    done
+
+    echo ""
+    print_warn "服务启动超时 (120s)"
+    print_info "服务可能仍在初始化，请检查日志: tail -f $GPTSOVITS_LOG_FILE"
+}
+
+# 停止 GPT-SoVITS 独立服务
+do_stop_gptsovits() {
+    echo "----------------------------------------"
+    echo "      GPT-SoVITS 独立服务停止"
+    echo "----------------------------------------"
+
+    local pid=""
+
+    if is_gptsovits_running; then
+        pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+        print_info "发现运行中的 GPT-SoVITS 服务 (PID: $pid)"
+    else
+        pid=$(pgrep -f "python.*gptsovits_service.py" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            print_warn "PID 文件不存在，但找到运行中的 GPT-SoVITS 进程 (PID: $pid)"
+        else
+            print_info "GPT-SoVITS 服务未运行"
+            if [ -f "$GPTSOVITS_PID_FILE" ]; then
+                rm -f "$GPTSOVITS_PID_FILE"
+            fi
+            return 0
+        fi
+    fi
+
+    print_step "正在停止服务..."
+    kill "$pid" 2>/dev/null || true
+
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo ""
+            print_success "GPT-SoVITS 服务已停止"
+            rm -f "$GPTSOVITS_PID_FILE"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        echo -n "."
+    done
+
+    echo ""
+    print_warn "优雅终止超时，执行强制停止..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_success "GPT-SoVITS 服务已强制停止"
+        rm -f "$GPTSOVITS_PID_FILE"
+    else
+        print_error "无法停止 GPT-SoVITS 服务 (PID: $pid)"
+    fi
+}
+
+# 查看 GPT-SoVITS 服务状态
+do_status_gptsovits() {
+    echo ""
+    echo "========================================"
+    echo "      GPT-SoVITS 独立服务状态"
+    echo "========================================"
+    echo ""
+
+    if ! is_gptsovits_running; then
+        print_warn "GPT-SoVITS 服务未运行"
+        if [ -f "$GPTSOVITS_PID_FILE" ]; then
+            rm -f "$GPTSOVITS_PID_FILE"
+        fi
+        echo ""
+        print_info "启动服务:"
+        echo "  $0 start-gptsovits"
+        exit 0
+    fi
+
+    local pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+    print_success "GPT-SoVITS 服务运行中"
+    print_info "进程PID:  $pid"
+    print_info "服务端口: $GPTSOVITS_PORT"
+    echo ""
+
+    local health=$(curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" 2>/dev/null)
+    if [ -n "$health" ]; then
+        print_success "健康检查通过"
+        echo ""
+        echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
+    else
+        print_error "健康检查失败"
+    fi
+    echo ""
+    print_info "日志文件: $GPTSOVITS_LOG_FILE"
+    print_info "查看日志: tail -f $GPTSOVITS_LOG_FILE"
+}
+
 # ============ 主逻辑 ============
 
 # 解析命令
@@ -1626,6 +1908,20 @@ case "$COMMAND" in
         ;;
     status-pilottts)
         do_status_pilottts
+        ;;
+    start-gptsovits)
+        do_start_gptsovits
+        ;;
+    stop-gptsovits)
+        do_stop_gptsovits
+        ;;
+    restart-gptsovits)
+        do_stop_gptsovits
+        sleep 2
+        do_start_gptsovits
+        ;;
+    status-gptsovits)
+        do_status_gptsovits
         ;;
     *)
         print_error "未知命令: $COMMAND"

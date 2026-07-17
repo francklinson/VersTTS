@@ -577,8 +577,28 @@ TypeError:Cannot read properties of undefined (reading 'getUserMedia')
 - 工作记录: records/2026-06-05_20-13-44_任务列表时间显示修复与取消任务逻辑完善.md
 
 
-其他:
+
 修复transformers版本兼容性问题
 transformers==4.51.3
 transformers==4.57.3
 transformers==5.6.2
+
+
+待办:
+
+已完成:
+[84]更新GPT-SoVITS到最新版本并重新部署 - 已完成
+- 从上游 https://github.com/RVC-Boss/GPT-SoVITS 克隆最新代码替换旧版(algorithms/GPT-SoVITS_old/)
+- 评估并确认重新部署可行: 代码完整44MB、GPU RTX3090 21GB空闲、磁盘866GB空闲
+- transformers版本冲突解决方案: 创建独立服务模式(端口8004), 使用lib/transformers4(transformers 4.51.3)
+- 下载必需模型文件到models/GPT-SoVITS/目录: BERT(651MB)+HuBERT(189MB)+V2模型(355MB), 共1.2GB
+- 创建独立服务 gptsovits_service.py: FastAPI服务, 支持健康检查和TTS推理
+- 后端路由重写: backend/routers/tts/gptsovits.py 从直接加载模型改为HTTP调用独立服务
+- 更新 backend/config.py: 添加 GPTSOVITS_HOST/GPTSOVITS_PORT 配置
+- 更新 start_server.sh: 添加完整的GPT-SoVITS服务管理(start/stop/restart/status-gptsovits)
+- 恢复前端页面: 取消注释frontend/index.html中的GPT-SoVITS模型卡片
+- 修复fast_langdetect缓存目录问题: 预创建pretrained_models/fast_langdetect和pretrained_models/sv目录
+- 修复G2PW模型自动下载: 不预先创建G2PWModel空目录,让download_and_decompress自动下载
+- 防硬编码: tts_infer.yaml恢复上游默认相对路径,代码中通过MODEL_PATH动态设置绝对路径
+- TTS推理验证: 成功生成32000Hz中文语音
+- 工作记录: records/2026-07-17_22-15-00_GPT-SoVITS更新部署.md

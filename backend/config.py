@@ -23,6 +23,10 @@ COSYVOICE_PORT = int(os.environ.get("COSYVOICE_PORT", "8002"))
 PILOTTS_HOST = os.environ.get("PILOTTS_HOST", "127.0.0.1")
 PILOTTS_PORT = int(os.environ.get("PILOTTS_PORT", "8003"))
 
+# GPT-SoVITS 独立服务配置
+GPTSOVITS_HOST = os.environ.get("GPTSOVITS_HOST", "127.0.0.1")
+GPTSOVITS_PORT = int(os.environ.get("GPTSOVITS_PORT", "8004"))
+
 # 日志配置
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 LOG_MAX_SIZE = int(os.environ.get("LOG_MAX_SIZE", "50"))

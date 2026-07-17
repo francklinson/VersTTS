@@ -72,43 +72,25 @@ def _find_first_existing_file(*paths: str) -> str:
 
 
 def download_and_decompress(model_dir: str = "G2PWModel/"):
-    # 将相对路径转换为绝对路径（基于当前文件位置）
-    if not os.path.isabs(model_dir):
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        model_dir = os.path.join(current_file_dir, model_dir)
-    
-    model_dir = os.path.normpath(model_dir)
-    
     if not os.path.exists(model_dir):
         parent_directory = os.path.dirname(model_dir)
-        os.makedirs(parent_directory, exist_ok=True)
-        
         zip_dir = os.path.join(parent_directory, "G2PWModel_1.1.zip")
         extract_dir = os.path.join(parent_directory, "G2PWModel_1.1")
         extract_dir_new = os.path.join(parent_directory, "G2PWModel")
-        
-        # 如果zip文件已存在，直接解压
-        if os.path.exists(zip_dir):
-            print(f"Extracting g2pw model from {zip_dir}...")
-            with zipfile.ZipFile(zip_dir, "r") as zip_ref:
-                zip_ref.extractall(parent_directory)
-            if os.path.exists(extract_dir):
-                os.rename(extract_dir, extract_dir_new)
-        else:
-            print("Downloading g2pw model...")
-            modelscope_url = "https://www.modelscope.cn/models/kamiorinn/g2pw/resolve/master/G2PWModel_1.1.zip"
-            with requests.get(modelscope_url, stream=True) as r:
-                r.raise_for_status()
-                with open(zip_dir, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
+        print("Downloading g2pw model...")
+        modelscope_url = "https://www.modelscope.cn/models/kamiorinn/g2pw/resolve/master/G2PWModel_1.1.zip"
+        with requests.get(modelscope_url, stream=True) as r:
+            r.raise_for_status()
+            with open(zip_dir, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
 
-            print("Extracting g2pw model...")
-            with zipfile.ZipFile(zip_dir, "r") as zip_ref:
-                zip_ref.extractall(parent_directory)
+        print("Extracting g2pw model...")
+        with zipfile.ZipFile(zip_dir, "r") as zip_ref:
+            zip_ref.extractall(parent_directory)
 
-            os.rename(extract_dir, extract_dir_new)
+        os.rename(extract_dir, extract_dir_new)
 
     return model_dir
 

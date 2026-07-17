@@ -21,6 +21,7 @@ sys.path.insert(0, TRANSFORMERS4_PATH)
 
 import time
 import traceback
+import asyncio
 import torch
 import torchaudio
 import uvicorn
@@ -77,6 +78,15 @@ if os.environ.get("CUDA_VISIBLE_DEVICES", "").strip() == "":
 
 # ========== 全局引擎缓存 ==========
 _engines = {}  # {"base": (engine, config, device), "instruct": (engine, config, device)}
+
+last_used_time = None  # 最后使用时间
+_gpu_id = None  # 当前服务使用的 GPU ID
+_main_service_url = None  # 主服务地址，用于 OOM 驱逐
+
+# ========== 空闲超时配置 ==========
+IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "300"))  # 默认 5 分钟
+HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))  # 心跳间隔秒
+_idle_check_task = None
 
 # 支持的情感标签
 EMOTION_LABELS = [
@@ -159,14 +169,16 @@ def _load_engine(model_type: str):
             duration = time.time() - start_time
 
             _engines[model_type] = (engine, config, device)
+            _touch_last_used()
             gpu_mem = torch.cuda.memory_allocated() / 1024**3 if torch.cuda.is_available() else 0
             logger.info(f"【引擎加载】成功 | 类型: {model_type} | 耗时: {duration:.2f}s | GPU: {gpu_mem:.2f}GB")
             return _engines[model_type]
 
         except RuntimeError as e:
-            if "CUDA" in str(e) and attempt < max_retries - 1:
-                logger.warning(f"【引擎加载】GPU 繁忙，等待 5 秒后重试... ({attempt + 1}/{max_retries})")
-                time.sleep(5)
+            if ("CUDA" in str(e) or "out of memory" in str(e).lower()) and attempt < max_retries - 1:
+                logger.warning(f"【引擎加载】GPU OOM，尝试驱逐其他模型... ({attempt + 1}/{max_retries})")
+                _request_eviction_from_main_service(needed_mb=3000)
+                time.sleep(3)
             else:
                 logger.error(f"【引擎加载】失败: {str(e)}")
                 raise
@@ -181,36 +193,159 @@ def _get_engine_for_mode(mode: str):
     return "base"
 
 
+def unload_all_models():
+    """卸载所有模型，释放显存"""
+    global last_used_time
+    if not _engines:
+        return
+    logger.info(f"【模型卸载】正在卸载所有模型 (当前: {list(_engines.keys())})...")
+    _engines.clear()
+    last_used_time = None
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logger.info("【模型卸载】GPU缓存已清理")
+
+
+def _touch_last_used():
+    """更新最后使用时间"""
+    global last_used_time
+    last_used_time = time.time()
+
+
+async def _idle_check_loop():
+    """后台定时检查空闲超时"""
+    while True:
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
+        if _engines and last_used_time is not None:
+            idle_seconds = time.time() - last_used_time
+            if idle_seconds > IDLE_TIMEOUT:
+                logger.info(f"【空闲超时】模型已空闲 {idle_seconds:.0f}s > {IDLE_TIMEOUT}s，自动卸载")
+                unload_all_models()
+        # 心跳上报
+        _heartbeat()
+
+
+def _register_to_main_service():
+    """向主服务注册"""
+    try:
+        import requests
+        port = int(os.environ.get("PILOTTS_PORT", "8003"))
+        host = os.environ.get("PILOTTS_HOST", "127.0.0.1")
+        requests.post(
+            f"{_main_service_url}/api/services/register",
+            json={
+                "service_id": "pilottts",
+                "port": port,
+                "host": host,
+                "gpu_id": _gpu_id,
+            },
+            timeout=5,
+        )
+        logger.info(f"【服务注册】已注册到主服务 (GPU: {_gpu_id})")
+    except Exception as e:
+        logger.warning(f"【服务注册】注册失败: {e}")
+
+
+def _unregister_from_main_service():
+    """从主服务注销"""
+    try:
+        import requests
+        requests.post(
+            f"{_main_service_url}/api/services/unregister",
+            json={"service_id": "pilottts"},
+            timeout=5,
+        )
+        logger.info("【服务注销】已从主服务注销")
+    except Exception as e:
+        logger.warning(f"【服务注销】注销失败: {e}")
+
+
+def _heartbeat():
+    """向主服务上报心跳"""
+    try:
+        import requests
+        vram_mb = 0
+        if _engines and torch.cuda.is_available():
+            vram_mb = torch.cuda.memory_allocated() // (1024 * 1024)
+        requests.post(
+            f"{_main_service_url}/api/services/heartbeat",
+            json={
+                "service_id": "pilottts",
+                "model_loaded": "base" in _engines or "instruct" in _engines,
+                "vram_used_mb": vram_mb,
+                "last_used_time": last_used_time,
+                "gpu_id": _gpu_id,
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass  # 心跳失败不影响服务
+
+
+def _request_eviction_from_main_service(needed_mb: int):
+    """OOM 时请求主服务驱逐同 GPU 上其他模型"""
+    try:
+        import requests
+        logger.info(f"【OOM驱逐】请求主服务释放 {needed_mb}MB 显存 (GPU: {_gpu_id})")
+        resp = requests.post(
+            f"{_main_service_url}/api/services/evict",
+            json={"gpu_id": _gpu_id, "exclude_service": "pilottts", "needed_mb": needed_mb},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            evicted = result.get("evicted_services", [])
+            logger.info(f"【OOM驱逐】主服务已驱逐: {evicted}")
+            return True
+        else:
+            logger.warning(f"【OOM驱逐】主服务返回: {resp.status_code}")
+            return False
+    except Exception as e:
+        logger.warning(f"【OOM驱逐】请求失败: {e}")
+        return False
+
+
 # ========== FastAPI 应用 ==========
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    global _idle_check_task, _gpu_id, _main_service_url
+
     logger.info("=" * 60)
     logger.info("【PilotTTS服务】启动中...")
     logger.info(f"【日志文件】{PILOTTS_LOG}")
     logger.info(f"【transformers版本】{TRANSFORMERS4_PATH}")
+    logger.info(f"【空闲超时】{IDLE_TIMEOUT}s | 【心跳间隔】{HEARTBEAT_INTERVAL}s")
     logger.info("=" * 60)
 
-    preload_enabled = os.environ.get('PRELOAD_PILOTTS', '0') == '1'
+    # 获取 GPU ID
+    _gpu_id = os.environ.get("GPU_ID", "0")
+    # 主服务地址
+    main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
+    main_port = os.environ.get("MAIN_PORT", "8000")
+    _main_service_url = f"http://{main_host}:{main_port}"
 
-    if preload_enabled:
-        try:
-            _load_engine("base")
-            logger.info("【预加载】Base 模型加载完成")
-        except Exception as e:
-            logger.warning(f"【预加载】Base 模型加载失败: {e}")
-    else:
-        logger.info("【PilotTTS服务】预加载已禁用，模型将在首次请求时加载")
+    # 注册到主服务
+    _register_to_main_service()
+
+    # 启动空闲检查定时器
+    _idle_check_task = asyncio.create_task(_idle_check_loop())
 
     yield
 
-    # 清理
-    for model_type in list(_engines.keys()):
-        logger.info(f"【清理】卸载 {model_type} 模型...")
-        del _engines[model_type]
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    # 停止定时器
+    if _idle_check_task:
+        _idle_check_task.cancel()
+
+    # 卸载模型
+    unload_all_models()
+
+    # 从主服务注销
+    _unregister_from_main_service()
+
     logger.info("【PilotTTS服务】已停止")
 
 
@@ -224,6 +359,53 @@ async def health():
         "status": "ok",
         "base_loaded": "base" in _engines,
         "instruct_loaded": "instruct" in _engines,
+        "last_used_time": last_used_time,
+        "idle_timeout": IDLE_TIMEOUT,
+        "gpu_id": _gpu_id,
+    }
+
+
+@app.post("/model/load")
+async def model_load(model_type: str = Form(...)):
+    """手动加载模型"""
+    if model_type not in ("base", "instruct"):
+        raise HTTPException(status_code=400, detail=f"不支持的模型类型: {model_type}，支持: base, instruct")
+    try:
+        _load_engine(model_type)
+        return {"success": True, "model_type": model_type}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/model/unload")
+async def model_unload():
+    """手动卸载模型，释放显存"""
+    if not _engines:
+        return {"success": True, "message": "模型未加载"}
+    _engines.clear()
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return {"success": True, "message": "模型已卸载"}
+
+
+@app.get("/model/status")
+async def model_status():
+    """获取模型状态"""
+    vram_mb = 0
+    if _engines and torch.cuda.is_available():
+        vram_mb = torch.cuda.memory_allocated() // (1024 * 1024)
+    idle_seconds = time.time() - last_used_time if last_used_time else None
+    return {
+        "service_id": "pilottts",
+        "base_loaded": "base" in _engines,
+        "instruct_loaded": "instruct" in _engines,
+        "vram_used_mb": vram_mb,
+        "last_used_time": last_used_time,
+        "idle_seconds": int(idle_seconds) if idle_seconds is not None else None,
+        "idle_timeout": IDLE_TIMEOUT,
+        "gpu_id": _gpu_id,
     }
 
 
@@ -262,6 +444,7 @@ async def tts(
         model_type = _get_engine_for_mode(mode)
         logger.info(f"【TTS】加载引擎: {model_type}")
         engine, config, device = _load_engine(model_type)
+        _touch_last_used()
 
         # 构建合成文本
         synth_text = text

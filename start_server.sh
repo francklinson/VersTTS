@@ -88,29 +88,16 @@ RELOAD=false
 OFFLINE_MODE=false
 
 # ========== 模型预加载配置 ==========
-# 设置启动时预加载哪些模型，以逗号分隔
-# 
-# 【主服务模型】运行在端口 8000，使用 transformers 4.57.3
-# 可选值: qwen3tts_base, qwen3tts_custom, qwen3tts_design, voxcpm
-# 
-# 【独立服务模型】
-# - OmniVoice (端口 8001): omnivoice - 使用 transformers 5.x
-# - CosyVoice (端口 8002): cosyvoice - 使用 transformers 4.51.3
-# - GPT-SoVITS (端口 8004): gptsovits - 使用 transformers 4.51.3
-#
-# 示例配置:
-#   PRELOAD_MODELS="qwen3tts_base,voxcpm"              # 主服务: Base+VoxCPM
-#   PRELOAD_MODELS="all"                               # 主服务: 加载所有模型
-#   PRELOAD_MODELS="none"                              # 主服务: 不预加载
-#   PRELOAD_OMNIVOICE="1"                              # OmniVoice: 预加载
-#   PRELOAD_COSYVOICE="1"                              # CosyVoice: 预加载
-#   PRELOAD_GPTSOVITS="1"                              # GPT-SoVITS: 预加载
-#
-PRELOAD_MODELS="${PRELOAD_MODELS:-qwen3tts_base,voxcpm}"
+# 所有独立服务默认不预加载，首次调用时按需加载
+# 空闲超时后自动卸载模型释放显存
 PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_PILOTTS="${PRELOAD_PILOTTS:-0}"       # 1=启动时加载, 0=按需加载
 PRELOAD_GPTSOVITS="${PRELOAD_GPTSOVITS:-0}"   # 1=启动时加载, 0=按需加载
+
+# ========== 空闲超时与心跳配置 ==========
+IDLE_TIMEOUT="${IDLE_TIMEOUT:-300}"           # 空闲超时秒数，默认 5 分钟
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}" # 心跳间隔秒数，默认 1 分钟
 
 # 颜色定义
 RED='\033[0;31m'
@@ -278,6 +265,13 @@ do_start() {
     export PRELOAD_OMNIVOICE
     export PRELOAD_COSYVOICE
     export PRELOAD_PILOTTS
+    export PRELOAD_GPTSOVITS
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+
+    # 主服务地址（供独立服务注册/心跳/驱逐使用）
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
 
     # 检查 Python
     PYTHON_VERSION=$(python --version 2>&1)
@@ -393,7 +387,7 @@ else:
                         print_step "正在启动 OmniVoice 独立服务 (端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU, 预加载: $PRELOAD_OMNIVOICE)..."
                         
                         cd "$SCRIPT_DIR"
-                        CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" GPU_ID="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
                         local ov_pid=$!
                         echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
                         
@@ -438,7 +432,7 @@ else:
                         print_step "正在启动 PilotTTS 独立服务 (端口: $PILOTTS_PORT, GPU: $PILOTTS_GPU, 预加载: $PRELOAD_PILOTTS)..."
 
                         cd "$SCRIPT_DIR"
-                        CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" GPU_ID="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
                         local pt_pid=$!
                         echo "$pt_pid" > "$PILOTTS_PID_FILE"
 
@@ -482,7 +476,7 @@ else:
                         print_step "正在启动 GPT-SoVITS 独立服务 (端口: $GPTSOVITS_PORT, GPU: $GPTSOVITS_GPU, 预加载: $PRELOAD_GPTSOVITS)..."
 
                         cd "$SCRIPT_DIR"
-                        CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" GPU_ID="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
                         local gs_pid=$!
                         echo "$gs_pid" > "$GPTSOVITS_PID_FILE"
 
@@ -526,7 +520,7 @@ else:
                         print_step "正在启动 CosyVoice 独立服务 (端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU, 预加载: $PRELOAD_COSYVOICE)..."
 
                         cd "$SCRIPT_DIR"
-                        CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+                        CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" GPU_ID="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
                         local cv_pid=$!
                         echo "$cv_pid" > "$COSYVOICE_PID_FILE"
 
@@ -976,7 +970,7 @@ do_start_omnivoice() {
 
     # 后台启动
     cd "$SCRIPT_DIR"
-    CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$OMNIVOICE_GPU" GPU_ID="$OMNIVOICE_GPU" nohup python "$OMNIVOICE_SCRIPT" >> "$OMNIVOICE_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$OMNIVOICE_PID_FILE"
 
@@ -1209,7 +1203,7 @@ do_start_cosyvoice() {
 
     # 后台启动
     cd "$SCRIPT_DIR"
-    CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$COSYVOICE_GPU" GPU_ID="$COSYVOICE_GPU" nohup python "$COSYVOICE_SCRIPT" >> "$COSYVOICE_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$COSYVOICE_PID_FILE"
 
@@ -1443,7 +1437,7 @@ do_start_pilottts() {
 
     # 后台启动
     cd "$SCRIPT_DIR"
-    CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$PILOTTS_GPU" GPU_ID="$PILOTTS_GPU" nohup python "$PILOTTS_SCRIPT" >> "$PILOTTS_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$PILOTTS_PID_FILE"
 
@@ -1670,7 +1664,7 @@ do_start_gptsovits() {
     echo ""
 
     cd "$SCRIPT_DIR"
-    CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
+    CUDA_VISIBLE_DEVICES="$GPTSOVITS_GPU" GPU_ID="$GPTSOVITS_GPU" nohup python "$GPTSOVITS_SCRIPT" >> "$GPTSOVITS_LOG_FILE" 2>&1 &
     local new_pid=$!
     echo "$new_pid" > "$GPTSOVITS_PID_FILE"
 

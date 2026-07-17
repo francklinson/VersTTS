@@ -14,6 +14,7 @@ from .recording_scripts import router as recording_scripts_router
 from .system import router as system_router
 from .concurrency import router as concurrency_router
 from .task_queue import router as task_queue_router
+from .services import router as services_router
 
 # 主路由
 router = APIRouter()
@@ -28,5 +29,6 @@ router.include_router(recording_scripts_router, prefix="/recording_scripts", tag
 router.include_router(system_router, prefix="/system", tags=["System"])
 router.include_router(concurrency_router, prefix="/concurrency", tags=["Concurrency"])
 router.include_router(task_queue_router, prefix="/tasks", tags=["Task Queue"])
+router.include_router(services_router, prefix="/services", tags=["Services"])
 
 __all__ = ['router']

@@ -31,11 +31,12 @@ OMNIVOICE_CONCURRENCY = 2
 COSYVOICE_CONCURRENCY = 2
 # 本地GPU模型保持顺序执行（避免爆显存）
 GPU_MODEL_CONCURRENCY = 1
+GPTSOVITS_CONCURRENCY = 1  # GPT-SoVITS 是 GPU 模型，串行执行
 
-# 创建信号量控制并发
 omnivoice_semaphore = asyncio.Semaphore(OMNIVOICE_CONCURRENCY)
 cosyvoice_semaphore = asyncio.Semaphore(COSYVOICE_CONCURRENCY)
 pilottts_semaphore = asyncio.Semaphore(GPU_MODEL_CONCURRENCY)  # PilotTTS 是 GPU 模型，串行执行
+gptsovits_semaphore = asyncio.Semaphore(GPTSOVITS_CONCURRENCY)  # GPT-SoVITS 是 GPU 模型，串行执行
 
 
 class BatchTTSRequest(BaseModel):
@@ -1138,6 +1139,7 @@ async def get_batch_config():
                 "omnivoice": OMNIVOICE_CONCURRENCY,
                 "voxcpm": GPU_MODEL_CONCURRENCY,
                 "qwen3tts": GPU_MODEL_CONCURRENCY,
+                "gptsovits": GPTSOVITS_CONCURRENCY,
                 "note": "本地GPU模型保持顺序执行以避免爆显存"
             },
             "gpu_info": {}
@@ -1186,3 +1188,154 @@ async def get_batch_config():
     except Exception as e:
         system_logger.error(f"【批量配置】获取配置失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取配置失败: {str(e)}")
+
+
+# ========== GPT-SoVITS 批量生成 ==========
+
+async def _batch_generate_gptsovits(text: str, mode: str, count: int,
+                                     speaker_id: str = None,
+                                     version: str = "v2",
+                                     progress_callback: Callable = None) -> Dict:
+    """
+    批量生成 GPT-SoVITS 音频（串行版本）
+
+    GPT-SoVITS 是独立 GPU 服务，串行执行避免爆显存
+    """
+    from backend.services import get_speaker_by_id
+    from backend.config import GPTSOVITS_HOST, GPTSOVITS_PORT
+
+    audio_urls = []
+    audio_files = []
+
+    GPTSOVITS_SERVICE_URL = f"http://{GPTSOVITS_HOST}:{GPTSOVITS_PORT}/tts"
+
+    # 获取说话人信息
+    ref_path = None
+    prompt_text = None
+    speaker_name = None
+    if speaker_id:
+        speaker = get_speaker_by_id(speaker_id)
+        if speaker:
+            ref_path = speaker.get("audio_path")
+            prompt_text = speaker.get("reference_text")
+            speaker_name = speaker.get("name")
+
+    if not ref_path or not prompt_text:
+        raise ValueError("GPT-SoVITS 需要参考音频和参考文本，请选择有参考文本的说话人")
+
+    system_logger.info(f"【批量生成】GPT-SoVITS 开始串行生成 | 数量: {count} | 版本: {version}")
+
+    if progress_callback:
+        progress_callback(0, count)
+
+    timeout = aiohttp.ClientTimeout(total=120)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        pending_tasks = []
+        for i in range(count):
+            task = _generate_single_gptsovits(
+                session=session,
+                text=text,
+                mode=mode,
+                index=i,
+                ref_path=ref_path,
+                prompt_text=prompt_text,
+                version=version,
+                gptsovits_url=GPTSOVITS_SERVICE_URL
+            )
+            pending_tasks.append(task)
+
+        completed = 0
+        for coro in asyncio.as_completed(pending_tasks):
+            try:
+                result = await coro
+                if result.get("success"):
+                    audio_urls.append(result["audio_url"])
+                    audio_files.append(result["audio_file"])
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+            except Exception as e:
+                system_logger.error(f"【批量生成】GPT-SoVITS 任务异常: {e}")
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+
+    success_count = len(audio_urls)
+    system_logger.info(f"【批量生成】GPT-SoVITS 完成 | 成功: {success_count}/{count}")
+
+    if progress_callback:
+        progress_callback(count, count)
+
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _generate_single_gptsovits(
+    session: aiohttp.ClientSession,
+    text: str,
+    mode: str,
+    index: int,
+    ref_path: str = None,
+    prompt_text: str = None,
+    version: str = "v2",
+    gptsovits_url: str = ""
+) -> Dict:
+    """单个 GPT-SoVITS 生成任务（受信号量控制）"""
+    import soundfile as sf
+
+    async with gptsovits_semaphore:
+        try:
+            data = {
+                "text": text,
+                "text_lang": "zh",
+                "prompt_text": prompt_text,
+                "prompt_lang": "zh",
+                "ref_audio_path": ref_path,
+                "version": version,
+                "output_format": "url",
+            }
+
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with session.post(gptsovits_url, data=data, timeout=timeout) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个失败: {error_text}")
+                    return {"success": False, "index": index}
+
+                result = await response.json()
+                if not result.get("success"):
+                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个合成失败")
+                    return {"success": False, "index": index}
+
+                temp_audio_path = result.get("audio_path")
+                if not temp_audio_path or not os.path.exists(temp_audio_path):
+                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个音频文件未生成")
+                    return {"success": False, "index": index}
+
+                # 保存音频到 outputs 目录
+                import re
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
+                output_path = os.path.join(OUTPUTS_DIR, f"gptsovits_{version}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+                audio_data, sample_rate = sf.read(temp_audio_path)
+                sf.write(output_path, audio_data, samplerate=sample_rate)
+
+                # 清理临时文件
+                try:
+                    os.remove(temp_audio_path)
+                except:
+                    pass
+
+                system_logger.info(f"【批量生成】GPT-SoVITS 第 {index+1} 个完成")
+                return {
+                    "success": True,
+                    "index": index,
+                    "audio_url": f"/audio/{os.path.basename(output_path)}",
+                    "audio_file": os.path.basename(output_path)
+                }
+
+        except asyncio.TimeoutError:
+            system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个超时")
+            return {"success": False, "index": index, "error": "timeout"}
+        except Exception as e:
+            system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个失败: {e}")
+            return {"success": False, "index": index, "error": str(e)}

@@ -949,7 +949,8 @@
             'qwen3tts': 'Qwen3-TTS',
             'omnivoice': 'OmniVoice',
             'cosyvoice': 'CosyVoice',
-            'pilottts': 'PilotTTS'
+            'pilottts': 'PilotTTS',
+            'gptsovits': 'GPT-SoVITS'
         };
 
         // 模式名称映射
@@ -1023,14 +1024,16 @@
                     'qwen3tts': 'Qwen3-TTS',
                     'omnivoice': 'OmniVoice',
                     'cosyvoice': 'CosyVoice',
-                    'pilottts': 'PilotTTS'
+                    'pilottts': 'PilotTTS',
+                    'gptsovits': 'GPT-SoVITS'
                 };
                 const modelIcons = {
                     'voxcpm': '🌐',
                     'qwen3tts': '🎯',
                     'omnivoice': '🔊',
                     'cosyvoice': '🎵',
-                    'pilottts': '🎤'
+                    'pilottts': '🎤',
+                    'gptsovits': '🔥'
                 };
 
                 let html = '';
@@ -1396,10 +1399,15 @@
                         // 更新已有进度条
                         const fill = progressWrapper.querySelector('.progress-fill');
                         if (fill) fill.style.width = `${pct}%`;
-                        const statusText = progressWrapper.querySelector('span:first-child');
-                        if (statusText) statusText.textContent = '🎲 批量生成中';
-                        const countText = progressWrapper.querySelectorAll('span')[1];
-                        if (countText) countText.textContent = `${done} / ${total} 完成`;
+                        const spans = progressWrapper.querySelectorAll('span');
+                        if (spans.length >= 2) {
+                            spans[0].textContent = '🎲 批量生成中';
+                            spans[1].textContent = `${done} / ${total} 完成`;
+                        }
+                        if (spans.length >= 4) {
+                            spans[2].textContent = `进度 ${pct}%`;
+                            spans[3].textContent = `剩余 ${total - done} 个`;
+                        }
                     }
                 } else {
                     if (!progressWrapper) {

@@ -426,14 +426,10 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
             task_queue._save_task(task)
 
             from backend.routers.batch import _batch_generate_omnivoice
-            from backend.task_queue import progress_updater
 
             # 定义进度回调函数
             def _progress_callback(completed: int, total: int):
-                progress_updater.update_progress(
-                    task_queue.update_batch_progress,
-                    task.task_id, completed, total
-                )
+                task_queue.update_batch_progress(task.task_id, completed, total)
 
             result = await _batch_generate_omnivoice(
                 text=task.text,
@@ -535,14 +531,10 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
             task_queue._save_task(task)
 
             from backend.routers.batch import _batch_generate_cosyvoice
-            from backend.task_queue import progress_updater
 
             # 定义进度回调函数
             def _progress_callback(completed: int, total: int):
-                progress_updater.update_progress(
-                    task_queue.update_batch_progress,
-                    task.task_id, completed, total
-                )
+                task_queue.update_batch_progress(task.task_id, completed, total)
 
             result = await _batch_generate_cosyvoice(
                 text=task.text,
@@ -636,13 +628,9 @@ async def handle_pilottts_task(task: TaskRecord) -> Dict[str, Any]:
             task_queue._save_task(task)
 
             from backend.routers.batch import _batch_generate_pilottts
-            from backend.task_queue import progress_updater
 
             def _progress_callback(completed: int, total: int):
-                progress_updater.update_progress(
-                    task_queue.update_batch_progress,
-                    task.task_id, completed, total
-                )
+                task_queue.update_batch_progress(task.task_id, completed, total)
 
             result = await _batch_generate_pilottts(
                 text=task.text,
@@ -717,6 +705,116 @@ async def handle_pilottts_task(task: TaskRecord) -> Dict[str, Any]:
         raise
 
 
+async def handle_gptsovits_task(task: TaskRecord) -> Dict[str, Any]:
+    """处理GPT-SoVITS任务 — 通过独立服务调用"""
+    try:
+        import aiohttp
+        from backend.services import get_speaker_by_id
+        from backend.config import GPTSOVITS_HOST, GPTSOVITS_PORT
+
+        await _check_subservice_health(
+            GPTSOVITS_HOST, GPTSOVITS_PORT,
+            "GPT-SoVITS", "./start_server.sh start-gptsovits"
+        )
+
+        params = task.params or {}
+        batch_count = params.get('batch_count', 1)
+        version = params.get('version', 'v2')
+
+        if batch_count > 1:
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
+            from backend.routers.batch import _batch_generate_gptsovits
+
+            def _progress_callback(completed: int, total: int):
+                task_queue.update_batch_progress(task.task_id, completed, total)
+
+            result = await _batch_generate_gptsovits(
+                text=task.text,
+                mode=task.mode,
+                count=batch_count,
+                speaker_id=params.get('speaker_id'),
+                version=version,
+                progress_callback=_progress_callback
+            )
+            audio_files = result.get('audio_files', [])
+            audio_urls = result.get('audio_urls', [])
+            if not audio_files:
+                raise Exception("批量生成未产生任何音频")
+            return _pack_batch_results(audio_files, audio_urls, "gptsovits")
+
+        # 单次生成
+        speaker_id = params.get('speaker_id')
+        speaker_name = None
+        ref_path = None
+        prompt_text = None
+
+        if speaker_id:
+            speaker = get_speaker_by_id(speaker_id)
+            if speaker:
+                ref_path = speaker.get("audio_path")
+                prompt_text = speaker.get("reference_text")
+                speaker_name = speaker.get("name")
+            if not ref_path or not os.path.exists(ref_path):
+                raise ValueError(f"参考音频不存在: {ref_path}")
+            if not prompt_text:
+                raise ValueError("该说话人缺少参考文本，请在说话人管理中补充参考文本")
+
+        # 构建请求数据
+        form_data = aiohttp.FormData()
+        form_data.add_field('text', task.text)
+        form_data.add_field('text_lang', 'zh')
+        form_data.add_field('prompt_text', prompt_text)
+        form_data.add_field('prompt_lang', 'zh')
+        form_data.add_field('ref_audio_path', ref_path)
+        form_data.add_field('version', version)
+        form_data.add_field('output_format', 'url')
+
+        # 调用 GPT-SoVITS 独立服务
+        url = f"http://{GPTSOVITS_HOST}:{GPTSOVITS_PORT}/tts"
+
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+            async with session.post(url, data=form_data) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(f"GPT-SoVITS服务错误: {error_text}")
+
+                result = await response.json()
+
+                if not result.get("success"):
+                    raise Exception(result.get("message", "GPT-SoVITS生成失败"))
+
+                audio_path = result.get('audio_path')
+                if not audio_path or not os.path.exists(audio_path):
+                    raise Exception(f"GPT-SoVITS返回的音频文件不存在: {audio_path}")
+
+                # 读取音频保存到 outputs 目录
+                import soundfile as sf
+                from backend.core import save_temp_audio
+                audio_data, sample_rate = sf.read(audio_path)
+                filename = _generate_meaningful_filename("gptsovits", task.mode, task.text,
+                                                         speaker_name=speaker_name)
+                dest_path = os.path.join(OUTPUTS_DIR, filename)
+                sf.write(dest_path, audio_data, sample_rate)
+
+                # 清理临时文件
+                try:
+                    os.remove(audio_path)
+                except:
+                    pass
+
+                return {
+                    'audio_file': dest_path,
+                    'audio_url': f"/audio/{filename}"
+                }
+
+    except Exception as e:
+        system_logger.error(f"【任务处理器】GPT-SoVITS任务失败: {e}")
+        raise
+
+
 def register_all_handlers():
     """注册所有任务处理器"""
     task_queue.register_handler("voxcpm", handle_voxcpm_task)
@@ -724,6 +822,7 @@ def register_all_handlers():
     task_queue.register_handler("omnivoice", handle_omnivoice_task)
     task_queue.register_handler("cosyvoice", handle_cosyvoice_task)
     task_queue.register_handler("pilottts", handle_pilottts_task)
+    task_queue.register_handler("gptsovits", handle_gptsovits_task)
 
     system_logger.info("【任务处理器】所有处理器已注册")
 

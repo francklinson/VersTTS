@@ -106,10 +106,14 @@ async def lifespan(app: FastAPI):
     # 主服务地址
     main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
     main_port = os.environ.get("MAIN_PORT", "8000")
-    _main_service_url = f"http://{main_host}:{main_port}"
+    main_scheme = os.environ.get("MAIN_SCHEME", "https")
+    _main_service_url = f"{main_scheme}://{main_host}:{main_port}"
 
     # 注册到主服务
-    _register_to_main_service()
+    for attempt in range(3):
+        if _register_to_main_service():
+            break
+        await asyncio.sleep(2)
 
     # 启动空闲检查定时器
     _idle_check_task = asyncio.create_task(_idle_check_loop())
@@ -136,6 +140,8 @@ model = None
 
 # 模型路径：优先使用环境变量 MODELS_DIR，否则使用相对于脚本的路径
 MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
+if not os.path.isabs(MODELS_DIR):
+    MODELS_DIR = os.path.join(PROJECT_ROOT, MODELS_DIR)
 MODEL_PATH = os.path.join(MODELS_DIR, "CosyVoice")
 
 
@@ -180,7 +186,7 @@ def _register_to_main_service():
         port = int(os.environ.get("COSYVOICE_PORT", "8002"))
         host = os.environ.get("COSYVOICE_HOST", "127.0.0.1")
         requests.post(
-            f"{_main_service_url}/api/services/register",
+            f"{_main_service_url}/services/register",
             json={
                 "service_id": "cosyvoice",
                 "port": port,
@@ -188,10 +194,13 @@ def _register_to_main_service():
                 "gpu_id": _gpu_id,
             },
             timeout=5,
+            verify=False,
         )
         logger.info(f"【服务注册】已注册到主服务 (GPU: {_gpu_id})")
+        return True
     except Exception as e:
         logger.warning(f"【服务注册】注册失败: {e}")
+        return False
 
 
 def _unregister_from_main_service():
@@ -199,9 +208,10 @@ def _unregister_from_main_service():
     try:
         import requests
         requests.post(
-            f"{_main_service_url}/api/services/unregister",
+            f"{_main_service_url}/services/unregister",
             json={"service_id": "cosyvoice"},
             timeout=5,
+            verify=False,
         )
         logger.info("【服务注销】已从主服务注销")
     except Exception as e:
@@ -216,15 +226,18 @@ def _heartbeat():
         if model is not None and torch.cuda.is_available():
             vram_mb = torch.cuda.memory_allocated() // (1024 * 1024)
         requests.post(
-            f"{_main_service_url}/api/services/heartbeat",
+            f"{_main_service_url}/services/heartbeat",
             json={
                 "service_id": "cosyvoice",
                 "model_loaded": model is not None,
                 "vram_used_mb": vram_mb,
                 "last_used_time": last_used_time,
                 "gpu_id": _gpu_id,
+                "host": os.environ.get("COSYVOICE_HOST", "127.0.0.1"),
+                "port": int(os.environ.get("COSYVOICE_PORT", "8002")),
             },
             timeout=5,
+            verify=False,
         )
     except Exception:
         pass  # 心跳失败不影响服务
@@ -236,9 +249,10 @@ def _request_eviction_from_main_service(needed_mb: int):
         import requests
         logger.info(f"【OOM驱逐】请求主服务释放 {needed_mb}MB 显存 (GPU: {_gpu_id})")
         resp = requests.post(
-            f"{_main_service_url}/api/services/evict",
+            f"{_main_service_url}/services/evict",
             json={"gpu_id": _gpu_id, "exclude_service": "cosyvoice", "needed_mb": needed_mb},
             timeout=30,
+            verify=False,
         )
         if resp.status_code == 200:
             result = resp.json()

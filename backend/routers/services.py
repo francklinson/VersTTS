@@ -41,6 +41,8 @@ class HeartbeatRequest(BaseModel):
     vram_used_mb: int = 0
     last_used_time: Optional[float] = None
     gpu_id: str = "0"
+    host: Optional[str] = None
+    port: Optional[int] = None
 
 
 class EvictRequest(BaseModel):
@@ -82,10 +84,10 @@ async def unregister_service(req: UnregisterRequest):
 async def heartbeat(req: HeartbeatRequest):
     """心跳上报"""
     if req.service_id not in _service_registry:
-        # 自动注册
+        # 自动注册：补全 host/port
         _service_registry[req.service_id] = {
-            "host": "unknown",
-            "port": 0,
+            "host": req.host or "unknown",
+            "port": req.port or 0,
             "gpu_id": req.gpu_id,
         }
 

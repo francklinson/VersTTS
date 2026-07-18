@@ -695,7 +695,7 @@ do_restart() {
     local pid
     pid=$(get_pid)
 
-    echo "【阶段 1/3】停止主服务"
+    echo "【阶段 1/6】停止主服务"
     echo "----------------------------------------"
 
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -738,26 +738,31 @@ do_restart() {
     echo ""
 
     # 阶段1.5: 停止 OmniVoice
-    echo "【阶段 2/4】停止 OmniVoice 服务"
+    echo "【阶段 2/6】停止 OmniVoice 服务"
     echo "----------------------------------------"
     do_stop_omnivoice
 
     # 阶段1.6: 停止 PilotTTS
-    echo "【阶段 3/5】停止 PilotTTS 服务"
+    echo "【阶段 3/6】停止 PilotTTS 服务"
     echo "----------------------------------------"
     do_stop_pilottts
 
     # 阶段1.7: 停止 CosyVoice
-    echo "【阶段 4/5】停止 CosyVoice 服务"
+    echo "【阶段 4/6】停止 CosyVoice 服务"
     echo "----------------------------------------"
     do_stop_cosyvoice
+
+    # 阶段1.8: 停止 GPT-SoVITS
+    echo "【阶段 5/6】停止 GPT-SoVITS 服务"
+    echo "----------------------------------------"
+    do_stop_gptsovits
 
     echo ""
     print_success "全部服务停止完成"
     echo ""
 
-    # 阶段2: 启动服务（会自动启动 OmniVoice、PilotTTS 和 CosyVoice）
-    echo "【阶段 5/5】启动全部服务"
+    # 阶段2: 启动服务（会自动启动 OmniVoice、PilotTTS、CosyVoice 和 GPT-SoVITS）
+    echo "【阶段 6/6】启动全部服务"
     echo "----------------------------------------"
     do_start
 }
@@ -957,6 +962,11 @@ do_start_omnivoice() {
     export HF_HOME
     export HUGGINGFACE_HUB_CACHE
     export TRANSFORMERS_CACHE
+    export PRELOAD_OMNIVOICE
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
 
     mkdir -p "$SCRIPT_DIR/logs"
 
@@ -1190,6 +1200,11 @@ do_start_cosyvoice() {
     export HF_HOME
     export HUGGINGFACE_HUB_CACHE
     export TRANSFORMERS_CACHE
+    export PRELOAD_COSYVOICE
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
 
     mkdir -p "$SCRIPT_DIR/logs"
 
@@ -1424,6 +1439,10 @@ do_start_pilottts() {
     export HUGGINGFACE_HUB_CACHE
     export TRANSFORMERS_CACHE
     export PRELOAD_PILOTTS
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
 
     mkdir -p "$SCRIPT_DIR/logs"
 
@@ -1652,6 +1671,10 @@ do_start_gptsovits() {
     export HUGGINGFACE_HUB_CACHE
     export TRANSFORMERS_CACHE
     export PRELOAD_GPTSOVITS
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
 
     mkdir -p "$SCRIPT_DIR/logs"
 

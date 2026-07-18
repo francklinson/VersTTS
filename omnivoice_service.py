@@ -47,6 +47,8 @@ _idle_check_task = None
 # 模型路径：优先使用环境变量 MODELS_DIR，否则使用相对于脚本的路径
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
+if not os.path.isabs(MODELS_DIR):
+    MODELS_DIR = os.path.join(PROJECT_ROOT, MODELS_DIR)
 MODEL_PATH = os.path.join(MODELS_DIR, "OmniVoice")
 
 # ========== 空闲超时配置 ==========
@@ -94,7 +96,7 @@ def _register_to_main_service():
         port = int(os.environ.get("OMNIVOICE_PORT", "8001"))
         host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
         requests.post(
-            f"{_main_service_url}/api/services/register",
+            f"{_main_service_url}/services/register",
             json={
                 "service_id": "omnivoice",
                 "port": port,
@@ -102,10 +104,13 @@ def _register_to_main_service():
                 "gpu_id": _gpu_id,
             },
             timeout=5,
+            verify=False,
         )
         print(f"【OmniVoice服务】已注册到主服务 (GPU: {_gpu_id})")
+        return True
     except Exception as e:
         print(f"【OmniVoice服务】注册到主服务失败: {e}")
+        return False
 
 
 def _unregister_from_main_service():
@@ -113,9 +118,10 @@ def _unregister_from_main_service():
     try:
         import requests
         requests.post(
-            f"{_main_service_url}/api/services/unregister",
+            f"{_main_service_url}/services/unregister",
             json={"service_id": "omnivoice"},
             timeout=5,
+            verify=False,
         )
         print("【OmniVoice服务】已从主服务注销")
     except Exception as e:
@@ -130,15 +136,18 @@ def _heartbeat():
         if model is not None and torch.cuda.is_available():
             vram_mb = torch.cuda.memory_allocated() // (1024 * 1024)
         requests.post(
-            f"{_main_service_url}/api/services/heartbeat",
+            f"{_main_service_url}/services/heartbeat",
             json={
                 "service_id": "omnivoice",
                 "model_loaded": model is not None,
                 "vram_used_mb": vram_mb,
                 "last_used_time": last_used_time,
                 "gpu_id": _gpu_id,
+                "host": os.environ.get("OMNIVOICE_HOST", "127.0.0.1"),
+                "port": int(os.environ.get("OMNIVOICE_PORT", "8001")),
             },
             timeout=5,
+            verify=False,
         )
     except Exception:
         pass  # 心跳失败不影响服务
@@ -150,9 +159,10 @@ def _request_eviction_from_main_service(needed_mb: int):
         import requests
         print(f"【OmniVoice服务】请求主服务释放 {needed_mb}MB 显存 (GPU: {_gpu_id})")
         resp = requests.post(
-            f"{_main_service_url}/api/services/evict",
+            f"{_main_service_url}/services/evict",
             json={"gpu_id": _gpu_id, "exclude_service": "omnivoice", "needed_mb": needed_mb},
             timeout=30,
+            verify=False,
         )
         if resp.status_code == 200:
             result = resp.json()
@@ -177,10 +187,14 @@ async def lifespan(app: FastAPI):
     # 主服务地址
     main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
     main_port = os.environ.get("MAIN_PORT", "8000")
-    _main_service_url = f"http://{main_host}:{main_port}"
+    main_scheme = os.environ.get("MAIN_SCHEME", "https")
+    _main_service_url = f"{main_scheme}://{main_host}:{main_port}"
 
     # 注册到主服务
-    _register_to_main_service()
+    for attempt in range(3):
+        if _register_to_main_service():
+            break
+        await asyncio.sleep(2)
 
     # 启动空闲检查定时器
     _idle_check_task = asyncio.create_task(_idle_check_loop())

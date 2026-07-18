@@ -24,7 +24,7 @@ router = APIRouter(tags=["任务队列"])
 
 class TaskSubmitRequest(BaseModel):
     """任务提交请求"""
-    model: str = Field(..., description="TTS模型名称: voxcpm, qwen3tts, omnivoice, cosyvoice")
+    model: str = Field(..., description="TTS模型名称: voxcpm, qwen3tts, omnivoice, cosyvoice, pilottts, gptsovits")
     mode: str = Field(..., description="生成模式")
     text: str = Field(..., description="合成文本")
     speaker_id: Optional[str] = Field(None, description="说话人ID")
@@ -32,6 +32,7 @@ class TaskSubmitRequest(BaseModel):
     voice_design_prompt: Optional[str] = Field(None, description="音色设计描述")
     control_prompt: Optional[str] = Field(None, description="控制指令")
     instruct_text: Optional[str] = Field(None, description="指令文本（Qwen3-TTS）")
+    version: Optional[str] = Field(None, description="模型版本（GPT-SoVITS: v1/v2/v2Pro/v2ProPlus/v3/v4）")
     speed: float = Field(1.0, description="语速")
     priority: int = Field(0, description="优先级（数字越小优先级越高）")
 
@@ -126,6 +127,8 @@ async def submit_task(
     voice_design_prompt: Optional[str] = Form(None, description="音色设计描述"),
     control_prompt: Optional[str] = Form(None, description="控制指令"),
     instruct_text: Optional[str] = Form(None, description="指令文本"),
+    version: Optional[str] = Form(None, description="模型版本（GPT-SoVITS）"),
+    batch_count: int = Form(1, description="批量生成数量"),
     speed: float = Form(1.0, description="语速"),
     priority: int = Form(0, description="优先级")
 ):
@@ -151,6 +154,8 @@ async def submit_task(
             "voice_design_prompt": voice_design_prompt,
             "control_prompt": control_prompt,
             "instruct_text": instruct_text,
+            "version": version,
+            "batch_count": batch_count,
             "speed": speed
         }
         # 移除None值

@@ -23,6 +23,24 @@
       "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1778245770_男声2.wav",
       "reference_text": "今日上午，我国新一代载人飞船试验船在文昌航天发射场成功发射，标志着我国载人航天工程进入新的发展阶段。",
       "created_at": "2026-05-08T21:09:30"
+    },
+    {
+      "id": "spk_1784342172825",
+      "name": "标准男声1",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1784342172_标准男声1.wav",
+      "reference_text": "他为儿子买了一整根甘蔗,市区的停车收费将大幅提高,他醒来后发现自己脸上有黑眼圈.",
+      "created_at": "2026-07-18T10:36:12.825834",
+      "model_type": "universal"
+    },
+    {
+      "id": "spk_1784342233433",
+      "name": "标准女声1",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1784342233_标准女声1.wav",
+      "reference_text": "大风刮倒了一处在建厂房,姚大爷觉得车夫的想法蛮有道理,汹涌的河水顺流而下流得很快.",
+      "created_at": "2026-07-18T10:37:13.433438",
+      "model_type": "universal"
     }
   ]
 }

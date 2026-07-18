@@ -157,6 +157,7 @@ class TaskQueue:
         "omnivoice": 2,   # 独立HTTP服务，可有限并行
         "cosyvoice": 2,   # 独立HTTP服务，可有限并行
         "pilottts": 1,    # 本地GPU模型，串行执行
+        "gptsovits": 1,   # 独立GPU服务，串行执行
     }
 
     def __init__(self, max_workers: int = 1, storage_dir: str = None):
@@ -278,6 +279,14 @@ class TaskQueue:
             handler: 处理函数，接收 TaskRecord 参数，返回音频文件路径
         """
         self._handlers[model] = handler
+        # 自动注册模型状态和并发配置
+        if model not in self._model_states:
+            self._model_states[model] = ModelState(model)
+        if model not in self._model_concurrency:
+            default = self.DEFAULT_MODEL_CONCURRENCY.get(model, 1)
+            env_key = f"MAX_CONCURRENT_{model.upper()}"
+            concurrency = int(os.environ.get(env_key, default))
+            self._model_concurrency[model] = concurrency
         system_logger.info(f"【任务队列】注册处理器: {model}")
     
     async def submit_task(
@@ -385,7 +394,7 @@ class TaskQueue:
     def update_batch_progress(self, task_id: str, completed: int, total: int):
         """
         更新批量生成进度
-        
+
         Args:
             task_id: 任务ID
             completed: 已完成数量
@@ -397,9 +406,12 @@ class TaskQueue:
             task.batch_total = total
             if total > 0:
                 task.progress = int((completed / total) * 100)
+            system_logger.info(f"【进度更新】{task_id}: {completed}/{total} = {task.progress}%")
             # 每完成5个或全部完成时保存
             if completed % 5 == 0 or completed == total:
                 self._save_task(task)
+        else:
+            system_logger.warning(f"【进度更新】跳过 {task_id}: task={'存在' if task else '不存在'} status={task.status if task else 'N/A'}")
 
     async def _worker_loop(self):
         """工作线程主循环 - 支持模型级并发"""

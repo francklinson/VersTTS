@@ -209,3 +209,18 @@ async def tts_gptsovits(
         system_logger.error(f"【GPT-SoVITS】合成错误: {e}")
         system_logger.error(f"【GPT-SoVITS】{'='*60}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/asr")
+async def asr_gptsovits(audio_path: str = Form(...)):
+    """ASR 识别音频，返回文本。用于前端上传参考音频时自动识别参考文本。"""
+    GPTSOVITS_ASR_URL = f"http://{GPTSOVITS_HOST}:{GPTSOVITS_PORT}/asr"
+    try:
+        response = requests.post(GPTSOVITS_ASR_URL, data={"audio_path": audio_path}, timeout=30)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.json().get("detail", "ASR识别失败"))
+        return response.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ASR服务错误: {str(e)}")

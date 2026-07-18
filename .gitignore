@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/*
 !lib/wenet/
 lib64/
 parts/

@@ -41,6 +41,24 @@
       "reference_text": "大风刮倒了一处在建厂房,姚大爷觉得车夫的想法蛮有道理,汹涌的河水顺流而下流得很快.",
       "created_at": "2026-07-18T10:37:13.433438",
       "model_type": "universal"
+    },
+    {
+      "id": "spk_1784390649500",
+      "name": "参考女声2",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1784390649_参考女声2.wav",
+      "reference_text": "总理对任何事情都要刨根问底渐渐的他还真就睡着了这身衣服就像被大雨淋过似的",
+      "created_at": "2026-07-19T00:04:09.500105",
+      "model_type": "universal"
+    },
+    {
+      "id": "spk_1784390663762",
+      "name": "参考男声2",
+      "embedding": null,
+      "audio_path": "/home/zhouchenghao/PycharmProjects/VersTTS/speakers/speaker_1784390663_参考男声2.wav",
+      "reference_text": "坚持终于让他有所收获据说这是当地最古老的小区你就是那个爱打篮球的人",
+      "created_at": "2026-07-19T00:04:23.762985",
+      "model_type": "universal"
     }
   ]
 }

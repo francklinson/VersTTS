@@ -822,9 +822,69 @@
             const file = event.target.files[0];
             if (file) {
                 validateAndSetFile(file);
+                triggerASR(file);
             }
         }
-        
+
+        // 拖拽上传支持
+        const uploadArea = document.getElementById('uploadArea');
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.classList.add('drag-over');
+            });
+            uploadArea.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+            });
+            uploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                    validateAndSetFile(file);
+                    triggerASR(file);
+                }
+            });
+        }
+
+        // 自动语音识别
+        async function triggerASR(file) {
+            const textarea = document.getElementById('uploadReferenceText');
+            if (!textarea || currentSpeakerTab !== 'upload') return;
+
+            // 显示识别中状态
+            textarea.value = '';
+            textarea.placeholder = '🤖 正在进行语音识别，请稍候...';
+            textarea.disabled = true;
+            showSpeakerStatus('🤖 正在进行语音识别...', 'info');
+
+            try {
+                const formData = new FormData();
+                formData.append('audio', file);
+                const response = await fetch(`${API_BASE}/speakers/asr-upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.success && data.text) {
+                    textarea.value = data.text;
+                    textarea.placeholder = '请输入音频文件中朗读的文本内容...';
+                    showSpeakerStatus('✅ 语音识别完成，请核对修改参考文本', 'success');
+                } else {
+                    textarea.placeholder = '识别失败，请手动输入参考文本';
+                    showSpeakerStatus('⚠️ 语音识别结果为空，请手动输入参考文本', 'info');
+                }
+            } catch (e) {
+                console.warn('ASR自动识别失败:', e);
+                textarea.placeholder = '识别失败，请手动输入参考文本';
+                showSpeakerStatus('⚠️ 语音识别失败，请手动输入参考文本', 'info');
+            } finally {
+                textarea.disabled = false;
+                updateSaveButton();
+            }
+        }
+
         // 验证并设置文件
         function validateAndSetFile(file) {
             const allowedExtensions = ['.mp3', '.wav', '.flac', '.ogg', '.m4a', '.webm'];
@@ -849,6 +909,9 @@
             document.getElementById('audioFileInput').value = '';
             document.getElementById('selectedFile').classList.remove('show');
             document.getElementById('uploadArea').classList.remove('has-file');
+            document.getElementById('uploadReferenceText').value = '';
+            document.getElementById('uploadReferenceText').placeholder = '请输入音频文件中朗读的文本内容...';
+            showSpeakerStatus('');
             updateSaveButton();
         }
         
@@ -1276,8 +1339,35 @@
                     throw new Error(uploadData.message || '上传音频失败');
                 }
                 
+                // 上传模式且未填写参考文本：自动语音识别
+                if (currentSpeakerTab === 'upload' && !referenceText) {
+                    updateProgress(55, '🤖 正在自动语音识别...');
+                    try {
+                        const asrFormData = new FormData();
+                        asrFormData.append('audio_path', uploadData.audio_path);
+                        const asrResponse = await fetch(`${API_BASE}/speakers/asr`, {
+                            method: 'POST',
+                            body: asrFormData
+                        });
+                        const asrData = await asrResponse.json();
+                        if (asrData.success && asrData.text) {
+                            referenceText = asrData.text;
+                            document.getElementById('uploadReferenceText').value = asrData.text;
+                            updateProgress(0, '准备上传...');
+                            showSpeakerStatus('✅ 语音识别完成，请核对修改参考文本后再次点击保存', 'success');
+                            btn.disabled = false;
+                            btn.innerHTML = '💾 保存说话人';
+                            updateSaveButton();
+                            return;
+                        }
+                    } catch (asrError) {
+                        console.warn('ASR识别失败，将使用空参考文本:', asrError);
+                        showSpeakerStatus('⚠️ 语音识别服务不可用，可手动输入参考文本', 'info');
+                    }
+                }
+
                 updateProgress(70, '正在保存说话人信息...');
-                
+
                 const saveFormData = new FormData();
                 saveFormData.append('name', name);
                 saveFormData.append('audio_path', uploadData.audio_path || '');

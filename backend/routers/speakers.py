@@ -21,6 +21,7 @@ from backend.services.speaker_service import (
     delete_speaker,
     update_speaker,
 )
+from backend.services.asr_service import transcribe as asr_transcribe
 
 router = APIRouter()
 
@@ -113,6 +114,76 @@ async def check_name(name: str = Form(...)):
         "exists": exists,
         "message": "名称已被使用" if exists else "名称可用"
     }
+
+
+@router.post("/asr")
+async def asr_recognize(audio_path: str = Form(...)):
+    """
+    独立 ASR 语音识别端点（不依赖 GPT-SoVITS 服务）。
+    使用 wenet (wenetspeech) 模型直接识别。
+
+    用于前端上传参考音频时自动识别参考文本，供用户核对修改。
+    """
+    if not os.path.exists(audio_path):
+        raise HTTPException(status_code=400, detail=f"音频文件不存在: {audio_path}")
+
+    try:
+        system_logger.info(f"【ASR】开始识别: {audio_path}")
+        text = asr_transcribe(audio_path)
+        if not text:
+            raise HTTPException(status_code=500, detail="ASR 识别结果为空，请确认音频内容清晰")
+        system_logger.info(f"【ASR】识别成功: '{text}'")
+        return {"success": True, "text": text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"【ASR】识别失败: {e}")
+        raise HTTPException(status_code=500, detail=f"ASR 识别失败: {str(e)}")
+
+
+@router.post("/asr-upload")
+async def asr_upload_file(audio: UploadFile = File(...)):
+    """
+    接受音频文件直接进行 ASR 语音识别（无需预先上传到 speakers 目录）。
+    文件临时保存、识别后立即清理。
+
+    用于前端选择文件后立即自动触发语音识别，填充参考文本框。
+    """
+    import tempfile
+
+    tmp_path = None
+    try:
+        # 读取上传的文件内容
+        audio_bytes = await audio.read()
+
+        # 写入临时文件（保留原始扩展名以便 wenet 正确解码）
+        file_ext = os.path.splitext(audio.filename)[1].lower() or ".wav"
+        with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        system_logger.info(f"【ASR】临时文件已创建: {tmp_path} ({len(audio_bytes)} bytes)")
+
+        # 语音识别
+        text = asr_transcribe(tmp_path)
+        if not text:
+            raise HTTPException(status_code=500, detail="ASR 识别结果为空，请确认音频内容清晰")
+
+        system_logger.info(f"【ASR】识别成功: '{text}'")
+        return {"success": True, "text": text}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        system_logger.error(f"【ASR】识别失败: {e}")
+        raise HTTPException(status_code=500, detail=f"ASR 识别失败: {str(e)}")
+    finally:
+        # 清理临时文件
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 @router.post("/upload")

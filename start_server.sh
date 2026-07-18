@@ -292,6 +292,72 @@ else:
     print('  警告: CUDA 不可用，将使用 CPU 模式')
 " 2>/dev/null || print_warn "CUDA 检查失败"
 
+    # ========== 模型文件检查 ==========
+    print_step "检查模型文件..."
+
+    local MODELS_ABS_DIR="$SCRIPT_DIR/$MODELS_DIR"
+    local model_errors=0
+
+    # --- GPT-SoVITS ---
+    local GS_DIR="$MODELS_ABS_DIR/GPT-SoVITS"
+    local gs_ok=true
+    # BERT & HuBERT
+    [ -f "$GS_DIR/chinese-roberta-wwm-ext-large/config.json" ] || { print_warn "GPT-SoVITS: chinese-roberta-wwm-ext-large 缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/chinese-hubert-base/config.json" ] || { print_warn "GPT-SoVITS: chinese-hubert-base 缺失"; gs_ok=false; }
+    # v1
+    [ -f "$GS_DIR/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt" ] || { print_warn "GPT-SoVITS v1: t2s权重缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/s2G488k.pth" ] || { print_warn "GPT-SoVITS v1: vits权重缺失"; gs_ok=false; }
+    # v2
+    [ -f "$GS_DIR/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt" ] || { print_warn "GPT-SoVITS v2: t2s权重缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/gsv-v2final-pretrained/s2G2333k.pth" ] || { print_warn "GPT-SoVITS v2: vits权重缺失"; gs_ok=false; }
+    # v2Pro/v2ProPlus/v3/v4 共用 s1v3.ckpt
+    [ -f "$GS_DIR/s1v3.ckpt" ] || { print_warn "GPT-SoVITS v2Pro/v3/v4: t2s权重(s1v3.ckpt)缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/v2Pro/s2Gv2Pro.pth" ] || { print_warn "GPT-SoVITS v2Pro: vits权重缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/v2Pro/s2Gv2ProPlus.pth" ] || { print_warn "GPT-SoVITS v2ProPlus: vits权重缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/s2Gv3.pth" ] || { print_warn "GPT-SoVITS v3: vits权重缺失"; gs_ok=false; }
+    [ -f "$GS_DIR/gsv-v4-pretrained/s2Gv4.pth" ] || { print_warn "GPT-SoVITS v4: vits权重缺失"; gs_ok=false; }
+    # SV 模型
+    [ -f "$GS_DIR/sv/pretrained_eres2netv2w24s4ep4.ckpt" ] || { print_warn "GPT-SoVITS: SV模型缺失"; gs_ok=false; }
+    if $gs_ok; then print_success "GPT-SoVITS: 模型完整 (v1/v2/v2Pro/v2ProPlus/v3/v4)"; else model_errors=$((model_errors + 1)); fi
+
+    # --- OmniVoice ---
+    local OV_DIR="$MODELS_ABS_DIR/OmniVoice"
+    if [ -f "$OV_DIR/config.json" ] && [ -f "$OV_DIR/model.safetensors" ]; then
+        print_success "OmniVoice: 模型完整"
+    else
+        print_warn "OmniVoice: 模型不完整 (缺少 config.json 或 model.safetensors)"
+        model_errors=$((model_errors + 1))
+    fi
+
+    # --- CosyVoice ---
+    local CV_DIR="$MODELS_ABS_DIR/CosyVoice/Fun-CosyVoice3-0.5B"
+    if [ -d "$CV_DIR" ] && [ -f "$CV_DIR/config.json" ]; then
+        print_success "CosyVoice: 模型完整"
+    else
+        print_warn "CosyVoice: 模型不完整 (缺少 Fun-CosyVoice3-0.5B/)"
+        model_errors=$((model_errors + 1))
+    fi
+
+    # --- PilotTTS ---
+    local PT_DIR="$MODELS_ABS_DIR/PilotTTS"
+    local pt_ok=true
+    [ -f "$PT_DIR/pilot_tts.pt" ] || { print_warn "PilotTTS: pilot_tts.pt 缺失"; pt_ok=false; }
+    [ -d "$PT_DIR/Qwen3-0.6B" ] || { print_warn "PilotTTS: Qwen3-0.6B/ 缺失"; pt_ok=false; }
+    [ -d "$PT_DIR/w2v-bert-2.0" ] || { print_warn "PilotTTS: w2v-bert-2.0/ 缺失"; pt_ok=false; }
+    if $pt_ok; then print_success "PilotTTS: 模型完整"; else model_errors=$((model_errors + 1)); fi
+
+    # --- wenet ASR ---
+    local WN_DIR="$MODELS_ABS_DIR/wenet/wenetspeech"
+    if [ -f "$WN_DIR/final.pt" ] && [ -f "$WN_DIR/train.yaml" ]; then
+        print_success "wenet ASR: 模型完整"
+    else
+        print_warn "wenet ASR: 模型不完整 (不影响核心TTS功能)"
+    fi
+
+    if [ $model_errors -gt 0 ]; then
+        print_warn "部分模型文件缺失，对应服务可能无法正常推理"
+    fi
+
     # 创建必要目录
     print_step "创建必要目录..."
     mkdir -p "$SCRIPT_DIR/outputs"

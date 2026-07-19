@@ -16,15 +16,21 @@ from typing import Optional, Dict, Any
 from logging.handlers import RotatingFileHandler
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
-os.makedirs(LOG_DIR, exist_ok=True)
 
-# 日志保留天数
-LOG_RETENTION_DAYS = 7
-# 单个日志文件最大大小 (10MB)
-MAX_LOG_SIZE = 10 * 1024 * 1024
-# 备份文件数量
-BACKUP_COUNT = 3
+# 优先从 config.py 读取配置，否则使用默认值
+try:
+    from backend.config import LOGS_DIR, LOG_MAX_SIZE, LOG_BACKUP_COUNT
+    LOG_DIR = LOGS_DIR
+    MAX_LOG_SIZE = LOG_MAX_SIZE * 1024 * 1024  # config 中单位为 MB
+    BACKUP_COUNT = LOG_BACKUP_COUNT
+    LOG_RETENTION_DAYS = int(os.environ.get("LOG_RETENTION_DAYS", "7"))
+except (ImportError, AttributeError):
+    LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
+    LOG_RETENTION_DAYS = 7
+    MAX_LOG_SIZE = 50 * 1024 * 1024  # 默认 50MB
+    BACKUP_COUNT = 5
+
+os.makedirs(LOG_DIR, exist_ok=True)
 
 # 日志文件路径 - 简化为2个核心日志
 # 1. app.log: 应用日志 (系统 + 操作)

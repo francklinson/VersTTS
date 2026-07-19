@@ -30,7 +30,7 @@ def _check_gptsovits_service():
     try:
         response = requests.get(GPTSOVITS_HEALTH_URL, timeout=3)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
 
@@ -164,11 +164,11 @@ async def tts_gptsovits(
         if prompt_wav and ref_path and "/tmp" in ref_path:
             try:
                 os.remove(ref_path)
-            except:
+            except Exception:
                 pass
         try:
             os.remove(audio_path)
-        except:
+        except Exception:
             pass
 
         total_duration = time.time() - start_time

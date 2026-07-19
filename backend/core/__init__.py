@@ -18,14 +18,12 @@ from .memory_utils import (
 from .concurrency import (
     gpu_lock,
     rate_limiter,
-    task_queue,
     require_gpu_lock,
     concurrency_middleware,
     initialize_concurrency,
     shutdown_concurrency,
     RateLimiter,
-    GPULock,
-    TaskQueue
+    GPULock
 )
 
 __all__ = [
@@ -43,12 +41,10 @@ __all__ = [
     'clear_model_cache',
     'gpu_lock',
     'rate_limiter',
-    'task_queue',
     'require_gpu_lock',
     'concurrency_middleware',
     'initialize_concurrency',
     'shutdown_concurrency',
     'RateLimiter',
-    'GPULock',
-    'TaskQueue'
+    'GPULock'
 ]

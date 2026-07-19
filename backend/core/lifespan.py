@@ -152,11 +152,33 @@ async def lifespan(app: FastAPI):
     init_duration = time.time() - init_start_time
     OperationLogger.log_init_complete(init_duration, "成功")
 
+    # 启动 outputs/ 目录定时清理任务（每小时执行一次）
+    async def _outputs_cleanup_loop():
+        from backend.core.audio_utils import cleanup_old_outputs
+        while True:
+            try:
+                await asyncio.sleep(3600)  # 每小时
+                cleanup_old_outputs(max_age_hours=24)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                system_logger.warning(f"【清理】定时清理任务出错: {e}")
+
+    cleanup_task = asyncio.create_task(_outputs_cleanup_loop())
+    system_logger.info("【清理】outputs/ 定时清理已启动（每1小时，清理24h前文件）")
+
     yield
 
     # 服务关闭
     system_logger.info("=" * 80)
     system_logger.info("【服务关闭】正在清理资源...")
+
+    # 停止 outputs 定时清理任务
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
     # 停止模型管理后台任务
     await model_manager.stop()

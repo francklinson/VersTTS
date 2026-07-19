@@ -77,6 +77,7 @@ class TaskStatus(Enum):
     COMPLETED = "completed"     # 已完成
     FAILED = "failed"           # 失败
     CANCELLED = "cancelled"     # 已取消
+    RETRIED = "retried"         # 已被重试（指向新任务）
 
 
 @dataclass
@@ -179,6 +180,9 @@ class TaskQueue:
         self._queue_event = asyncio.Event()
         self.processing_tasks: Dict[str, TaskRecord] = {}
 
+        # 存储运行中的 asyncio.Task 句柄，用于取消执行中的任务
+        self._active_tasks: Dict[str, asyncio.Task] = {}
+
         # 执行控制
         self._running = False
         self._worker_task: Optional[asyncio.Task] = None
@@ -262,11 +266,13 @@ class TaskQueue:
             system_logger.error(f"【任务队列】加载任务出错: {e}")
     
     def _save_task(self, task: TaskRecord):
-        """保存任务到磁盘"""
+        """保存任务到磁盘（原子写入：先写临时文件，再 rename）"""
         try:
             filepath = os.path.join(self.storage_dir, f"{task.task_id}.json")
-            with open(filepath, 'w', encoding='utf-8') as f:
+            tmp_path = filepath + ".tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(task.to_dict(), f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, filepath)  # 原子重命名，避免进程崩溃导致文件损坏
         except Exception as e:
             system_logger.error(f"【任务队列】保存任务失败 {task.task_id}: {e}")
     
@@ -474,21 +480,24 @@ class TaskQueue:
                     continue
 
                 # 批量派发所有可并行执行的任务
-                # 先过滤掉已取消的任务（从 self.tasks 重新读取状态，cancel_task 可能已修改）
+                # 过滤掉已取消的任务（必须在锁内读取，防止与 cancel_task 产生 TOCTOU 竞态）
                 valid_tasks = []
-                for task in tasks_to_dispatch:
-                    current = self.tasks.get(task.task_id)
-                    if current and current.status == TaskStatus.CANCELLED.value:
-                        system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
-                        continue
-                    valid_tasks.append(task)
+                async with self._lock:
+                    for task in tasks_to_dispatch:
+                        current = self.tasks.get(task.task_id)
+                        if current and current.status == TaskStatus.CANCELLED.value:
+                            system_logger.info(f"【任务队列】跳过已取消任务: {task.task_id}")
+                            continue
+                        valid_tasks.append(task)
 
-                # 将有效任务标记为执行中，防止同模型任务被重复派发
-                for task in valid_tasks:
-                    task.status = TaskStatus.PROCESSING.value
-                    task.started_at = datetime.now().isoformat()
-                    async with self._lock:
+                    # 将有效任务标记为执行中，防止同模型任务被重复派发
+                    for task in valid_tasks:
+                        task.status = TaskStatus.PROCESSING.value
+                        task.started_at = datetime.now().isoformat()
                         self.processing_tasks[task.task_id] = task
+
+                # 持久化在锁外执行（避免IO阻塞锁）
+                for task in valid_tasks:
                     self._save_task(task)
 
                     # 更新模型状态
@@ -499,7 +508,10 @@ class TaskQueue:
                 for task in valid_tasks:
                     system_logger.info(f"【任务队列】派发任务: {task.task_id} [模型={task.model}]")
                     # 使用 asyncio.create_task 让不同模型的任务可以并行执行
-                    asyncio.create_task(self._execute_task(task))
+                    async_task = asyncio.create_task(self._execute_task(task))
+                    # 存储 asyncio.Task 句柄，用于取消运行中的任务
+                    async with self._lock:
+                        self._active_tasks[task.task_id] = async_task
 
             except Exception as e:
                 system_logger.error(f"【任务队列】工作线程错误: {e}")
@@ -557,8 +569,8 @@ class TaskQueue:
 
         success = False
         try:
-            # 执行处理函数
-            result = await handler(task)
+            # 执行处理函数，180秒超时防止单个任务永久阻塞队列
+            result = await asyncio.wait_for(handler(task), timeout=180)
 
             # 更新成功状态
             task.status = TaskStatus.COMPLETED.value
@@ -571,6 +583,16 @@ class TaskQueue:
 
             system_logger.info(f"【任务队列】任务完成: {task.task_id} | 文件: {task.audio_file}")
 
+        except asyncio.TimeoutError:
+            task.status = TaskStatus.FAILED.value
+            task.error_message = "任务执行超时（180秒）"
+            task.completed_at = datetime.now().isoformat()
+            system_logger.error(f"【任务队列】任务超时 {task.task_id}")
+        except asyncio.CancelledError:
+            task.status = TaskStatus.CANCELLED.value
+            task.error_message = "任务已被取消"
+            task.completed_at = datetime.now().isoformat()
+            system_logger.info(f"【任务队列】任务被取消 {task.task_id}")
         except Exception as e:
             task.status = TaskStatus.FAILED.value
             task.error_message = str(e)
@@ -582,6 +604,8 @@ class TaskQueue:
             async with self._lock:
                 if task.task_id in self.processing_tasks:
                     del self.processing_tasks[task.task_id]
+                # 清理 asyncio.Task 句柄
+                self._active_tasks.pop(task.task_id, None)
             self._save_task(task)
             # 更新模型状态
             model_state = self._model_states.get(task.model)
@@ -678,9 +702,15 @@ class TaskQueue:
         
         if task.status in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]:
             return False
-        
-        # 如果任务正在执行，无法取消（或者可以实现中断逻辑）
+
+        # 如果任务正在执行，发送 CancelledError 到对应的 asyncio.Task
         if task.status == TaskStatus.PROCESSING.value:
+            async with self._lock:
+                async_task = self._active_tasks.get(task_id)
+            if async_task and not async_task.done():
+                async_task.cancel()
+                system_logger.info(f"【任务队列】已发送取消信号到运行中任务: {task_id}")
+                return True
             return False
         
         # 从等待列表中移除
@@ -730,15 +760,27 @@ class TaskQueue:
             os.remove(filepath)
         
         # 删除音频文件（如果存在且不是共享文件）
-        system_logger.info(f"【任务队列】删除任务调试: task_id={task_id}, audio_file={task.audio_file}, exists={os.path.exists(task.audio_file) if task.audio_file else False}")
-        if task.audio_file and os.path.exists(task.audio_file):
+        files_to_delete = []
+        if task.audio_file:
+            files_to_delete.append(task.audio_file)
+
+        # 批量任务：级联删除 batch_results 中的单个音频文件
+        if hasattr(task, 'batch_results') and task.batch_results:
+            for item in task.batch_results:
+                if isinstance(item, dict):
+                    audio = item.get('audio_file') or item.get('audio_url')
+                    if audio and os.path.exists(audio):
+                        files_to_delete.append(audio)
+
+        for fpath in files_to_delete:
             try:
-                os.remove(task.audio_file)
-                system_logger.info(f"【任务队列】音频文件已删除: {task.audio_file}")
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+                    system_logger.info(f"【任务队列】音频文件已删除: {fpath}")
+                else:
+                    system_logger.warning(f"【任务队列】音频文件不存在，跳过: {fpath}")
             except Exception as e:
-                system_logger.warning(f"【任务队列】删除音频文件失败 {task.audio_file}: {e}")
-        elif task.audio_file:
-            system_logger.warning(f"【任务队列】音频文件不存在，无法删除: {task.audio_file}")
+                system_logger.warning(f"【任务队列】删除音频文件失败 {fpath}: {e}")
         
         # 从内存中移除
         del self.tasks[task_id]

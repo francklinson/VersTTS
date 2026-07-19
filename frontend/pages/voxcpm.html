@@ -302,7 +302,14 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../assets/js/polling.js"></script>
     <script>
+        // 页面不可见时暂停轮询，可见时恢复
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { stopPollingTask(); } else if (pollingTaskId) { startPollingTask(pollingTaskId); }
+        });
+        window.addEventListener('beforeunload', stopPollingTask);
+
         let currentMode = 'base';
         let savedSpeakers = [];
         let selectedSpeakerId = { clone: null, ultimate: null };
@@ -819,7 +826,7 @@
             stopPollingTask();
             pollingTaskId = taskId;
             let retryCount = 0;
-            const maxRetries = 300;
+            const maxRetries = 180;  // 15分钟超时 (180 * 5s)
 
             const resultSection = document.getElementById('resultSection');
             const audioPlayer = document.getElementById('audioPlayer');
@@ -874,7 +881,7 @@
                     console.error('轮询任务状态失败:', error);
                     retryCount++;
                 }
-            }, 3000);
+            }, 5000);
         }
 
         // 停止轮询

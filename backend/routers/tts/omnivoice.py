@@ -17,7 +17,7 @@ from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.services import get_speaker_by_id
 from backend.core import audio_to_base64
-from backend.config import OMNIVOICE_HOST, OMNIVOICE_PORT
+from backend.config import OUTPUTS_DIR, OMNIVOICE_HOST, OMNIVOICE_PORT
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def _check_omnivoice_service():
     try:
         response = requests.get(OMNIVOICE_HEALTH_URL, timeout=3)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
 
@@ -274,7 +274,7 @@ async def tts_omnivoice(
         # 保存音频到 outputs 目录
         system_logger.info(f"【OmniVoice】保存音频文件...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f"outputs/omnivoice_{timestamp}.wav"
+        output_path = os.path.join(OUTPUTS_DIR, f"omnivoice_{timestamp}.wav")
         save_start = time.time()
         audio_data, sample_rate = sf.read(audio_path)
         sf.write(output_path, audio_data, samplerate=sample_rate)

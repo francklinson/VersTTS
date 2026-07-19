@@ -4,6 +4,7 @@
 """
 
 import os
+import time
 import base64
 from datetime import datetime
 from typing import Optional
@@ -11,7 +12,7 @@ from typing import Optional
 import numpy as np
 import soundfile as sf
 
-from backend.logger_config import OperationLogger
+from backend.logger_config import OperationLogger, system_logger
 
 
 def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> np.ndarray:
@@ -111,3 +112,78 @@ def audio_to_base64(audio_path: str) -> str:
     """将音频文件转为base64"""
     with open(audio_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
+
+
+def cleanup_old_outputs(max_age_hours: int = 24) -> int:
+    """
+    清理 outputs/ 目录中过期的音频文件。
+
+    Args:
+        max_age_hours: 最大保留时间（小时），超过此时间的文件将被删除
+
+    Returns:
+        清理的文件数量
+    """
+    from backend.config import OUTPUTS_DIR
+
+    if not os.path.exists(OUTPUTS_DIR):
+        return 0
+
+    cutoff = time.time() - (max_age_hours * 3600)
+    removed = 0
+    total_size = 0
+
+    try:
+        for filename in os.listdir(OUTPUTS_DIR):
+            filepath = os.path.join(OUTPUTS_DIR, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                mtime = os.path.getmtime(filepath)
+                if mtime < cutoff:
+                    size = os.path.getsize(filepath)
+                    os.remove(filepath)
+                    removed += 1
+                    total_size += size
+            except OSError as e:
+                system_logger.warning(f"【清理】删除文件失败 {filepath}: {e}")
+
+        if removed > 0:
+            mb = total_size / (1024 * 1024)
+            system_logger.info(f"【清理】已清理 outputs/ 目录: {removed} 个文件, {mb:.1f} MB")
+    except Exception as e:
+        system_logger.error(f"【清理】扫描 outputs/ 目录出错: {e}")
+
+    return removed
+
+
+def get_outputs_disk_usage() -> dict:
+    """获取 outputs/ 目录磁盘使用情况"""
+    from backend.config import OUTPUTS_DIR
+
+    result = {"path": OUTPUTS_DIR, "file_count": 0, "total_size_mb": 0, "oldest_file_hours": None}
+
+    if not os.path.exists(OUTPUTS_DIR):
+        return result
+
+    now = time.time()
+    total_size = 0
+    oldest = None
+
+    try:
+        for filename in os.listdir(OUTPUTS_DIR):
+            filepath = os.path.join(OUTPUTS_DIR, filename)
+            if os.path.isfile(filepath):
+                total_size += os.path.getsize(filepath)
+                result["file_count"] += 1
+                mtime = os.path.getmtime(filepath)
+                if oldest is None or mtime < oldest:
+                    oldest = mtime
+
+        result["total_size_mb"] = round(total_size / (1024 * 1024), 2)
+        if oldest:
+            result["oldest_file_hours"] = round((now - oldest) / 3600, 1)
+    except Exception as e:
+        system_logger.error(f"【磁盘】统计 outputs/ 目录出错: {e}")
+
+    return result

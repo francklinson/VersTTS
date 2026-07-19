@@ -12,9 +12,9 @@ from backend.logger_config import system_logger
 from backend.core import (
     gpu_lock,
     rate_limiter,
-    task_queue,
     get_gpu_memory_info
 )
+from backend.task_queue import task_queue
 
 router = APIRouter()
 
@@ -51,10 +51,11 @@ async def get_concurrency_status():
     """
     try:
         gpu_memory = get_gpu_memory_info()
-        
+        queue_status = task_queue.get_queue_status()
+
         return ConcurrencyStatusResponse(
             gpu_lock=gpu_lock.get_status(),
-            task_queue=task_queue.get_status(),
+            task_queue=queue_status,
             rate_limiter={
                 "active_sessions": len(rate_limiter.sessions),
                 "requests_per_minute": rate_limiter.requests_per_minute,
@@ -92,18 +93,19 @@ async def get_session_info(x_session_id: Optional[str] = Header(None)):
 async def estimate_wait_time():
     """
     预估等待时间
-    
+
     根据当前队列长度估算新任务的预计等待时间
     """
-    queue_size = task_queue.queue.qsize()
-    
+    queue_status = task_queue.get_queue_status()
+    queue_size = queue_status.get("pending_count", 0)
+
     # 估算每个任务平均处理时间（秒）
-    # 基于历史数据，TTS任务平均耗时约10-30秒
     avg_task_duration = 20.0
-    
+
     # 考虑并发度
-    estimated_wait = queue_size * avg_task_duration / task_queue.max_concurrent
-    
+    concurrent_models = len(queue_status.get("concurrent_models", [])) or 1
+    estimated_wait = queue_size * avg_task_duration / concurrent_models
+
     return {
         "success": True,
         "queue_size": queue_size,
@@ -130,33 +132,26 @@ def format_duration(seconds: float) -> str:
 @router.post("/queue/clear-completed")
 async def clear_completed_tasks():
     """
-    清理已完成的任务记录
-    
-    释放内存，只保留最近100个完成的任务
+    清理已完成/失败/已取消/已重试的任务记录（保留最近完成的任务）
     """
     try:
-        before_count = len(task_queue.completed_tasks)
-        
-        # 只保留最近100个完成的任务
-        if before_count > 100:
-            # 按完成时间排序，保留最新的100个
-            sorted_tasks = sorted(
-                task_queue.completed_tasks.items(),
-                key=lambda x: x[1].get("completed_at", ""),
-                reverse=True
-            )
-            task_queue.completed_tasks = dict(sorted_tasks[:100])
-        
-        after_count = len(task_queue.completed_tasks)
-        cleared = before_count - after_count
-        
-        system_logger.info(f"【并发管理】清理了 {cleared} 个已完成的任务记录")
-        
+        removable_statuses = [
+            task_queue.TaskStatus.COMPLETED.value,
+            task_queue.TaskStatus.FAILED.value,
+            task_queue.TaskStatus.CANCELLED.value,
+            task_queue.TaskStatus.RETRIED.value,
+        ]
+        old_time = None  # 使用内置的 cleanup_old_tasks
+        removed_count = 0
+
+        # 清理7天前的任务
+        task_queue.cleanup_old_tasks(days=7)
+
+        system_logger.info(f"【并发管理】已完成的任务记录")
         return {
             "success": True,
-            "message": f"已清理 {cleared} 个任务记录",
-            "before_count": before_count,
-            "after_count": after_count
+            "message": f"已触发清理",
+            "before_count": len(task_queue.tasks),
         }
     except Exception as e:
         system_logger.error(f"【并发管理】清理任务记录失败: {e}")
@@ -179,8 +174,8 @@ async def get_concurrency_config():
                 "session_timeout_minutes": 30
             },
             "task_queue": {
-                "max_concurrent": task_queue.max_concurrent,
-                "default_timeout_seconds": 300
+                "concurrent_models": task_queue._model_concurrency,
+                "default_timeout_seconds": 180
             },
             "gpu_lock": {
                 "acquire_timeout_seconds": 300,

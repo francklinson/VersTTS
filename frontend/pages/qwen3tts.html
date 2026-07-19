@@ -275,7 +275,13 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../assets/js/polling.js"></script>
     <script>
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { stopPollingTask(); } else if (pollingTaskId) { startPollingTask(pollingTaskId); }
+        });
+        window.addEventListener('beforeunload', stopPollingTask);
+
         let currentMode = 'voice_clone';
         let selectedSpeaker = null;
         let batchResults = [];
@@ -565,7 +571,7 @@
                     setTimeout(() => {
                         progressBar.classList.remove('active');
                         progressText.classList.remove('active');
-                    }, 2000);
+                    }, 5000);
                     VersTTS.showStatus(`已提交 ${data.count} 个生成任务到队列，请前往任务列表查看进度`);
                 } else {
                     throw new Error(data.message || '批量生成失败');
@@ -720,7 +726,7 @@
             stopPollingTask();
             pollingTaskId = taskId;
             let retryCount = 0;
-            const maxRetries = 300;
+            const maxRetries = 180;
 
             // 先显示结果区域为加载状态
             const resultSection = document.getElementById('resultSection');
@@ -776,7 +782,7 @@
                     console.error('轮询任务状态失败:', error);
                     retryCount++;
                 }
-            }, 3000);
+            }, 5000);
         }
 
         // 停止轮询

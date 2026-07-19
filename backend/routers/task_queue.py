@@ -235,13 +235,13 @@ async def list_tasks(
                     created = dt.fromisoformat(task.created_at)
                     started = dt.fromisoformat(task.started_at)
                     wait_time_seconds = int((started - created).total_seconds())
-                except:
+                except Exception:
                     pass
             elif task.status in ['queued', 'pending']:
                 try:
                     created = dt.fromisoformat(task.created_at)
                     wait_time_seconds = int((now - created).total_seconds())
-                except:
+                except Exception:
                     pass
 
             # 计算执行时长
@@ -254,7 +254,7 @@ async def list_tasks(
                         execution_time_seconds = int((completed - started).total_seconds())
                     elif task.status == 'processing':
                         execution_time_seconds = int((now - started).total_seconds())
-                except:
+                except Exception:
                     pass
 
             task_infos.append(TaskInfo(
@@ -531,9 +531,15 @@ async def retry_task(task_id: str, request: Request):
             params=task.params,
             priority=task.priority
         )
-        
+
+        # 将旧任务标记为 RETRIED，关联到新任务，避免任务列表重复显示
+        task.status = TaskStatus.RETRIED.value
+        task.error_message = f"已重试 -> {new_task.task_id}"
+        task.completed_at = datetime.now().isoformat()
+        task_queue._save_task(task)
+
         system_logger.info(f"【任务API】任务重试: {task_id} -> {new_task.task_id}")
-        
+
         return {
             "success": True,
             "message": "任务已重新提交",

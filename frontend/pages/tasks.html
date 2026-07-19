@@ -915,6 +915,7 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../assets/js/polling.js"></script>
     <script>
         let refreshInterval = null;
         let currentTasks = [];
@@ -991,6 +992,17 @@
         function setupModelStatusRefresh() {
             modelStatusInterval = setInterval(loadModelStatus, 5000);
         }
+
+        // 页面不可见时暂停轮询，可见时恢复
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
+        // 页面关闭时清除所有定时器
+        window.addEventListener('beforeunload', stopAutoRefresh);
 
         // 加载模型状态
         async function loadModelStatus() {
@@ -1138,7 +1150,8 @@
 
         function startAutoRefresh() {
             if (refreshInterval) clearInterval(refreshInterval);
-            refreshInterval = setInterval(loadTasks, 3000); // 每3秒刷新
+            refreshInterval = setInterval(loadTasks, 5000); // 每5秒刷新（原3秒，降低服务器负载）
+            if (!modelStatusInterval) setupModelStatusRefresh();
         }
 
         function stopAutoRefresh() {

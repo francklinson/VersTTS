@@ -23,12 +23,26 @@ from fastapi import FastAPI, Form, HTTPException
 from contextlib import asynccontextmanager
 from typing import Optional
 import logging
+from logging.handlers import RotatingFileHandler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger("omnivoice_service")
+logger.setLevel(logging.INFO)
+
+# RotatingFileHandler: 50MB 上限，保留 3 个备份
+fh = RotatingFileHandler(
+    os.path.join(LOG_DIR, "omnivoice_service.log"),
+    maxBytes=50 * 1024 * 1024, backupCount=3, encoding='utf-8'
 )
-logger = logging.getLogger(__name__)
+fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(fh)
+
+# 同时输出到控制台
+ch = logging.StreamHandler()
+ch.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(ch)
 
 # 添加 OmniVoice 算法路径
 ALGORITHMS_PATH = os.path.join(os.path.dirname(__file__), "algorithms", "OmniVoice")

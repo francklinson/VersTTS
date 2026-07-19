@@ -11,6 +11,7 @@ from datetime import datetime
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
+from backend.config import OUTPUTS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_fireredtts2_model
@@ -112,7 +113,7 @@ async def tts_fireredtts(
             clean_name = re.sub(r'[^\w一-鿿]', '', speaker.get("name", ""))[:6]
             if clean_name:
                 speaker_part = f"_{clean_name}"
-        audio_path = f"outputs/fireredtts_{mode}{speaker_part}_{text_summary}_{timestamp}.wav"
+        audio_path = os.path.join(OUTPUTS_DIR, f"fireredtts_{mode}{speaker_part}_{text_summary}_{timestamp}.wav")
 
         # 确保音频是torch tensor并移至CPU
         if hasattr(audio, 'cpu'):

@@ -202,7 +202,13 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../assets/js/polling.js"></script>
     <script>
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { stopPollingTask(); } else if (pollingTaskId) { startPollingTask(pollingTaskId); }
+        });
+        window.addEventListener('beforeunload', stopPollingTask);
+
         let selectedSpeakerId = null;
         let savedSpeakers = [];
 
@@ -445,7 +451,7 @@
             stopPollingTask();
             pollingTaskId = taskId;
             let retryCount = 0;
-            const maxRetries = 300;
+            const maxRetries = 180;
 
             const resultSection = document.getElementById('resultSection');
             const audioPlayer = document.getElementById('audioPlayer');
@@ -519,7 +525,7 @@
                 } catch (e) {
                     console.error('轮询任务状态失败:', e);
                 }
-            }, 2000);
+            }, 5000);
         }
 
         function stopPollingTask() {

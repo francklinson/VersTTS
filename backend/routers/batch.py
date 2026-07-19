@@ -576,7 +576,7 @@ async def _generate_single_omnivoice(
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
-                except:
+                except Exception:
                     pass
                 
                 system_logger.info(f"【批量生成】OmniVoice 第 {index+1} 个完成")
@@ -895,7 +895,7 @@ async def _generate_single_cosyvoice(
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
-                except:
+                except Exception:
                     pass
                 
                 system_logger.info(f"【批量生成】CosyVoice 第 {index+1} 个完成")
@@ -1044,7 +1044,7 @@ async def _generate_single_pilottts(
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
-                except:
+                except Exception:
                     pass
 
                 system_logger.info(f"【批量生成】PilotTTS 第 {index+1} 个完成")
@@ -1322,7 +1322,7 @@ async def _generate_single_gptsovits(
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
-                except:
+                except Exception:
                     pass
 
                 system_logger.info(f"【批量生成】GPT-SoVITS 第 {index+1} 个完成")

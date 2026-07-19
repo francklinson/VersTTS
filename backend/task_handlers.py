@@ -802,7 +802,7 @@ async def handle_gptsovits_task(task: TaskRecord) -> Dict[str, Any]:
                 # 清理临时文件
                 try:
                     os.remove(audio_path)
-                except:
+                except Exception:
                     pass
 
                 return {

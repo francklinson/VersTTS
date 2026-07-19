@@ -30,7 +30,7 @@ def _check_cosyvoice_service():
     try:
         response = requests.get(COSYVOICE_HEALTH_URL, timeout=3)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
 

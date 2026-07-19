@@ -227,7 +227,13 @@
     </div>
 
     <script src="../assets/js/common.js"></script>
+    <script src="../assets/js/polling.js"></script>
     <script>
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { stopPolling(); } else if (pollingTaskId) { startPollingTask(pollingTaskId); }
+        });
+        window.addEventListener('beforeunload', stopPolling);
+
         let currentMode = 'voice_clone';
         let selectedEmotion = '';
         let pollingInterval = null;
@@ -521,7 +527,7 @@
         function startPollingTask(taskId) {
             stopPolling();
             let attempts = 0;
-            const maxAttempts = 100;
+            const maxAttempts = 180;
 
             pollingInterval = setInterval(async () => {
                 attempts++;
@@ -555,7 +561,7 @@
                 } catch (e) {
                     console.error('轮询失败:', e);
                 }
-            }, 3000);
+            }, 5000);
         }
 
         function stopPolling() {

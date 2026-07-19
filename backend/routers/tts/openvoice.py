@@ -11,7 +11,7 @@ import soundfile as sf
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
-from backend.config import OUTPUTS_DIR
+from backend.config import OUTPUTS_DIR, UPLOADS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_openvoice_models
@@ -66,7 +66,7 @@ async def tts_openvoice(
                 raise HTTPException(status_code=404, detail="说话人音频文件不存在")
         elif prompt_wav:
             from datetime import datetime
-            ref_path = f"uploads/openvoice_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            ref_path = os.path.join(UPLOADS_DIR, f"openvoice_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav")
             with open(ref_path, "wb") as f:
                 f.write(await prompt_wav.read())
             is_temp = True

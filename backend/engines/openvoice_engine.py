@@ -10,7 +10,6 @@ import torch
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, ALGORITHM_PATHS, PROJECT_ROOT
-from backend.core.model_manager import model_manager
 
 
 def get_openvoice_models(use_v2=True):
@@ -49,59 +48,41 @@ def get_openvoice_models(use_v2=True):
 
         # 只加载中文TTS模型（本项目只合成中文）
         system_logger.info(f"【模型加载】加载中文TTS模型: {ckpt_base_zh}")
+        tts_zh = BaseSpeakerTTS(f'{ckpt_base_zh}/config.json', device=device)
+        tts_zh.load_ckpt(f'{ckpt_base_zh}/checkpoint.pth')
 
-        display_name = "OpenVoice V2" if use_v2 else "OpenVoice V1"
+        # 加载音色转换器
+        tone_color_converter = ToneColorConverter(f'{ckpt_converter}/config.json', device=device)
+        tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
 
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                tts_zh = BaseSpeakerTTS(f'{ckpt_base_zh}/config.json', device=device)
-                tts_zh.load_ckpt(f'{ckpt_base_zh}/checkpoint.pth')
+        # 加载音色嵌入
+        source_se = {}
+        if use_v2 and ckpt_v2_speakers and os.path.exists(f'{ckpt_v2_speakers}/ses/zh.pth'):
+            # V2版本音色嵌入
+            source_se['en'] = torch.load(f'{ckpt_v2_speakers}/ses/en-default.pth').to(device)
+            source_se['zh'] = torch.load(f'{ckpt_v2_speakers}/ses/zh.pth').to(device)
+            system_logger.info(f"【模型加载】OpenVoice V2 音色嵌入加载成功")
+        elif os.path.exists(f'{ckpt_base_en}/en_default_se.pth'):
+            # V1版本音色嵌入
+            source_se['en'] = torch.load(f'{ckpt_base_en}/en_default_se.pth').to(device)
+            source_se['zh'] = torch.load(f'{ckpt_base_zh}/zh_default_se.pth').to(device)
+        elif os.path.exists(f'{ckpt_base_en}/ses/en-default.pth'):
+            source_se['en'] = torch.load(f'{ckpt_base_en}/ses/en-default.pth').to(device)
+            source_se['zh'] = torch.load(f'{ckpt_base_zh}/ses/zh.pth').to(device)
 
-                # 加载音色转换器
-                tone_color_converter = ToneColorConverter(f'{ckpt_converter}/config.json', device=device)
-                tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
+        models[model_key] = {
+            "tts": tts_zh,
+            "converter": tone_color_converter,
+            "source_se": source_se,
+            "device": device,
+            "ckpt_base_zh": ckpt_base_zh,
+            "version": "v2" if use_v2 else "v1"
+        }
 
-                # 加载音色嵌入
-                source_se = {}
-                if use_v2 and ckpt_v2_speakers and os.path.exists(f'{ckpt_v2_speakers}/ses/zh.pth'):
-                    # V2版本音色嵌入
-                    source_se['en'] = torch.load(f'{ckpt_v2_speakers}/ses/en-default.pth').to(device)
-                    source_se['zh'] = torch.load(f'{ckpt_v2_speakers}/ses/zh.pth').to(device)
-                    system_logger.info(f"【模型加载】OpenVoice V2 音色嵌入加载成功")
-                elif os.path.exists(f'{ckpt_base_en}/en_default_se.pth'):
-                    # V1版本音色嵌入
-                    source_se['en'] = torch.load(f'{ckpt_base_en}/en_default_se.pth').to(device)
-                    source_se['zh'] = torch.load(f'{ckpt_base_zh}/zh_default_se.pth').to(device)
-                elif os.path.exists(f'{ckpt_base_en}/ses/en-default.pth'):
-                    source_se['en'] = torch.load(f'{ckpt_base_en}/ses/en-default.pth').to(device)
-                    source_se['zh'] = torch.load(f'{ckpt_base_zh}/ses/zh.pth').to(device)
-
-                models[model_key] = {
-                    "tts": tts_zh,
-                    "converter": tone_color_converter,
-                    "source_se": source_se,
-                    "device": device,
-                    "ckpt_base_zh": ckpt_base_zh,
-                    "version": "v2" if use_v2 else "v1"
-                }
-                break
-            except RuntimeError as e:
-                if "CUDA" in str(e) or "out of memory" in str(e).lower():
-                    system_logger.warning(f"【模型加载】{display_name} OOM，尝试驱逐其他模型...")
-                    model_manager.request_eviction(needed_mb=1500, exclude_key=model_key)
-                    time.sleep(3)
-                    if attempt == max_retries - 1:
-                        raise
-                else:
-                    raise
-
-        model_manager.touch(model_key)
         duration = time.time() - start_time
         gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0
-        OperationLogger.log_model_load(display_name, "成功", duration,
+        OperationLogger.log_model_load("OpenVoice V2" if use_v2 else "OpenVoice V1", "成功", duration,
                                        f"GPU内存: {gpu_mem:.2f}GB")
         OperationLogger.log_performance("OpenVoice加载", duration, 0, gpu_mem)
 
-    model_manager.touch(model_key)
     return models[model_key]

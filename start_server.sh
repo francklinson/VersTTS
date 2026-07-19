@@ -16,20 +16,20 @@ ENV_FILE="$SCRIPT_DIR/.env.offline"
 
 # 服务配置
 HOST="0.0.0.0"
-PORT="8008"
+PORT="8006"
 
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
 # 主服务 GPU 配置
-MAIN_GPU="${MAIN_GPU:-0}"
+MAIN_GPU="${MAIN_GPU:-2}"
 # OmniVoice 独立服务 GPU 配置
-OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-2}"
 # CosyVoice 独立服务 GPU 配置
-COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
+COSYVOICE_GPU="${COSYVOICE_GPU:-2}"
 # PilotTTS 独立服务 GPU 配置
-PILOTTS_GPU="${PILOTTS_GPU:-0}"
+PILOTTS_GPU="${PILOTTS_GPU:-2}"
 # GPT-SoVITS 独立服务 GPU 配置
-GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-2}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -38,28 +38,28 @@ MAX_CONCURRENT_MODELS="${MAX_CONCURRENT_MODELS:-2}"
 
 # OmniVoice 独立服务配置
 OMNIVOICE_HOST="127.0.0.1"
-OMNIVOICE_PORT="${OMNIVOICE_PORT:-8001}"
+OMNIVOICE_PORT="${OMNIVOICE_PORT:-8007}"
 OMNIVOICE_PID_FILE="$SCRIPT_DIR/.omnivoice.pid"
 OMNIVOICE_LOG_FILE="$SCRIPT_DIR/logs/omnivoice_service.log"
 OMNIVOICE_SCRIPT="$SCRIPT_DIR/omnivoice_service.py"
 
 # CosyVoice 独立服务配置
 COSYVOICE_HOST="127.0.0.1"
-COSYVOICE_PORT="${COSYVOICE_PORT:-8002}"
+COSYVOICE_PORT="${COSYVOICE_PORT:-8008}"
 COSYVOICE_PID_FILE="$SCRIPT_DIR/.cosyvoice.pid"
 COSYVOICE_LOG_FILE="$SCRIPT_DIR/logs/cosyvoice_service.log"
 COSYVOICE_SCRIPT="$SCRIPT_DIR/cosyvoice_service.py"
 
 # PilotTTS 独立服务配置
 PILOTTS_HOST="127.0.0.1"
-PILOTTS_PORT="${PILOTTS_PORT:-8003}"
+PILOTTS_PORT="${PILOTTS_PORT:-8009}"
 PILOTTS_PID_FILE="$SCRIPT_DIR/.pilottts.pid"
 PILOTTS_LOG_FILE="$SCRIPT_DIR/logs/pilottts_service.log"
 PILOTTS_SCRIPT="$SCRIPT_DIR/pilottts_service.py"
 
 # GPT-SoVITS 独立服务配置
 GPTSOVITS_HOST="127.0.0.1"
-GPTSOVITS_PORT="${GPTSOVITS_PORT:-8004}"
+GPTSOVITS_PORT="${GPTSOVITS_PORT:-8010}"
 GPTSOVITS_PID_FILE="$SCRIPT_DIR/.gptsovits.pid"
 GPTSOVITS_LOG_FILE="$SCRIPT_DIR/logs/gptsovits_service.log"
 GPTSOVITS_SCRIPT="$SCRIPT_DIR/gptsovits_service.py"
@@ -318,6 +318,8 @@ else:
     [ -f "$GS_DIR/gsv-v4-pretrained/s2Gv4.pth" ] || { print_warn "缺失: $GS_DIR/gsv-v4-pretrained/s2Gv4.pth"; gs_ok=false; }
     # SV 模型
     [ -f "$GS_DIR/sv/pretrained_eres2netv2w24s4ep4.ckpt" ] || { print_warn "缺失: $GS_DIR/sv/pretrained_eres2netv2w24s4ep4.ckpt"; gs_ok=false; }
+    # G2PW 多音字模型（中文必需，缺失会触发联网下载，离线环境会失败）
+    [ -d "$GS_DIR/G2PWModel" ] || { print_warn "缺失: $GS_DIR/G2PWModel/ (中文多音字模型，缺失将联网下载)"; gs_ok=false; }
     if $gs_ok; then print_success "GPT-SoVITS: 模型完整 (v1/v2/v2Pro/v2ProPlus/v3/v4)"; else model_errors=$((model_errors + 1)); fi
 
     # --- OmniVoice ---

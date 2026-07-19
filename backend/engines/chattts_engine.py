@@ -11,7 +11,6 @@ from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, ALGORITHM_PATHS, PROJECT_ROOT
-from backend.core.model_manager import model_manager
 
 
 def get_chattts_model():
@@ -85,18 +84,27 @@ def get_chattts_model():
                 OperationLogger.log_model_load(model_name, "失败", 0, "模型加载错误")
                 raise HTTPException(status_code=500, detail="ChatTTS模型加载失败")
         except RuntimeError as e:
-            if "CUDA" in str(e) or "out of memory" in str(e).lower():
-                system_logger.warning("【模型加载】ChatTTS OOM，尝试驱逐其他模型...")
-                model_manager.request_eviction(needed_mb=1500, exclude_key="chattts")
-                time.sleep(3)
-                # 重试加载
-                if not chat.load(source="custom", custom_path=model_path, device=device):
-                    raise HTTPException(status_code=500, detail="ChatTTS模型加载失败（OOM驱逐后重试）")
+            if "CUDA" in str(e) or "cuda" in str(e).lower():
+                system_logger.error(f"【模型加载】ChatTTS CUDA错误: {e}")
+                # 尝试强制重置CUDA状态
+                if torch.cuda.is_available():
+                    try:
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                        # 等待一点时间让CUDA恢复
+                        time.sleep(1)
+                        system_logger.info("【模型加载】ChatTTS 尝试重新加载...")
+                        if not chat.load(source="custom", custom_path=model_path, device=device):
+                            raise HTTPException(status_code=500, detail="ChatTTS模型加载失败（CUDA恢复后重试）")
+                    except Exception as retry_e:
+                        system_logger.error(f"【模型加载】ChatTTS CUDA恢复失败: {retry_e}")
+                        raise HTTPException(status_code=500, detail=f"ChatTTS模型加载失败: {str(e)}")
+                else:
+                    raise HTTPException(status_code=500, detail=f"ChatTTS模型加载失败: {str(e)}")
             else:
                 raise
 
         models["chattts"] = chat
-        model_manager.touch("chattts")
         duration = time.time() - start_time
 
         # 记录GPU内存使用
@@ -114,5 +122,4 @@ def get_chattts_model():
         OperationLogger.log_model_load(model_name, "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
         OperationLogger.log_performance("ChatTTS加载", duration, 0, gpu_mem)
 
-    model_manager.touch("chattts")
     return models["chattts"]

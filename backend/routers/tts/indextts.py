@@ -10,7 +10,7 @@ from datetime import datetime
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
-from backend.config import OUTPUTS_DIR
+from backend.config import OUTPUTS_DIR, UPLOADS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_indextts_model
@@ -70,7 +70,7 @@ async def tts_indextts(
 
         # 方式2: 兼容旧版本，使用上传的参考音频
         elif prompt_wav:
-            ref_path = f"uploads/indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+            ref_path = os.path.join(UPLOADS_DIR, f"indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav")
             with open(ref_path, "wb") as f:
                 f.write(await prompt_wav.read())
             is_temp = True
@@ -82,16 +82,9 @@ async def tts_indextts(
         # 加载模型
         model = get_indextts_model()
 
-        # 生成音频 - 使用有意义的文件名
-        import re
+        # 生成音频 - 按照GitHub示例使用infer方法
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-        speaker_part = ""
-        if speaker and speaker.get("name"):
-            clean_name = re.sub(r'[^\w一-鿿]', '', speaker.get("name", ""))[:6]
-            if clean_name:
-                speaker_part = f"_{clean_name}"
-        audio_path = os.path.join(OUTPUTS_DIR, f"indextts_{mode}{speaker_part}_{text_summary}_{timestamp}.wav")
+        audio_path = os.path.join(OUTPUTS_DIR, f"indextts_{timestamp}.wav")
 
         # 准备infer参数
         infer_kwargs = {

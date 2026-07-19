@@ -76,7 +76,10 @@ os.makedirs(FAST_LANGDETECT_CACHE, exist_ok=True)
 os.environ["bert_path"] = os.path.join(
     PROJECT_ROOT, "models", "GPT-SoVITS", "chinese-roberta-wwm-ext-large"
 )
-# 注意：不要预先创建 G2PWModel 目录，否则 download_and_decompress 会跳过下载
+# G2PW 多音字模型：chinese2.py 在导入时即实例化 G2PWPinyin(model_dir="GPT_SoVITS/text/G2PWModel")，
+# 该目录缺失时 download_and_decompress 会联网下载（离线/弱证书环境会 SSL 失败）。
+# 因此模型统一存放在 models/GPT-SoVITS/G2PWModel，由 load_model 在 import TTS 前拷贝到运行时目录。
+# 注意：不要预先创建空的 G2PWModel 目录占位，否则 download_and_decompress 会跳过下载但实际无模型可用。
 
 # 模型路径（确保绝对路径，避免 chdir 后路径错误）
 MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(PROJECT_ROOT, "models"))
@@ -553,6 +556,21 @@ def load_model(version=None):
     os.chdir(ALGORITHMS_PATH)
 
     try:
+        # G2PW 多音字模型：从 models/GPT-SoVITS/G2PWModel 拷贝到运行时目录
+        # chinese2.py 导入时即实例化 G2PWPinyin(model_dir="GPT_SoVITS/text/G2PWModel")，
+        # 缺失会触发联网下载（离线/弱证书环境 SSL 会失败），须在 import TTS 前就位
+        g2pw_src = os.path.join(MODEL_PATH, "G2PWModel")
+        g2pw_dst = os.path.join(GPTSOVITS_MODULE, "text", "G2PWModel")
+        if os.path.isdir(g2pw_src) and not os.path.isdir(g2pw_dst):
+            import shutil
+            shutil.copytree(g2pw_src, g2pw_dst)
+            logger.info(f"【G2PW模型】已拷贝 {g2pw_src} -> {g2pw_dst}")
+        elif not os.path.isdir(g2pw_src) and not os.path.isdir(g2pw_dst):
+            logger.warning(
+                f"【G2PW模型】缺失：{g2pw_src} 不存在，运行时将尝试联网下载，离线/弱证书环境会失败。"
+                " 请将 G2PWModel 整目录放入 models/GPT-SoVITS/G2PWModel/"
+            )
+
         from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 
         logger.info(f"【模型加载】模型路径: {MODEL_PATH} | 目标版本: {target_version}")

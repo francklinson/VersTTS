@@ -11,7 +11,7 @@ from datetime import datetime
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
-from backend.config import OUTPUTS_DIR
+from backend.config import OUTPUTS_DIR, UPLOADS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_fireredtts2_model
@@ -77,7 +77,7 @@ async def tts_fireredtts(
 
             # 方式2: 通过上传的音频文件
             elif ref_audio:
-                ref_path = f"uploads/fireredtts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+                ref_path = os.path.join(UPLOADS_DIR, f"fireredtts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav")
                 with open(ref_path, "wb") as f:
                     f.write(await ref_audio.read())
                 system_logger.info(f"【FireRedTTS2】clone模式: 使用上传的参考音频: {ref_path}")
@@ -104,16 +104,9 @@ async def tts_fireredtts(
         # 按照GitHub示例，采样率为24000Hz
         sr = 24000
 
-        # 保存音频 - 使用有意义的文件名
-        import re
+        # 保存音频 - 按照GitHub示例使用torchaudio.save()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-        speaker_part = ""
-        if speaker and speaker.get("name"):
-            clean_name = re.sub(r'[^\w一-鿿]', '', speaker.get("name", ""))[:6]
-            if clean_name:
-                speaker_part = f"_{clean_name}"
-        audio_path = os.path.join(OUTPUTS_DIR, f"fireredtts_{mode}{speaker_part}_{text_summary}_{timestamp}.wav")
+        audio_path = os.path.join(OUTPUTS_DIR, f"fireredtts_{timestamp}.wav")
 
         # 确保音频是torch tensor并移至CPU
         if hasattr(audio, 'cpu'):
@@ -123,7 +116,7 @@ async def tts_fireredtts(
         system_logger.info(f"【FireRedTTS2】生成完成: {audio_path}")
 
         # 清理临时文件（仅清理上传的临时文件，不清理说话人管理中的文件）
-        if ref_path and ref_path.startswith("uploads/") and os.path.exists(ref_path):
+        if ref_path and ref_path.startswith(UPLOADS_DIR) and os.path.exists(ref_path):
             os.remove(ref_path)
 
         # 清理显存 - 防止内存泄漏

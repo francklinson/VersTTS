@@ -69,7 +69,9 @@ temp/
 
 # Model cache
 .cache/
-models/
+# 仅忽略仓库根下的权重目录 models/，避免误伤深层源码包
+# (如 third_party/Matcha-TTS/matcha/models/、algorithms/OmniVoice/models/)
+/models/
 pretrained_models/
 
 # Uploads

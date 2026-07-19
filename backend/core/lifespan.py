@@ -7,6 +7,7 @@ import os
 import sys
 import gc
 import time
+import asyncio
 from contextlib import asynccontextmanager
 
 import torch

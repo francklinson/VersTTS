@@ -295,12 +295,10 @@ async def concurrency_middleware(request: Request, call_next):
 async def initialize_concurrency():
     """初始化并发控制系统"""
     await rate_limiter.start()
-    await task_queue.start()
     system_logger.info("【并发控制】系统已初始化")
 
 
 async def shutdown_concurrency():
     """关闭并发控制系统"""
     await rate_limiter.stop()
-    await task_queue.stop()
     system_logger.info("【并发控制】系统已关闭")

@@ -82,3 +82,6 @@ datasets/
 
 # Keep directory structure
 !.gitkeep
+
+# Service PID files
+*.pid

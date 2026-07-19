@@ -46,6 +46,8 @@ env/
 *.bin
 *.pt
 *.onnx
+*.t7
+*.zip
 
 # Audio outputs
 output/

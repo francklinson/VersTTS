@@ -468,11 +468,10 @@ else:
                         local ov_pid=$!
                         echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
                         
-                        # 根据预加载设置调整等待时间
                         if [ "$PRELOAD_OMNIVOICE" = "1" ]; then
-                            local ov_max_wait=90  # 预加载需要更长时间
+                            local ov_max_wait=120  # 预加载需要更长时间
                         else
-                            local ov_max_wait=30  # 不预加载启动更快
+                            local ov_max_wait=60   # 不预加载也需要加载依赖
                         fi
                         
                         local ov_count=0
@@ -516,7 +515,7 @@ else:
                         if [ "$PRELOAD_PILOTTS" = "1" ]; then
                             local pt_max_wait=120
                         else
-                            local pt_max_wait=30
+                            local pt_max_wait=60
                         fi
 
                         local pt_count=0
@@ -560,7 +559,7 @@ else:
                         if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
                             local gs_max_wait=120
                         else
-                            local gs_max_wait=30
+                            local gs_max_wait=60
                         fi
 
                         local gs_count=0
@@ -605,7 +604,7 @@ else:
                         if [ "$PRELOAD_COSYVOICE" = "1" ]; then
                             local cv_max_wait=120  # 预加载需要更长时间
                         else
-                            local cv_max_wait=30   # 不预加载启动更快
+                            local cv_max_wait=60   # 不预加载也需要加载依赖
                         fi
 
                         local cv_count=0

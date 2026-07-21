@@ -21,15 +21,15 @@ PORT="8006"
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
 # 主服务 GPU 配置
-MAIN_GPU="${MAIN_GPU:-2}"
+MAIN_GPU="${MAIN_GPU:-0}"
 # OmniVoice 独立服务 GPU 配置
-OMNIVOICE_GPU="${OMNIVOICE_GPU:-2}"
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
 # CosyVoice 独立服务 GPU 配置
-COSYVOICE_GPU="${COSYVOICE_GPU:-2}"
+COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
 # PilotTTS 独立服务 GPU 配置
-PILOTTS_GPU="${PILOTTS_GPU:-2}"
+PILOTTS_GPU="${PILOTTS_GPU:-0}"
 # GPT-SoVITS 独立服务 GPU 配置
-GPTSOVITS_GPU="${GPTSOVITS_GPU:-2}"
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行

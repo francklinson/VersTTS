@@ -21,11 +21,9 @@ from typing import List, Tuple
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-try:
-    from whisper.tokenizer import LANGUAGES as WhiserLanguages
-    WHISPER_LANGS = tuple(WhiserLanguages.keys())
-except ImportError:
-    WHISPER_LANGS = ()
+from whisper.tokenizer import LANGUAGES as WhiserLanguages
+
+WHISPER_LANGS = tuple(WhiserLanguages.keys())
 IGNORE_ID = -1
 
 

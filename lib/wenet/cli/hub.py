@@ -106,12 +106,6 @@ class Hub(object):
             print('ERROR: Unsupported model {} !!!'.format(model_name))
             sys.exit(1)
         model = Hub.assets[model_name]
-        # 优先从项目目录 models/wenet/ 加载
-        project_model_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "models", "wenet", model_name)
-        project_model_dir = os.path.abspath(project_model_dir)
-        if os.path.exists(project_model_dir) and set(["final.pt", "train.yaml"]).issubset(set(os.listdir(project_model_dir))):
-            return project_model_dir
-        # 其次从 ~/.wenet/ 加载
         model_dir = os.path.join(Path.home(), ".wenet", model_name)
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)

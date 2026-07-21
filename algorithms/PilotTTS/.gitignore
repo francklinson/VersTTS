@@ -1,8 +1,0 @@
-# PilotTTS gitignore
-__pycache__/
-*.pyc
-*.pyo
-.DS_Store
-pilottts.egg-info/
-pretrained_models/
-output/

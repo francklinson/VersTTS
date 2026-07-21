@@ -330,6 +330,29 @@
             gap: 4px;
         }
         
+        /* 翻页控件 */
+        .pagination-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            margin-top: 20px;
+            padding: 12px 0;
+        }
+        .btn-page {
+            padding: 8px 18px;
+            background: #f0f4ff;
+            color: #1565c0;
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.88rem;
+            transition: all 0.2s;
+        }
+        .btn-page:hover:not(:disabled) { background: #e3f2fd; border-color: #42a5f5; }
+        .btn-page:disabled { opacity: 0.4; cursor: not-allowed; }
+        .page-info { font-size: 0.88rem; color: #555; min-width: 120px; text-align: center; }
+
         /* 空状态 */
         .empty-state {
             text-align: center;
@@ -418,6 +441,22 @@
             border-radius: 12px;
             font-size: 0.75rem;
             font-weight: 600;
+        }
+        .btn-toggle-batch {
+            margin-left: auto;
+            padding: 4px 12px;
+            background: white;
+            color: #3f51b5;
+            border: 1px solid #c5cae9;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-toggle-batch:hover {
+            background: #e8eaf6;
+            border-color: #9fa8da;
         }
         .batch-grid {
             display: grid;
@@ -621,6 +660,17 @@
             color: #e65100;
             border: 1px solid #ffcc80;
         }
+        .task-tag.mine-tag {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+            font-weight: 600;
+        }
+        .task-tag.other-tag {
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            color: #616161;
+            border: 1px solid #bdbdbd;
+        }
         .task-tag.model-tag {
             background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
             color: #7b1fa2;
@@ -630,6 +680,15 @@
             background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
             color: #2e7d32;
             border: 1px solid #a5d6a7;
+        }
+        .task-tag.instruct-tag {
+            background: linear-gradient(135deg, #ede7f6 0%, #d1c4e9 100%);
+            color: #4527a0;
+            border: 1px solid #b39ddb;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .task-tag.time-tag {
             font-family: 'SF Mono', 'Fira Code', monospace;
@@ -883,16 +942,20 @@
 
             <!-- 筛选器和操作 -->
             <div class="filter-bar">
-                <select id="statusFilter" onchange="loadTasks()">
+                <select id="statusFilter" onchange="onFilterChange()">
                     <option value="">全部状态</option>
                     <option value="queued">等待中</option>
                     <option value="processing">执行中</option>
                     <option value="completed">已完成</option>
                     <option value="failed">失败</option>
                     <option value="cancelled">已取消</option>
+                    <option value="retried">已重试</option>
+                </select>
+                <select id="modelFilter" onchange="onFilterChange()">
+                    <option value="">全部算法</option>
                 </select>
                 <button class="btn-refresh" onclick="loadTasks()">🔄 刷新</button>
-                <button class="btn-clear" onclick="batchDeleteCompleted()" id="batchDeleteBtn" style="display: none;">🗑️ 清理已完成</button>
+                <button class="btn-clear" onclick="batchDeleteCompleted()" id="batchDeleteBtn" style="display: none;">🗑️ 清理失败任务</button>
                 <div class="auto-refresh">
                     <label class="toggle-switch">
                         <input type="checkbox" id="autoRefresh" checked>
@@ -911,6 +974,13 @@
                     <p>暂无任务</p>
                 </div>
             </div>
+
+            <!-- 翻页控件 -->
+            <div id="paginationBar" class="pagination-bar" style="display:none;">
+                <button class="btn-page" id="prevPageBtn" onclick="goToPage(currentPage - 1)">‹ 上一页</button>
+                <span class="page-info" id="pageInfo">第 1 / 1 页</span>
+                <button class="btn-page" id="nextPageBtn" onclick="goToPage(currentPage + 1)">下一页 ›</button>
+            </div>
         </div>
     </div>
 
@@ -919,6 +989,22 @@
     <script>
         let refreshInterval = null;
         let currentTasks = [];
+
+        // 批量结果缓存：task_id -> batch_results 数组。
+        // 展开试听时按 task_id 从此缓存取，避免把 JSON 序列化进 HTML data 属性
+        // （双引号转义不可靠会破坏属性边界，导致 JSON.parse 失败）。
+        let batchResultsCache = {};
+
+        // 已展开"展开试听"的 task_id 集合。
+        // 轮询刷新会在没有音频播放时清空整个列表重画（见 loadTasks 的 isPlaying 判断），
+        // 而 buildTaskCardHTML 默认把 batch-grid 渲染为折叠，会把已展开的试听区塌回去。
+        // 用此集合记录用户的展开意图，重画时据此还原展开态。
+        const expandedBatchTaskIds = new Set();
+
+        // 任务列表翻页状态
+        const TASK_PAGE_SIZE = 50;         // 每页条数
+        let currentPage = 1;               // 当前页码（从 1 开始）
+        let currentTotal = 0;              // 符合筛选条件的任务总数（分页前，来自后端 total）
 
         // 格式化时长（秒 -> 可读格式）
         function formatDuration(seconds) {
@@ -941,7 +1027,8 @@
             'processing': { text: '执行中', class: 'processing' },
             'completed': { text: '已完成', class: 'completed' },
             'failed': { text: '失败', class: 'failed' },
-            'cancelled': { text: '已取消', class: 'cancelled' }
+            'cancelled': { text: '已取消', class: 'cancelled' },
+            'retried': { text: '已重试', class: 'cancelled' }
         };
 
         // 模型名称映射
@@ -951,7 +1038,12 @@
             'omnivoice': 'OmniVoice',
             'cosyvoice': 'CosyVoice',
             'pilottts': 'PilotTTS',
-            'gptsovits': 'GPT-SoVITS'
+            'gptsovits': 'GPT-SoVITS',
+            'chattts': 'ChatTTS',
+            'f5tts': 'F5-TTS',
+            'openvoice': 'OpenVoice',
+            'indextts': 'IndexTTS',
+            'fireredtts': 'FireRedTTS'
         };
 
         // 模式名称映射
@@ -978,6 +1070,8 @@
 
         // 页面初始化
         document.addEventListener('DOMContentLoaded', () => {
+            // 填充算法筛选下拉框（依据 modelMap）
+            populateModelFilter();
             // 清理已完成的查看记录
             cleanupViewedTasks();
             loadModelStatus();
@@ -986,6 +1080,18 @@
             setupModelStatusRefresh();
             checkHealth();
         });
+
+        // 填充算法类型筛选下拉框
+        function populateModelFilter() {
+            const sel = document.getElementById('modelFilter');
+            if (!sel) return;
+            // 保留首个"全部算法"选项，追加 modelMap 中的算法
+            const options = ['<option value="">全部算法</option>'];
+            Object.keys(modelMap).forEach(key => {
+                options.push(`<option value="${key}">${modelMap[key]}</option>`);
+            });
+            sel.innerHTML = options.join('');
+        }
 
         // 模型状态自动刷新（每5秒）
         let modelStatusInterval = null;
@@ -1148,10 +1254,17 @@
             startAutoRefresh();
         }
 
+        // 轮询间隔：有活跃任务（queued/processing）时加快到 2s，否则 5s 降低负载
+        const POLL_INTERVAL_ACTIVE = 2000;
+        const POLL_INTERVAL_IDLE = 5000;
+        let currentPollInterval = POLL_INTERVAL_IDLE;
+
         function startAutoRefresh() {
             if (refreshInterval) clearInterval(refreshInterval);
-            refreshInterval = setInterval(loadTasks, 5000); // 每5秒刷新（原3秒，降低服务器负载）
+            // 轮询只刷新当前已加载范围（offset=0, limit=已加载数），不自动扩展或收缩
+            refreshInterval = setInterval(() => loadTasks('refresh'), currentPollInterval);
             if (!modelStatusInterval) setupModelStatusRefresh();
+            startActiveTimerTicker();
         }
 
         function stopAutoRefresh() {
@@ -1163,41 +1276,257 @@
                 clearInterval(modelStatusInterval);
                 modelStatusInterval = null;
             }
+            stopActiveTimerTicker();
         }
 
-        // 加载任务列表
-        async function loadTasks() {
+        // 根据是否有活跃任务，动态切换轮询间隔
+        function adjustPollInterval() {
+            const hasActive = currentTasks.some(
+                t => t.status === 'queued' || t.status === 'pending' || t.status === 'processing'
+            );
+            const target = hasActive ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_IDLE;
+            if (target !== currentPollInterval && refreshInterval) {
+                currentPollInterval = target;
+                clearInterval(refreshInterval);
+                refreshInterval = setInterval(() => loadTasks('refresh'), currentPollInterval);
+            }
+        }
+
+        // ===== 活跃任务时间本地实时刷新 =====
+        // processing/queued 任务的「执行/等待时长」不再依赖后端快照（受轮询采样限制会停滞），
+        // 改为前端用 started_at/created_at 每秒本地重算，显示连续走秒。
+        let activeTimerInterval = null;
+
+        function startActiveTimerTicker() {
+            if (activeTimerInterval) return;
+            activeTimerInterval = setInterval(tickActiveTimers, 1000);
+            tickActiveTimers(); // 立即刷新一次
+        }
+
+        function stopActiveTimerTicker() {
+            if (activeTimerInterval) {
+                clearInterval(activeTimerInterval);
+                activeTimerInterval = null;
+            }
+        }
+
+        // 解析后端 ISO 时间戳（naive datetime，无时区）为本地 Date
+        function parseServerTime(iso) {
+            if (!iso) return null;
+            try {
+                // naive 时间戳按本地时区解析；若已带时区则 toLocaleString 不影响差值
+                const d = new Date(iso);
+                if (isNaN(d.getTime())) return null;
+                return d;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function tickActiveTimers() {
+            const now = new Date();
+            // 主时间标签（task-meta 内的 等待/执行）
+            document.querySelectorAll('.task-tag[data-role="time-tag"]').forEach(tag => {
+                const kind = tag.dataset.timeKind;
+                if (kind === 'waiting') {
+                    const created = parseServerTime(tag.dataset.createdAt);
+                    if (!created) return;
+                    const sec = Math.max(0, Math.floor((now - created) / 1000));
+                    tag.textContent = `⏳ 等待 ${formatDuration(sec)}`;
+                } else if (kind === 'running') {
+                    const started = parseServerTime(tag.dataset.startedAt);
+                    if (!started) return;
+                    const sec = Math.max(0, Math.floor((now - started) / 1000));
+                    tag.textContent = `🔧 执行 ${formatDuration(sec)}`;
+                }
+            });
+            // 批量等待进度区内的「已等待」小字
+            document.querySelectorAll('[data-role="wait-mini"]').forEach(el => {
+                const created = parseServerTime(el.dataset.createdAt);
+                if (!created) return;
+                const sec = Math.max(0, Math.floor((now - created) / 1000));
+                el.textContent = `已等待 ${formatDuration(sec)}`;
+            });
+        }
+
+        // 加载任务列表（翻页模式）。
+        // mode:
+        //   'reset'   - 回到第一页（筛选切换/手动刷新/增删后），清空容器重画
+        //   'page'    - 跳到 currentPage 指定的页（翻页按钮），清空容器重画
+        //   'refresh' - 轮询刷新当前页（保持 currentPage，不跳页），增量更新
+        async function loadTasks(mode = 'reset') {
             try {
                 const statusFilter = document.getElementById('statusFilter').value;
-                let url = `${VersTTS.API_BASE}/tasks/list`;
-                if (statusFilter) {
-                    url += `?status=${statusFilter}`;
-                }
+                const modelFilter = document.getElementById('modelFilter').value;
 
-                console.log('正在加载任务列表:', url);
+                if (mode === 'reset') {
+                    currentPage = 1;
+                }
+                // 'page' / 'refresh' 保持 currentPage 不变
+
+                const offset = (currentPage - 1) * TASK_PAGE_SIZE;
+                const limit = TASK_PAGE_SIZE;
+
+                let url = `${VersTTS.API_BASE}/tasks/list?limit=${limit}&offset=${offset}`;
+                if (statusFilter) url += `&status=${statusFilter}`;
+                if (modelFilter) url += `&model=${modelFilter}`;
+
+                console.log('正在加载任务列表:', url, 'mode=', mode, 'page=', currentPage);
                 const response = await fetch(url);
                 console.log('响应状态:', response.status);
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-                
+
                 const data = await response.json();
-                console.log('响应数据:', data);
 
                 if (data.success) {
-                    currentTasks = data.tasks;
-                    const isPlaying = Array.from(document.querySelectorAll('audio')).some(a => !a.paused);
-                    if (!isPlaying) {
-                        renderTasks(data.tasks);
+                    currentTotal = data.total || 0;
+                    // 校正页码：若当前页超出总页数（如删除/筛选后），回退到最后一页重载
+                    const totalPages = Math.max(1, Math.ceil(currentTotal / TASK_PAGE_SIZE));
+                    if (currentPage > totalPages) {
+                        currentPage = totalPages;
+                        return loadTasks('page');
                     }
-                    updateStats(data.tasks);
+
+                    currentTasks = data.tasks;
+
+                    if (mode === 'refresh') {
+                        // 轮询刷新：纯增量更新，不清空容器。
+                        // 已有卡片走 updateTaskCard（不重建 <audio>，不打断播放、不闪烁），
+                        // 新增/消失的任务由 renderTasks 增量增删，新卡片按倒序插到正确位置。
+                        // 避免原先"整片消失再出现"的刷新感。
+                        renderTasks(currentTasks);
+                    } else {
+                        // reset/page：筛选切换或翻页，整批内容可能变化，清空重画
+                        document.getElementById('taskList').innerHTML = '';
+                        renderTasks(currentTasks);
+                    }
+                    // 统计栏始终用后端全量 status_counts（不受分页/状态筛选影响，仅受 model 筛选影响）
+                    updateStats(data.status_counts || null);
+                    updatePagination();
+                    // 渲染后立即刷新一次活跃任务时间，并按是否有活跃任务调整轮询间隔
+                    tickActiveTimers();
+                    adjustPollInterval();
                 } else {
                     console.error('API返回错误:', data);
                 }
             } catch (error) {
                 console.error('加载任务失败:', error);
             }
+        }
+
+        // 筛选条件变化：回到第一页重新加载
+        function onFilterChange() {
+            loadTasks('reset');
+        }
+
+        // 跳转到指定页（1-based）
+        function goToPage(page) {
+            const totalPages = Math.max(1, Math.ceil(currentTotal / TASK_PAGE_SIZE));
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            loadTasks('page');
+        }
+
+        // 更新翻页控件显隐与状态
+        function updatePagination() {
+            const bar = document.getElementById('paginationBar');
+            if (!bar) return;
+            const totalPages = Math.max(1, Math.ceil(currentTotal / TASK_PAGE_SIZE));
+            if (currentTotal === 0) {
+                bar.style.display = 'none';
+                return;
+            }
+            bar.style.display = 'flex';
+            document.getElementById('pageInfo').textContent =
+                `第 ${currentPage} / ${totalPages} 页（共 ${currentTotal} 条）`;
+            document.getElementById('prevPageBtn').disabled = (currentPage <= 1);
+            document.getElementById('nextPageBtn').disabled = (currentPage >= totalPages);
+        }
+
+        // 渲染批量试听 audio 卡片列表（即 .batch-grid 的 innerHTML）。
+        // 从全局缓存按 task_id 取 batch_results，供 buildTaskCardHTML（轮询重画后还原展开态）
+        // 与 toggleBatchAudios（首次展开）共用，避免模板字符串重复维护。
+        // 返回空串表示缓存未命中（调用方据此决定是否中止展开）。
+        function buildBatchAudioCardsHTML(taskId) {
+            const results = (taskId && batchResultsCache[taskId]) || [];
+            if (!results.length) return '';
+            return results.map((r, idx) => `
+                <div class="batch-audio-card">
+                    <div class="card-header">
+                        <span class="card-number">${idx + 1}</span>
+                        <span class="card-filename" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
+                    </div>
+                    <audio controls src="${r.url && r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url || ''}`}"></audio>
+                </div>
+            `).join('');
+        }
+
+        // 批量结果折叠/展开：点击"展开试听"懒渲染 audio 列表，避免首屏渲染 N 个播放器卡顿
+        function toggleBatchAudios(btn) {
+            const container = btn.closest('.batch-results-container');
+            if (!container) return;
+            const grid = container.querySelector('.batch-grid');
+            if (!grid) return;
+            const taskId = btn.dataset.taskId;
+
+            // 已展开 -> 收起
+            if (grid.style.display !== 'none') {
+                grid.style.display = 'none';
+                btn.textContent = '▶ 展开试听';
+                if (taskId) expandedBatchTaskIds.delete(taskId);
+                return;
+            }
+
+            // 首次展开 -> 渲染 audio 列表（后续展开复用，不重复渲染）
+            if (!grid.dataset.rendered) {
+                // 从全局缓存按 task_id 取 batch_results（不依赖 HTML data 属性，避免转义问题）
+                const cardsHtml = buildBatchAudioCardsHTML(taskId);
+                if (!cardsHtml) {
+                    console.error('展开试听失败: 未找到批量结果缓存, task_id=', taskId);
+                    return;
+                }
+                grid.innerHTML = cardsHtml;
+                grid.dataset.rendered = '1';
+            }
+            grid.style.display = '';
+            btn.textContent = '▲ 收起';
+            if (taskId) expandedBatchTaskIds.add(taskId);
+        }
+
+        // 构建指令标签 HTML。
+        // 仅当任务含指令文本（instruct_text/control_prompt/voice_design_prompt）时显示，
+        // 把具体的指令词展示出来，替代原先只显示"指令控制"这类笼统提示。
+        function buildInstructTagHTML(task) {
+            const p = task.instruct_prompt;
+            if (!p) return '';
+            const safe = escapeHtml(p);
+            const display = p.length > 30 ? p.slice(0, 30) + '…' : p;
+            return `<span class="task-tag instruct-tag" title="指令：${safe}">🎯 指令：${escapeHtml(display)}</span>`;
+        }
+
+        // 构建时间标签 HTML。
+        // 活跃任务（queued/processing）打上 data-role/time-kind 供 tickActiveTimers
+        // 每秒本地实时刷新；终态任务（completed/failed/cancelled）用后端最终值，
+        // 不带 data-role，定时器不会改动它。
+        function buildTimeTagHTML(task) {
+            if (task.status === 'queued' || task.status === 'pending') {
+                return `<span class="task-tag time-tag waiting" data-role="time-tag" data-time-kind="waiting" data-created-at="${task.created_at}">⏳ 等待 ${formatDuration(task.wait_time_seconds)}</span>`;
+            } else if (task.status === 'processing') {
+                return `<span class="task-tag time-tag running" data-role="time-tag" data-time-kind="running" data-started-at="${task.started_at || ''}">🔧 执行 ${formatDuration(task.execution_time_seconds)}</span>`;
+            } else if (task.status === 'completed') {
+                const execTime = formatDuration(task.execution_time_seconds);
+                const waitTime = formatDuration(task.wait_time_seconds);
+                return `<span class="task-tag time-tag completed">✅ 执行 ${execTime} | 等待 ${waitTime}</span>`;
+            } else if (task.status === 'failed' || task.status === 'cancelled') {
+                if (task.execution_time_seconds !== null && task.execution_time_seconds !== undefined) {
+                    return `<span class="task-tag time-tag failed">⏱️ 执行 ${formatDuration(task.execution_time_seconds)}</span>`;
+                }
+                return '';
+            }
+            return '';
         }
 
         // 构建单个任务卡片的 HTML
@@ -1250,7 +1579,7 @@
                             <div class="progress-text" style="color: #e65100; margin: 0;">
                                 <span>⏳</span> 等待执行 - 批量生成 ×${task.batch_count}
                             </div>
-                            ${task.wait_time_seconds > 0 ? `<span style="font-size: 0.7rem; color: #bf360c;">已等待 ${formatDuration(task.wait_time_seconds)}</span>` : ''}
+                            ${task.wait_time_seconds > 0 ? `<span style="font-size: 0.7rem; color: #bf360c;" data-role="wait-mini" data-created-at="${task.created_at}">已等待 ${formatDuration(task.wait_time_seconds)}</span>` : ''}
                         </div>
                     </div>
                 `;
@@ -1269,41 +1598,52 @@
 
             let batchResultsHtml = '';
             if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
+                // 默认折叠：不直接渲染 N 个 <audio>（批量×100 会产生 100 个播放器拖慢首屏），
+                // 只渲染"展开试听"按钮，点击后由 toggleBatchAudios 懒渲染 audio 列表。
+                // batch_results 写入全局缓存 batchResultsCache，按钮只存 task_id（避免 JSON 转义问题）。
+                batchResultsCache[task.task_id] = task.batch_results;
+                // 轮询重画时会走到这里：若用户此前已展开过（在 expandedBatchTaskIds 中），
+                // 直接渲染为展开态（grid 显示 + 预渲染 audio + 按钮显示"收起"），避免展开态被塌回。
+                const isExpanded = expandedBatchTaskIds.has(task.task_id);
+                const gridStyle = isExpanded ? '' : 'display:none;';
+                const btnText = isExpanded ? '▲ 收起' : '▶ 展开试听';
+                const gridHtml = isExpanded ? buildBatchAudioCardsHTML(task.task_id) : '';
                 batchResultsHtml = `
                     <div class="batch-results-container">
                         <div class="batch-results-header">
                             <span class="batch-icon">🎲</span>
                             <span class="batch-title">批量生成结果</span>
                             <span class="batch-count">${task.batch_results.length}个</span>
+                            <button class="btn-toggle-batch" onclick="toggleBatchAudios(this)" data-task-id="${task.task_id}">${btnText}</button>
                         </div>
-                        <div class="batch-grid">
-                            ${task.batch_results.map((r, idx) => `
-                                <div class="batch-audio-card">
-                                    <div class="card-header">
-                                        <span class="card-number">${idx + 1}</span>
-                                        <span class="card-filename" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
-                                    </div>
-                                    <audio controls src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
-                                </div>
-                            `).join('')}
-                        </div>
+                        <div class="batch-grid" style="${gridStyle}"${isExpanded ? ' data-rendered="1"' : ''}>${gridHtml}</div>
                     </div>
                 `;
             }
 
+            // 操作按钮权限：
+            // - 下载/试听：对所有人开放（音频走公开静态路由 /audio/）
+            // - 取消/重试：仅本人可见（后端按 user_id 校验，非本人操作返回 403）
+            // - 删除：失败类终态（失败/已取消/已重试）对所有人开放，避免跨用户残留任务占位；已完成仅本人
+            const mine = task.is_mine !== false; // 兼容旧数据缺省为可见
             let actionsHtml = '';
             if (task.status === 'completed' && task.audio_url) {
                 const btnText = (task.batch_results && task.batch_results.length > 0) ? '⬇️ 下载ZIP包' : '⬇️ 下载音频';
                 actionsHtml += `<button class="btn-download" onclick="downloadTask('${task.task_id}')">${btnText}</button>`;
             }
-            if (task.status === 'queued') {
+            if (mine && task.status === 'queued') {
                 actionsHtml += `<button class="btn-cancel" onclick="cancelTask('${task.task_id}')">❌ 取消</button>`;
             }
-            if (task.status === 'failed' || task.status === 'cancelled') {
+            // 重试：仅本人（重试会基于原任务参数重新提交，应由任务所有者发起）
+            if (mine && (task.status === 'failed' || task.status === 'cancelled')) {
                 actionsHtml += `<button class="btn-retry" onclick="retryTask('${task.task_id}')">🔄 重试</button>`;
+            }
+            // 删除：失败类终态（失败/已取消/已重试）对所有人开放
+            if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'retried') {
                 actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
             }
-            if (task.status === 'completed') {
+            // 删除：已完成仅本人
+            if (mine && task.status === 'completed') {
                 actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
             }
 
@@ -1311,6 +1651,10 @@
 
             // 构建额外信息标签（合并到 task-meta 同一行）
             let extraMetaHtml = '';
+            // 归属标识：共享视图下区分本人/他人任务
+            extraMetaHtml += mine
+                ? `<span class="task-tag mine-tag">🟢 我的</span>`
+                : `<span class="task-tag other-tag">👤 他人</span>`;
             if (task.speaker_name) {
                 extraMetaHtml += `<span class="task-tag speaker-tag">👤 ${escapeHtml(task.speaker_name)}</span>`;
             }
@@ -1319,23 +1663,7 @@
             }
 
             // 构建时间信息
-            let timeInfoHtml = '';
-            if (task.status === 'queued' || task.status === 'pending') {
-                const waitTime = formatDuration(task.wait_time_seconds);
-                timeInfoHtml = `<span class="task-tag time-tag waiting">⏳ 等待 ${waitTime}</span>`;
-            } else if (task.status === 'processing' && task.execution_time_seconds !== null) {
-                const execTime = formatDuration(task.execution_time_seconds);
-                timeInfoHtml = `<span class="task-tag time-tag running">🔧 执行 ${execTime}</span>`;
-            } else if (task.status === 'completed' && task.execution_time_seconds !== null) {
-                const execTime = formatDuration(task.execution_time_seconds);
-                const waitTime = formatDuration(task.wait_time_seconds);
-                timeInfoHtml = `<span class="task-tag time-tag completed">✅ 执行 ${execTime} | 等待 ${waitTime}</span>`;
-            } else if (task.status === 'failed' || task.status === 'cancelled') {
-                if (task.execution_time_seconds !== null) {
-                    const execTime = formatDuration(task.execution_time_seconds);
-                    timeInfoHtml = `<span class="task-tag time-tag failed">⏱️ 执行 ${execTime}</span>`;
-                }
-            }
+            let timeInfoHtml = buildTimeTagHTML(task);
 
             return `
                 <div class="task-item ${status.class}" data-task-id="${task.task_id}" data-status="${task.status}">
@@ -1349,6 +1677,7 @@
                             <span class="task-tag model-tag">🤖 ${modelName}</span>
                             <span class="task-tag mode-tag">⚙️ ${modeName}</span>
                             ${extraMetaHtml}
+                            ${buildInstructTagHTML(task)}
                             ${timeInfoHtml}
                         </div>
                         <div class="task-time-detail">
@@ -1370,9 +1699,27 @@
         function updateTaskCard(card, task) {
             const status = statusMap[task.status] || { text: task.status, class: task.status };
 
+            // 检测状态变化：状态切换时需重建时间标签（活跃↔终态），
+            // 否则 processing→completed 后定时器仍会基于旧 started_at 继续累加秒数
+            const prevStatus = card.dataset.status;
+            const statusChanged = prevStatus !== task.status;
+
             // 1. 更新卡片状态 class
             card.className = `task-item ${status.class}`;
             card.dataset.status = task.status;
+
+            // 状态变化时重建时间标签（用最新 task 数据）
+            if (statusChanged) {
+                const oldTimeTag = card.querySelector('.task-tag.time-tag');
+                if (oldTimeTag) {
+                    const newHtml = buildTimeTagHTML(task);
+                    if (newHtml) {
+                        oldTimeTag.outerHTML = newHtml;
+                    } else {
+                        oldTimeTag.remove();
+                    }
+                }
+            }
 
             // 2. 更新状态标签
             const statusEl = card.querySelector('.task-status');
@@ -1457,7 +1804,7 @@
                                     <div class="progress-text" style="color: #e65100; margin: 0;">
                                         <span>⏳</span> 等待执行 - 批量生成 ×${task.batch_count}
                                     </div>
-                                    ${task.wait_time_seconds > 0 ? `<span style="font-size: 0.7rem; color: #bf360c;">已等待 ${formatDuration(task.wait_time_seconds)}</span>` : ''}
+                                    ${task.wait_time_seconds > 0 ? `<span style="font-size: 0.7rem; color: #bf360c;" data-role="wait-mini" data-created-at="${task.created_at}">已等待 ${formatDuration(task.wait_time_seconds)}</span>` : ''}
                                 </div>
                             </div>
                         `);
@@ -1468,6 +1815,9 @@
             }
 
             // 4. 操作按钮（仅在状态变化时更新）
+            // 下载对所有人开放；取消/重试仅本人；
+            // 删除：失败类终态（失败/已取消/已重试）对所有人开放，已完成仅本人（与 buildTaskCardHTML 一致）
+            const mine = task.is_mine !== false;
             const actionsEl = card.querySelector('.task-actions');
             if (actionsEl) {
                 let actionsHtml = '';
@@ -1475,14 +1825,16 @@
                     const btnText = (task.batch_results && task.batch_results.length > 0) ? '⬇️ 下载ZIP包' : '⬇️ 下载音频';
                     actionsHtml += `<button class="btn-download" onclick="downloadTask('${task.task_id}')">${btnText}</button>`;
                 }
-                if (task.status === 'queued') {
+                if (mine && task.status === 'queued') {
                     actionsHtml += `<button class="btn-cancel" onclick="cancelTask('${task.task_id}')">❌ 取消</button>`;
                 }
-                if (task.status === 'failed' || task.status === 'cancelled') {
+                if (mine && (task.status === 'failed' || task.status === 'cancelled')) {
                     actionsHtml += `<button class="btn-retry" onclick="retryTask('${task.task_id}')">🔄 重试</button>`;
+                }
+                if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'retried') {
                     actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
                 }
-                if (task.status === 'completed') {
+                if (mine && task.status === 'completed') {
                     actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
                 }
                 if (actionsEl.innerHTML.trim() !== actionsHtml.trim()) {
@@ -1513,28 +1865,28 @@
 
             // 6. 批量结果（只在 completed 且没有时添加，已有则不动）
             if (task.status === 'completed' && task.batch_results && task.batch_results.length > 0) {
+                // 更新全局缓存（即使卡片已存在，batch_results 可能随轮询更新）
+                batchResultsCache[task.task_id] = task.batch_results;
                 const batchContainer = card.querySelector('.batch-results-container');
                 if (!batchContainer) {
                     const content = card.querySelector('.task-content');
                     if (content) {
+                        // 与 buildTaskCardHTML 一致：默认折叠，点击"展开试听"懒渲染 audio。
+                        // 此分支仅在卡片首次出现批量结果时执行，理论上用户尚未展开；
+                        // 仍按 expandedBatchTaskIds 还原展开态以保持两条路径行为一致。
+                        const isExpanded = expandedBatchTaskIds.has(task.task_id);
+                        const gridStyle = isExpanded ? '' : 'display:none;';
+                        const btnText = isExpanded ? '▲ 收起' : '▶ 展开试听';
+                        const gridHtml = isExpanded ? buildBatchAudioCardsHTML(task.task_id) : '';
                         const html = `
                             <div class="batch-results-container">
                                 <div class="batch-results-header">
                                     <span class="batch-icon">🎲</span>
                                     <span class="batch-title">批量生成结果</span>
                                     <span class="batch-count">${task.batch_results.length}个</span>
+                                    <button class="btn-toggle-batch" onclick="toggleBatchAudios(this)" data-task-id="${task.task_id}">${btnText}</button>
                                 </div>
-                                <div class="batch-grid">
-                                    ${task.batch_results.map((r, idx) => `
-                                        <div class="batch-audio-card">
-                                            <div class="card-header">
-                                                <span class="card-number">${idx + 1}</span>
-                                                <span class="card-filename" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
-                                            </div>
-                                            <audio controls src="${r.url.startsWith('http') ? r.url : `${VersTTS.API_BASE}${r.url}`}"></audio>
-                                        </div>
-                                    `).join('')}
-                                </div>
+                                <div class="batch-grid" style="${gridStyle}"${isExpanded ? ' data-rendered="1"' : ''}>${gridHtml}</div>
                             </div>
                         `;
                         content.insertAdjacentHTML('beforeend', html);
@@ -1553,6 +1905,25 @@
                 }
             } else if (errorEl) {
                 errorEl.remove();
+            }
+
+            // 8. 指令标签：指令文本在任务生命周期内不变，仅在卡片缺失时补插
+            //    （正常路径 buildTaskCardHTML 已渲染，此处防御旧卡片/字段缺失）
+            const metaEl = card.querySelector('.task-meta');
+            const instructEl = metaEl && metaEl.querySelector('.instruct-tag');
+            const instructHtml = buildInstructTagHTML(task);
+            if (instructHtml) {
+                if (!instructEl && metaEl) {
+                    // 插入到时间标签之前；若无时间标签则追加到末尾
+                    const timeTag = metaEl.querySelector('.time-tag');
+                    if (timeTag) {
+                        timeTag.insertAdjacentHTML('beforebegin', instructHtml);
+                    } else {
+                        metaEl.insertAdjacentHTML('beforeend', instructHtml);
+                    }
+                }
+            } else if (instructEl) {
+                instructEl.remove();
             }
         }
 
@@ -1585,14 +1956,27 @@
             });
 
             const seenIds = new Set();
-
-            tasks.forEach(task => {
+            // tasks 按目标顺序排列（后端按 created_at 倒序）。新卡片需插到正确位置，
+            // 而非一律追加末尾，否则新增任务会落到列表底部而非顶部。
+            // 策略：遍历时记录"数组中下一个、且当前已在 DOM 的卡片"作为锚点，
+            // 把新卡片插到该锚点之前；若其后没有已存在的卡片则追加到末尾。
+            tasks.forEach((task, idx) => {
                 seenIds.add(task.task_id);
                 const existing = existingCards[task.task_id];
                 if (existing) {
                     updateTaskCard(existing, task);
                 } else {
-                    container.insertAdjacentHTML('beforeend', buildTaskCardHTML(task));
+                    // 向后查找第一个已存在于 DOM 的卡片作为插入锚点
+                    let anchor = null;
+                    for (let j = idx + 1; j < tasks.length; j++) {
+                        const cand = existingCards[tasks[j].task_id];
+                        if (cand) { anchor = cand; break; }
+                    }
+                    if (anchor) {
+                        anchor.insertAdjacentHTML('beforebegin', buildTaskCardHTML(task));
+                    } else {
+                        container.insertAdjacentHTML('beforeend', buildTaskCardHTML(task));
+                    }
                 }
             });
 
@@ -1600,6 +1984,8 @@
             Object.keys(existingCards).forEach(tid => {
                 if (!seenIds.has(tid)) {
                     existingCards[tid].remove();
+                    // 同步清理展开态记录，避免集合无限增长（任务已被删除，task_id 不会复用）
+                    expandedBatchTaskIds.delete(tid);
                 }
             });
 
@@ -1632,20 +2018,29 @@
         }
 
         // 更新统计
-        function updateStats(tasks) {
+        // counts: 后端返回的全量 status_counts（各状态总数，不受分页/状态筛选影响）。
+        //         若传入则直接使用；否则回退到按 tasks 数组统计（兼容旧接口）。
+        function updateStats(counts) {
             const stats = {
                 queued: 0,
                 processing: 0,
                 completed: 0,
                 failed: 0,
-                cancelled: 0
+                cancelled: 0,
+                retried: 0
             };
 
-            tasks.forEach(task => {
-                if (stats.hasOwnProperty(task.status)) {
-                    stats[task.status]++;
-                }
-            });
+            if (counts && typeof counts === 'object') {
+                // 后端全量计数
+                Object.keys(stats).forEach(k => {
+                    if (counts[k] != null) stats[k] = counts[k];
+                });
+            } else if (Array.isArray(counts)) {
+                // 兼容旧调用：counts 实为 tasks 数组
+                counts.forEach(task => {
+                    if (stats.hasOwnProperty(task.status)) stats[task.status]++;
+                });
+            }
 
             document.getElementById('statPending').textContent = stats.queued;
             document.getElementById('statProcessing').textContent = stats.processing;
@@ -1653,33 +2048,36 @@
             document.getElementById('statFailed').textContent = stats.failed;
             document.getElementById('statCancelled').textContent = stats.cancelled;
 
-            // 显示/隐藏批量清理按钮
-            const hasCompleted = stats.completed > 0 || stats.failed > 0 || stats.cancelled > 0;
-            document.getElementById('batchDeleteBtn').style.display = hasCompleted ? 'inline-block' : 'none';
+            // 显示/隐藏批量清理按钮：仅当存在失败类终态（失败/已取消/已重试）时显示
+            const hasFailedTerminal = stats.failed > 0 || stats.cancelled > 0 || stats.retried > 0;
+            document.getElementById('batchDeleteBtn').style.display = hasFailedTerminal ? 'inline-block' : 'none';
         }
 
         // 下载任务结果
         async function downloadTask(taskId) {
             try {
-                const response = await fetch(`${VersTTS.API_BASE}/tasks/${taskId}/download`);
-                
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    const task = currentTasks.find(t => t.task_id === taskId);
-                    const ext = task && task.audio_url && task.audio_url.endsWith('.zip') ? '.zip' : '.wav';
-                    a.download = `task_${taskId}${ext}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    VersTTS.showStatus('下载成功');
-                } else {
-                    const data = await response.json();
-                    throw new Error(data.detail || '下载失败');
+                const task = currentTasks.find(t => t.task_id === taskId);
+                if (!task || !task.audio_url) {
+                    VersTTS.showStatus('下载失败: 未找到音频', true);
+                    return;
                 }
+                // 直接用公开静态路由 /audio/ 下载（不走带 user_id 校验的 /download 路由），
+                // 使所有用户都能下载（与试听权限一致）。
+                const audioUrl = task.audio_url.startsWith('http')
+                    ? task.audio_url
+                    : `${VersTTS.API_BASE}${task.audio_url}`;
+                const ext = task.audio_url.endsWith('.zip') ? '.zip' : '.wav';
+                const a = document.createElement('a');
+                a.href = audioUrl;
+                // 下载名优先用服务器真实文件名（已带模型/模式/指令词/文本摘要/短时间戳）。
+                // 兜底用 audio_<task_id 末段>，避免 task_id 本身已含 "task_" 前缀导致 "task_task_..." 重复。
+                const realName = audioUrl.split('/').pop();
+                const fallback = `audio_${(taskId || '').split('_').pop() || 'result'}${ext}`;
+                a.download = realName || fallback;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                VersTTS.showStatus('下载成功');
             } catch (error) {
                 VersTTS.showStatus('下载失败: ' + error.message, true);
             }
@@ -1751,10 +2149,11 @@
             }
         }
 
-        // 批量清理已完成/失败/已取消的任务
+        // 批量清理失败类终态任务（失败/已取消/已重试）。这三类对所有人可删，
+        // 用于清掉跨用户残留的失败任务。已完成的删除仅限本人，不纳入批量清理。
         async function batchDeleteCompleted() {
             const completedTasks = currentTasks.filter(t =>
-                t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled'
+                t.status === 'failed' || t.status === 'cancelled' || t.status === 'retried'
             );
 
             if (completedTasks.length === 0) {
@@ -1762,7 +2161,7 @@
                 return;
             }
 
-            if (!confirm(`确定要清理 ${completedTasks.length} 个任务记录吗？\n（包括已完成、失败、已取消的任务）`)) return;
+            if (!confirm(`确定要清理 ${completedTasks.length} 个任务记录吗？\n（包括失败、已取消、已重试的任务）`)) return;
 
             let deleted = 0;
             let failed = 0;

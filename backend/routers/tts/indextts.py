@@ -10,7 +10,6 @@ from datetime import datetime
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
-from backend.config import OUTPUTS_DIR, UPLOADS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_indextts_model
@@ -70,7 +69,7 @@ async def tts_indextts(
 
         # 方式2: 兼容旧版本，使用上传的参考音频
         elif prompt_wav:
-            ref_path = os.path.join(UPLOADS_DIR, f"indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav")
+            ref_path = f"uploads/indextts_ref_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
             with open(ref_path, "wb") as f:
                 f.write(await prompt_wav.read())
             is_temp = True
@@ -84,7 +83,7 @@ async def tts_indextts(
 
         # 生成音频 - 按照GitHub示例使用infer方法
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        audio_path = os.path.join(OUTPUTS_DIR, f"indextts_{timestamp}.wav")
+        audio_path = f"outputs/indextts_{timestamp}.wav"
 
         # 准备infer参数
         infer_kwargs = {

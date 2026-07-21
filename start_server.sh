@@ -21,15 +21,15 @@ PORT="8006"
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
 # 主服务 GPU 配置
-MAIN_GPU="${MAIN_GPU:-0}"
+MAIN_GPU="${MAIN_GPU:-2}"
 # OmniVoice 独立服务 GPU 配置
-OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-2}"
 # CosyVoice 独立服务 GPU 配置
-COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
+COSYVOICE_GPU="${COSYVOICE_GPU:-2}"
 # PilotTTS 独立服务 GPU 配置
-PILOTTS_GPU="${PILOTTS_GPU:-0}"
+PILOTTS_GPU="${PILOTTS_GPU:-2}"
 # GPT-SoVITS 独立服务 GPU 配置
-GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-2}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -86,7 +86,6 @@ HF_HUB_OFFLINE="1"
 SKIP_CHECK=false
 RELOAD=false
 OFFLINE_MODE=false
-TAIL_LOGS=false
 
 # ========== 模型预加载配置 ==========
 # 所有独立服务默认不预加载，首次调用时按需加载
@@ -170,14 +169,12 @@ usage() {
     echo "  --skip-check     跳过环境检查"
     echo "  --reload         开发模式(自动重载)"
     echo "  --offline        离线模式(禁用HuggingFace等外部资源访问)"
-    echo "  --tail           启动后实时跟踪日志(Ctrl+C退出)"
     echo ""
     echo "示例:"
     echo "  $0 start                     # 默认启动"
     echo "  $0 start --port 8080         # 指定端口启动"
     echo "  $0 start --reload            # 开发模式启动"
     echo "  $0 start --offline           # 离线模式启动"
-    echo "  $0 start --tail              # 启动并实时跟踪日志"
     echo "  $0 stop                      # 停止服务"
     echo "  $0 restart                   # 重启服务"
     echo "  $0 status                    # 查看状态"
@@ -468,10 +465,11 @@ else:
                         local ov_pid=$!
                         echo "$ov_pid" > "$OMNIVOICE_PID_FILE"
                         
+                        # 根据预加载设置调整等待时间
                         if [ "$PRELOAD_OMNIVOICE" = "1" ]; then
-                            local ov_max_wait=120  # 预加载需要更长时间
+                            local ov_max_wait=90  # 预加载需要更长时间
                         else
-                            local ov_max_wait=60   # 不预加载也需要加载依赖
+                            local ov_max_wait=30  # 不预加载启动更快
                         fi
                         
                         local ov_count=0
@@ -515,7 +513,7 @@ else:
                         if [ "$PRELOAD_PILOTTS" = "1" ]; then
                             local pt_max_wait=120
                         else
-                            local pt_max_wait=60
+                            local pt_max_wait=30
                         fi
 
                         local pt_count=0
@@ -559,7 +557,7 @@ else:
                         if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
                             local gs_max_wait=120
                         else
-                            local gs_max_wait=60
+                            local gs_max_wait=30
                         fi
 
                         local gs_count=0
@@ -604,7 +602,7 @@ else:
                         if [ "$PRELOAD_COSYVOICE" = "1" ]; then
                             local cv_max_wait=120  # 预加载需要更长时间
                         else
-                            local cv_max_wait=60   # 不预加载也需要加载依赖
+                            local cv_max_wait=30   # 不预加载启动更快
                         fi
 
                         local cv_count=0
@@ -667,38 +665,6 @@ else:
                 echo "  查看状态: $0 status-gptsovits"
                 echo "  查看日志: tail -f $GPTSOVITS_LOG_FILE"
                 echo "========================================"
-
-                # 打印已有日志
-                echo ""
-                echo "========================================"
-                echo "      启动日志汇总"
-                echo "========================================"
-
-                # 收集已运行服务的日志文件
-                local log_files=()
-                [ -f "$LOG_FILE" ] && log_files+=("$LOG_FILE")
-                [ -f "$OMNIVOICE_LOG_FILE" ] && log_files+=("$OMNIVOICE_LOG_FILE")
-                [ -f "$COSYVOICE_LOG_FILE" ] && log_files+=("$COSYVOICE_LOG_FILE")
-                [ -f "$PILOTTS_LOG_FILE" ] && log_files+=("$PILOTTS_LOG_FILE")
-                [ -f "$GPTSOVITS_LOG_FILE" ] && log_files+=("$GPTSOVITS_LOG_FILE")
-
-                for lf in "${log_files[@]}"; do
-                    local log_name=$(basename "$lf")
-                    echo ""
-                    echo "--- $log_name (最近50行) ---"
-                    tail -n 50 "$lf" 2>/dev/null || echo "  (日志文件为空)"
-                done
-
-                echo ""
-                echo "========================================"
-
-                if [ "$TAIL_LOGS" = true ]; then
-                    echo ""
-                    print_info "实时跟踪日志中 (Ctrl+C 退出，服务继续运行)..."
-                    echo ""
-                    tail -f "${log_files[@]}" 2>/dev/null
-                fi
-
                 exit 0
             fi
         else
@@ -1969,10 +1935,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --offline)
             OFFLINE_MODE=true
-            shift
-            ;;
-        --tail)
-            TAIL_LOGS=true
             shift
             ;;
         *)

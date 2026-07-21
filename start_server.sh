@@ -513,7 +513,7 @@ else:
                         if [ "$PRELOAD_PILOTTS" = "1" ]; then
                             local pt_max_wait=120
                         else
-                            local pt_max_wait=30
+                            local pt_max_wait=60
                         fi
 
                         local pt_count=0
@@ -557,7 +557,7 @@ else:
                         if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
                             local gs_max_wait=120
                         else
-                            local gs_max_wait=30
+                            local gs_max_wait=60
                         fi
 
                         local gs_count=0

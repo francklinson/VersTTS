@@ -12,6 +12,7 @@ eggs/
 .eggs/
 lib/*
 !lib/wenet/
+!lib/README.md
 lib64/
 parts/
 sdist/

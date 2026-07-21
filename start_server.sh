@@ -195,6 +195,118 @@ check_venv() {
     print_success "虚拟环境存在: $VENV_PATH"
 }
 
+# 检查 transformers 多版本环境
+#
+# 版本约束策略（由各算法兼容性决定）：
+# ┌─────────────────────┬──────────────────┬────────────────────────────────────────────┐
+# │ 环境                │ 版本要求          │ 原因                                       │
+# ├─────────────────────┼──────────────────┼────────────────────────────────────────────┤
+# │ .venv (全局)        │ >= 4.57.0 < 5.0  │ Qwen3TTS 需要 >= 4.57.0；5.x 破坏所有 API   │
+# │ lib/transformers4   │ == 4.51.3 (锁定) │ PilotTTS 上限 4.52.4；CosyVoice tokenizer   │
+# │                     │                  │ 与 >= 4.52 不兼容；GPT-SoVITS 4.57.x 有问题  │
+# │ lib/transformers5   │ >= 5.3.0         │ OmniVoice 依赖 5.x 新 API，子版本兼容性好    │
+# └─────────────────────┴──────────────────┴────────────────────────────────────────────┘
+check_transformers_versions() {
+    print_step "检查 transformers 多版本环境..."
+
+    local tf_errors=0
+    local tf_warnings=0
+
+    # --- 辅助：用 Python 做版本比较 ---
+    _version_check() {
+        # 用法: _version_check <actual> <op> <expected>
+        # 返回 0 表示满足条件，1 表示不满足
+        python -c "from packaging.version import Version; v=Version('$1'); exit(0 if v $2 Version('$3') else 1)" 2>/dev/null
+    }
+
+    # ================================================================
+    # 1. 全局 transformers — 宽松检查: >= 4.57.0, < 5.0.0
+    #    Qwen3TTS 运行时也会检查，这里只是提前预警
+    # ================================================================
+    local ACTUAL_GLOBAL=$(python -c "import transformers; print(transformers.__version__)" 2>/dev/null)
+    if [ -z "$ACTUAL_GLOBAL" ]; then
+        print_error "全局 transformers: 未安装或导入失败"
+        tf_errors=$((tf_errors + 1))
+    elif _version_check "$ACTUAL_GLOBAL" ">=" "5.0.0"; then
+        print_error "全局 transformers: $ACTUAL_GLOBAL (不允许 5.x — 会破坏 Qwen3TTS/VoxCPM 等)"
+        print_info "请降级: pip install 'transformers>=4.57.0,<5.0.0'"
+        tf_errors=$((tf_errors + 1))
+    elif _version_check "$ACTUAL_GLOBAL" ">=" "4.57.0"; then
+        print_success "全局 transformers: $ACTUAL_GLOBAL (主服务 — Qwen3TTS/VoxCPM/ChatTTS等)"
+    else
+        print_warn "全局 transformers: $ACTUAL_GLOBAL (建议 >= 4.57.0 — Qwen3TTS 需要 4.57+)"
+        tf_warnings=$((tf_warnings + 1))
+    fi
+
+    # ================================================================
+    # 2. lib/transformers4 — 严格锁定: == 4.51.3
+    #    PilotTTS 上限 4.52.4，CosyVoice tokenizer 在 4.52+ 出问题
+    # ================================================================
+    local EXPECTED_TF4="4.51.3"
+    local TF4_PATH="$SCRIPT_DIR/lib/transformers4"
+    if [ ! -d "$TF4_PATH" ]; then
+        print_error "lib/transformers4: 目录不存在 (CosyVoice/PilotTTS/GPT-SoVITS 需要)"
+        print_info "请执行: pip install --target $TF4_PATH transformers==$EXPECTED_TF4"
+        tf_errors=$((tf_errors + 1))
+    else
+        local ACTUAL_TF4=$(PYTHONPATH="$TF4_PATH" python -c "import transformers; print(transformers.__version__)" 2>/dev/null)
+        if [ -z "$ACTUAL_TF4" ]; then
+            print_error "lib/transformers4: 无法加载 transformers 模块"
+            tf_errors=$((tf_errors + 1))
+        elif [ "$ACTUAL_TF4" != "$EXPECTED_TF4" ]; then
+            if _version_check "$ACTUAL_TF4" ">" "$EXPECTED_TF4"; then
+                print_error "lib/transformers4: $ACTUAL_TF4 (期望 $EXPECTED_TF4 — >= 4.52 会破坏 CosyVoice tokenizer)"
+                print_info "请降级: pip install --target $TF4_PATH transformers==$EXPECTED_TF4 --force-reinstall"
+                tf_errors=$((tf_errors + 1))
+            else
+                print_warn "lib/transformers4: $ACTUAL_TF4 (期望 $EXPECTED_TF4 — 版本偏低，可能缺失功能)"
+                tf_warnings=$((tf_warnings + 1))
+            fi
+        else
+            print_success "lib/transformers4: $ACTUAL_TF4 (CosyVoice/PilotTTS/GPT-SoVITS)"
+        fi
+    fi
+
+    # ================================================================
+    # 3. lib/transformers5 — 宽松检查: >= 5.3.0
+    #    OmniVoice 对 5.x 子版本不敏感
+    # ================================================================
+    local EXPECTED_TF5_MIN="5.3.0"
+    local TF5_PATH="$SCRIPT_DIR/lib/transformers5"
+    if [ ! -d "$TF5_PATH" ]; then
+        print_error "lib/transformers5: 目录不存在 (OmniVoice 需要)"
+        print_info "请执行: pip install --target $TF5_PATH 'transformers>=5.3.0'"
+        tf_errors=$((tf_errors + 1))
+    else
+        local ACTUAL_TF5=$(PYTHONPATH="$TF5_PATH" python -c "import transformers; print(transformers.__version__)" 2>/dev/null)
+        if [ -z "$ACTUAL_TF5" ]; then
+            print_error "lib/transformers5: 无法加载 transformers 模块"
+            tf_errors=$((tf_errors + 1))
+        elif _version_check "$ACTUAL_TF5" ">=" "$EXPECTED_TF5_MIN"; then
+            print_success "lib/transformers5: $ACTUAL_TF5 (OmniVoice)"
+        else
+            print_warn "lib/transformers5: $ACTUAL_TF5 (建议 >= $EXPECTED_TF5_MIN — OmniVoice 需要 5.x)"
+            tf_warnings=$((tf_warnings + 1))
+        fi
+    fi
+
+    # ================================================================
+    # 汇总
+    # ================================================================
+    if [ $tf_errors -gt 0 ] || [ $tf_warnings -gt 0 ]; then
+        echo ""
+    fi
+    if [ $tf_errors -gt 0 ]; then
+        print_error "transformers 版本环境存在 $tf_errors 个错误，相关服务将无法启动"
+        echo ""
+    elif [ $tf_warnings -gt 0 ]; then
+        print_warn "transformers 版本环境存在 $tf_warnings 个警告，部分功能可能异常"
+        echo ""
+    else
+        print_success "transformers 多版本环境检查通过"
+    fi
+}
+
 # 获取服务 PID
 get_pid() {
     if [ -f "$PID_FILE" ]; then
@@ -291,6 +403,9 @@ else:
     print('  CUDA 可用: ✗')
     print('  警告: CUDA 不可用，将使用 CPU 模式')
 " 2>/dev/null || print_warn "CUDA 检查失败"
+
+    # ========== transformers 版本检查 ==========
+    check_transformers_versions
 
     # ========== 模型文件检查 ==========
     print_step "检查模型文件..."

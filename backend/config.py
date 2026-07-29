@@ -12,20 +12,25 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 
 # OmniVoice 独立服务配置
+# 端口默认值需与 start_server.sh 中的子服务端口保持一致
 OMNIVOICE_HOST = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
-OMNIVOICE_PORT = int(os.environ.get("OMNIVOICE_PORT", "8001"))
+OMNIVOICE_PORT = int(os.environ.get("OMNIVOICE_PORT", "8007"))
 
 # CosyVoice 独立服务配置
 COSYVOICE_HOST = os.environ.get("COSYVOICE_HOST", "127.0.0.1")
-COSYVOICE_PORT = int(os.environ.get("COSYVOICE_PORT", "8002"))
+COSYVOICE_PORT = int(os.environ.get("COSYVOICE_PORT", "8008"))
 
 # PilotTTS 独立服务配置
 PILOTTS_HOST = os.environ.get("PILOTTS_HOST", "127.0.0.1")
-PILOTTS_PORT = int(os.environ.get("PILOTTS_PORT", "8003"))
+PILOTTS_PORT = int(os.environ.get("PILOTTS_PORT", "8009"))
 
 # GPT-SoVITS 独立服务配置
 GPTSOVITS_HOST = os.environ.get("GPTSOVITS_HOST", "127.0.0.1")
-GPTSOVITS_PORT = int(os.environ.get("GPTSOVITS_PORT", "8004"))
+GPTSOVITS_PORT = int(os.environ.get("GPTSOVITS_PORT", "8010"))
+
+# Fish-Speech 独立服务配置
+FISHSPEECH_HOST = os.environ.get("FISHSPEECH_HOST", "127.0.0.1")
+FISHSPEECH_PORT = int(os.environ.get("FISHSPEECH_PORT", "8005"))
 
 # 日志配置
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
@@ -74,6 +79,12 @@ ALGORITHMS_DIR = get_env_path("ALGORITHMS_DIR", "algorithms")
 
 SPEAKERS_DB_FILE = os.path.join(SPEAKERS_DIR, "speakers_db.json")
 
+# ========== 音频内容校验配置（需求2）==========
+# 新生成音频写入后用 wenet ASR 识别并与输入文本比对相似度，低于阈值则删除。
+# 通过环境变量 AUDIO_VERIFY_ENABLED / AUDIO_VERIFY_THRESHOLD 覆盖。
+AUDIO_VERIFY_ENABLED = os.environ.get("AUDIO_VERIFY_ENABLED", "1") == "1"
+AUDIO_VERIFY_THRESHOLD = float(os.environ.get("AUDIO_VERIFY_THRESHOLD", "0.6"))
+
 # ========== 模型文件路径配置 ==========
 MODEL_PATHS = {
     'qwen3tts': os.path.join(MODELS_DIR, 'Qwen3-TTS'),
@@ -81,6 +92,9 @@ MODEL_PATHS = {
     'omnivoice': os.path.join(MODELS_DIR, 'OmniVoice'),
     'fireredtts2': os.path.join(ALGORITHMS_DIR, 'FireRedTTS2', 'pretrained_models'),
     'pilottts': os.path.join(MODELS_DIR, 'PilotTTS'),
+    'dotstts': os.path.join(MODELS_DIR, 'dotstts'),
+    'fishspeech': os.path.join(MODELS_DIR, 'Fish-Speech'),
+    'indextts': os.path.join(ALGORITHMS_DIR, 'IndexTTS', 'checkpoints'),
 }
 
 # ========== 算法路径配置 ==========
@@ -100,6 +114,9 @@ ALGORITHM_PATHS = {
     'pilottts': os.path.join(ALGORITHMS_DIR, 'PilotTTS'),
     'pilottts_third_party': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'third_party'),
     'pilottts_matcha': os.path.join(ALGORITHMS_DIR, 'PilotTTS', 'third_party', 'Matcha-TTS'),
+    'dotstts': os.path.join(ALGORITHMS_DIR, 'dotstts'),
+    'dotstts_src': os.path.join(ALGORITHMS_DIR, 'dotstts', 'src'),
+    'fishspeech': os.path.join(ALGORITHMS_DIR, 'Fish-Speech'),
 }
 
 # ========== F5-TTS 默认参考音频 ==========

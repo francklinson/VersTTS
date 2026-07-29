@@ -21,15 +21,15 @@ PORT="8006"
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
 # 主服务 GPU 配置
-MAIN_GPU="${MAIN_GPU:-0}"
+MAIN_GPU="${MAIN_GPU:-2}"
 # OmniVoice 独立服务 GPU 配置
-OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-2}"
 # CosyVoice 独立服务 GPU 配置
-COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
+COSYVOICE_GPU="${COSYVOICE_GPU:-2}"
 # PilotTTS 独立服务 GPU 配置
-PILOTTS_GPU="${PILOTTS_GPU:-0}"
+PILOTTS_GPU="${PILOTTS_GPU:-2}"
 # GPT-SoVITS 独立服务 GPU 配置
-GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-2}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -95,8 +95,14 @@ PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加�
 PRELOAD_PILOTTS="${PRELOAD_PILOTTS:-0}"       # 1=启动时加载, 0=按需加载
 PRELOAD_GPTSOVITS="${PRELOAD_GPTSOVITS:-0}"   # 1=启动时加载, 0=按需加载
 
+# ========== 启动等待超时配置（秒）==========
+# 子服务首次启动需加载大量依赖（torch/transformers 等），导入阶段即可达 20-30s，
+# 故默认值留足余量。可通过环境变量覆盖，例如 START_WAIT_NO_PRELOAD=90 ./start_server.sh start
+START_WAIT_NO_PRELOAD="${START_WAIT_NO_PRELOAD:-60}"   # 不预加载时的等待秒数（默认 60）
+START_WAIT_PRELOAD="${START_WAIT_PRELOAD:-180}"        # 预加载时的等待秒数（默认 180）
+
 # ========== 空闲超时与心跳配置 ==========
-IDLE_TIMEOUT="${IDLE_TIMEOUT:-300}"           # 空闲超时秒数，默认 5 分钟
+IDLE_TIMEOUT="${IDLE_TIMEOUT:-900}"           # 空闲超时秒数，默认 15 分钟
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}" # 心跳间隔秒数，默认 1 分钟
 
 # 颜色定义
@@ -126,6 +132,14 @@ print_warn() {
 
 print_step() {
     echo -e "${CYAN}[→]${NC} $1"
+}
+
+# 检查服务是否真正就绪（端口监听 + /health 响应）。
+# 与 is_*_running（仅判断进程存活）区分：进程可能活着但还没监听端口（启动中）或已僵死。
+# 参数: $1=端口  返回: 0=就绪, 1=未就绪
+is_service_ready() {
+    local port="$1"
+    curl -s -m 2 "http://127.0.0.1:${port}/health" >/dev/null 2>&1
 }
 
 # 帮助信息
@@ -195,17 +209,24 @@ check_venv() {
     print_success "虚拟环境存在: $VENV_PATH"
 }
 
+# 获取服务 PID
+get_pid() {
+    if [ -f "$PID_FILE" ]; then
+        cat "$PID_FILE" 2>/dev/null
+    fi
+}
+
+# 检查服务是否运行
+is_running() {
+    local pid
+    pid=$(get_pid)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
 # 检查 transformers 多版本环境
-#
-# 版本约束策略（由各算法兼容性决定）：
-# ┌─────────────────────┬──────────────────┬────────────────────────────────────────────┐
-# │ 环境                │ 版本要求          │ 原因                                       │
-# ├─────────────────────┼──────────────────┼────────────────────────────────────────────┤
-# │ .venv (全局)        │ >= 4.57.0 < 5.0  │ Qwen3TTS 需要 >= 4.57.0；5.x 破坏所有 API   │
-# │ lib/transformers4   │ == 4.51.3 (锁定) │ PilotTTS 上限 4.52.4；CosyVoice tokenizer   │
-# │                     │                  │ 与 >= 4.52 不兼容；GPT-SoVITS 4.57.x 有问题  │
-# │ lib/transformers5   │ >= 5.3.0         │ OmniVoice 依赖 5.x 新 API，子版本兼容性好    │
-# └─────────────────────┴──────────────────┴────────────────────────────────────────────┘
 check_transformers_versions() {
     print_step "检查 transformers 多版本环境..."
 
@@ -307,23 +328,6 @@ check_transformers_versions() {
     fi
 }
 
-# 获取服务 PID
-get_pid() {
-    if [ -f "$PID_FILE" ]; then
-        cat "$PID_FILE" 2>/dev/null
-    fi
-}
-
-# 检查服务是否运行
-is_running() {
-    local pid
-    pid=$(get_pid)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-        return 0
-    fi
-    return 1
-}
-
 # 启动服务
 do_start() {
     echo ""
@@ -364,6 +368,10 @@ do_start() {
     export OMNIVOICE_PORT
     export COSYVOICE_HOST
     export COSYVOICE_PORT
+    export PILOTTS_HOST
+    export PILOTTS_PORT
+    export GPTSOVITS_HOST
+    export GPTSOVITS_PORT
     export MODELS_DIR
     export OUTPUTS_DIR
     export LOGS_DIR
@@ -582,17 +590,19 @@ else:
                         
                         # 根据预加载设置调整等待时间
                         if [ "$PRELOAD_OMNIVOICE" = "1" ]; then
-                            local ov_max_wait=90  # 预加载需要更长时间
+                            local ov_max_wait=$START_WAIT_PRELOAD  # 预加载需要更长时间
                         else
-                            local ov_max_wait=30  # 不预加载启动更快
+                            local ov_max_wait=$START_WAIT_NO_PRELOAD  # 不预加载启动更快
                         fi
                         
                         local ov_count=0
                         local ov_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        local ov_ready=0
                         while [ $ov_count -lt $ov_max_wait ]; do
                             if kill -0 "$ov_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" >/dev/null 2>&1; then
                                     print_success "OmniVoice 已启动 (PID: $ov_pid, 端口: $OMNIVOICE_PORT)"
+                                    ov_ready=1
                                     break
                                 fi
                             else
@@ -604,6 +614,19 @@ else:
                             ov_count=$((ov_count + 1))
                             printf "\r  %s  OmniVoice 启动中... %d/%d 秒" "${ov_spin:$((ov_count % 10)):1}" "$ov_count" "$ov_max_wait"
                         done
+                        # 等满超时仍未就绪：进程还活着说明仍在后台启动（多服务并发冷启动时会互相拖慢），
+                        # 不判死，提示用户稍后用 status 确认，避免误报失败。
+                        if [ "$ov_ready" = "0" ] && kill -0 "$ov_pid" 2>/dev/null; then
+                            echo ""
+                            print_warn "OmniVoice ${ov_max_wait}s 内未就绪，进程仍在后台启动中"
+                            print_info "稍后用 '$0 status' 确认；若长期未就绪请检查日志: $OMNIVOICE_LOG_FILE"
+                            OMNIVOICE_START_OK=0
+                        elif [ "$ov_ready" = "0" ]; then
+                            # 进程已退出
+                            OMNIVOICE_START_OK=0
+                        else
+                            OMNIVOICE_START_OK=1
+                        fi
                     fi
                 fi
 
@@ -626,17 +649,19 @@ else:
                         echo "$pt_pid" > "$PILOTTS_PID_FILE"
 
                         if [ "$PRELOAD_PILOTTS" = "1" ]; then
-                            local pt_max_wait=120
+                            local pt_max_wait=$START_WAIT_PRELOAD
                         else
-                            local pt_max_wait=60
+                            local pt_max_wait=$START_WAIT_NO_PRELOAD
                         fi
 
                         local pt_count=0
                         local pt_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        local pt_ready=0
                         while [ $pt_count -lt $pt_max_wait ]; do
                             if kill -0 "$pt_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$PILOTTS_PORT/health" >/dev/null 2>&1; then
                                     print_success "PilotTTS 已启动 (PID: $pt_pid, 端口: $PILOTTS_PORT)"
+                                    pt_ready=1
                                     break
                                 fi
                             else
@@ -648,6 +673,17 @@ else:
                             pt_count=$((pt_count + 1))
                             printf "\r  %s  PilotTTS 启动中... %d/%d 秒" "${pt_spin:$((pt_count % 10)):1}" "$pt_count" "$pt_max_wait"
                         done
+                        # 等满超时仍未就绪：进程还活着说明仍在后台启动，不判死，提示用 status 确认
+                        if [ "$pt_ready" = "0" ] && kill -0 "$pt_pid" 2>/dev/null; then
+                            echo ""
+                            print_warn "PilotTTS ${pt_max_wait}s 内未就绪，进程仍在后台启动中"
+                            print_info "稍后用 '$0 status' 确认；若长期未就绪请检查日志: $PILOTTS_LOG_FILE"
+                            PILOTTS_START_OK=0
+                        elif [ "$pt_ready" = "0" ]; then
+                            PILOTTS_START_OK=0
+                        else
+                            PILOTTS_START_OK=1
+                        fi
                     fi
                 fi
 
@@ -670,17 +706,19 @@ else:
                         echo "$gs_pid" > "$GPTSOVITS_PID_FILE"
 
                         if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
-                            local gs_max_wait=120
+                            local gs_max_wait=$START_WAIT_PRELOAD
                         else
-                            local gs_max_wait=60
+                            local gs_max_wait=$START_WAIT_NO_PRELOAD
                         fi
 
                         local gs_count=0
                         local gs_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        local gs_ready=0
                         while [ $gs_count -lt $gs_max_wait ]; do
                             if kill -0 "$gs_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" >/dev/null 2>&1; then
                                     print_success "GPT-SoVITS 已启动 (PID: $gs_pid, 端口: $GPTSOVITS_PORT)"
+                                    gs_ready=1
                                     break
                                 fi
                             else
@@ -692,6 +730,17 @@ else:
                             gs_count=$((gs_count + 1))
                             printf "\r  %s  GPT-SoVITS 启动中... %d/%d 秒" "${gs_spin:$((gs_count % 10)):1}" "$gs_count" "$gs_max_wait"
                         done
+                        # 等满超时仍未就绪：进程还活着说明仍在后台启动，不判死，提示用 status 确认
+                        if [ "$gs_ready" = "0" ] && kill -0 "$gs_pid" 2>/dev/null; then
+                            echo ""
+                            print_warn "GPT-SoVITS ${gs_max_wait}s 内未就绪，进程仍在后台启动中"
+                            print_info "稍后用 '$0 status' 确认；若长期未就绪请检查日志: $GPTSOVITS_LOG_FILE"
+                            GPTSOVITS_START_OK=0
+                        elif [ "$gs_ready" = "0" ]; then
+                            GPTSOVITS_START_OK=0
+                        else
+                            GPTSOVITS_START_OK=1
+                        fi
                     fi
                 fi
 
@@ -715,17 +764,19 @@ else:
 
                         # 根据预加载设置调整等待时间
                         if [ "$PRELOAD_COSYVOICE" = "1" ]; then
-                            local cv_max_wait=120  # 预加载需要更长时间
+                            local cv_max_wait=$START_WAIT_PRELOAD  # 预加载需要更长时间
                         else
-                            local cv_max_wait=30   # 不预加载启动更快
+                            local cv_max_wait=$START_WAIT_NO_PRELOAD   # 不预加载启动更快
                         fi
 
                         local cv_count=0
                         local cv_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        local cv_ready=0
                         while [ $cv_count -lt $cv_max_wait ]; do
                             if kill -0 "$cv_pid" 2>/dev/null; then
                                 if curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" >/dev/null 2>&1; then
                                     print_success "CosyVoice 已启动 (PID: $cv_pid, 端口: $COSYVOICE_PORT)"
+                                    cv_ready=1
                                     break
                                 fi
                             else
@@ -737,17 +788,60 @@ else:
                             cv_count=$((cv_count + 1))
                             printf "\r  %s  CosyVoice 启动中... %d/%d 秒" "${cv_spin:$((cv_count % 10)):1}" "$cv_count" "$cv_max_wait"
                         done
+                        # 等满超时仍未就绪：进程还活着说明仍在后台启动（多服务并发冷启动时会互相拖慢），
+                        # 不判死，提示用户稍后用 status 确认，避免误报失败。
+                        if [ "$cv_ready" = "0" ] && kill -0 "$cv_pid" 2>/dev/null; then
+                            echo ""
+                            print_warn "CosyVoice ${cv_max_wait}s 内未就绪，进程仍在后台启动中"
+                            print_info "稍后用 '$0 status' 确认；若长期未就绪请检查日志: $COSYVOICE_LOG_FILE"
+                            COSYVOICE_START_OK=0
+                        elif [ "$cv_ready" = "0" ]; then
+                            # 进程已退出
+                            COSYVOICE_START_OK=0
+                        else
+                            COSYVOICE_START_OK=1
+                        fi
                     fi
                 fi
 
                 echo ""
+                # 汇总各服务实际就绪状态（健康检查通过=1，超时/失败=0）
+                # 任意子服务未就绪时，明确提示而非打印「全部成功」误导
+                local _all_ok=1
+                for _v in OMNIVOICE_START_OK COSYVOICE_START_OK PILOTTS_START_OK GPTSOVITS_START_OK; do
+                    eval "_val=\${$_v:-1}"
+                    [ "$_val" = "0" ] && _all_ok=0
+                done
+
                 echo "========================================"
-                echo "      全部服务启动成功"
+                if [ "$_all_ok" = "1" ]; then
+                    echo "      全部服务启动成功"
+                else
+                    echo "      部分服务未就绪，请查看上方提示"
+                fi
                 echo "========================================"
                 print_success "主服务状态: 运行中 (PID: $new_pid, 端口: $PORT, GPU: $MAIN_GPU)"
-                print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)"
-                print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)"
-                print_info "PilotTTS 服务: 运行中 (PID: $pt_pid, 端口: $PILOTTS_PORT, GPU: $PILOTTS_GPU)"
+                # 子服务状态按实际就绪标记打印（运行中 / 未就绪）
+                if [ "${OMNIVOICE_START_OK:-1}" = "1" ]; then
+                    print_info "OmniVoice 服务: 运行中 (PID: $ov_pid, 端口: $OMNIVOICE_PORT, GPU: $OMNIVOICE_GPU)"
+                else
+                    print_error "OmniVoice 服务: 未就绪（启动超时或失败，见上方提示）"
+                fi
+                if [ "${COSYVOICE_START_OK:-1}" = "1" ]; then
+                    print_info "CosyVoice 服务: 运行中 (PID: $cv_pid, 端口: $COSYVOICE_PORT, GPU: $COSYVOICE_GPU)"
+                else
+                    print_error "CosyVoice 服务: 未就绪（启动超时或失败，见上方提示）"
+                fi
+                if [ "${PILOTTS_START_OK:-1}" = "1" ]; then
+                    print_info "PilotTTS 服务: 运行中 (PID: $pt_pid, 端口: $PILOTTS_PORT, GPU: $PILOTTS_GPU)"
+                else
+                    print_error "PilotTTS 服务: 未就绪（启动超时或失败，见上方提示）"
+                fi
+                if [ "${GPTSOVITS_START_OK:-1}" = "1" ]; then
+                    print_info "GPT-SoVITS 服务: 运行中 (PID: $gs_pid, 端口: $GPTSOVITS_PORT, GPU: $GPTSOVITS_GPU)"
+                else
+                    print_error "GPT-SoVITS 服务: 未就绪（启动超时或失败，见上方提示）"
+                fi
                 print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
                 echo ""
@@ -1086,6 +1180,27 @@ do_status() {
     else
         print_warn "CosyVoice 未运行"
     fi
+
+    # 检查 GPT-SoVITS 服务状态
+    echo "----------------------------------------"
+    print_step "GPT-SoVITS 独立服务状态:"
+    echo "----------------------------------------"
+    if is_gptsovits_running; then
+        local gs_pid=$(cat "$GPTSOVITS_PID_FILE" 2>/dev/null)
+        print_success "GPT-SoVITS 运行中 (PID: $gs_pid, 端口: $GPTSOVITS_PORT)"
+
+        local gs_health
+        gs_health=$(curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" 2>/dev/null || echo "")
+        if [ -n "$gs_health" ]; then
+            print_success "GPT-SoVITS 健康检查通过"
+            echo "$gs_health" | python -m json.tool 2>/dev/null || echo "$gs_health"
+        else
+            print_error "GPT-SoVITS 健康检查失败"
+        fi
+        print_info "GPT-SoVITS 日志: $GPTSOVITS_LOG_FILE"
+    else
+        print_warn "GPT-SoVITS 未运行"
+    fi
 }
 
 # ============ OmniVoice 独立服务管理 ============
@@ -1177,9 +1292,15 @@ do_start_omnivoice() {
     echo ""
 
     # 等待服务启动
+    # 等待服务启动：超时按预加载配置取值，可通过环境变量覆盖
+    if [ "$PRELOAD_OMNIVOICE" = "1" ]; then
+        local ov_max_wait=$START_WAIT_PRELOAD
+    else
+        local ov_max_wait=$START_WAIT_NO_PRELOAD
+    fi
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 60 ]; do
+    while [ $count -lt $ov_max_wait ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
             if curl -s "http://127.0.0.1:$OMNIVOICE_PORT/health" >/dev/null 2>&1; then
                 echo ""
@@ -1211,12 +1332,12 @@ do_start_omnivoice() {
         fi
         sleep 1
         count=$((count + 1))
-        printf "\r  %s  等待中... %d/60 秒" "${spin:$((count % 10)):1}" "$count"
+        printf "\r  %s  等待中... %d/%d 秒" "${spin:$((count % 10)):1}" "$count" "$ov_max_wait"
     done
 
     echo ""
     echo ""
-    print_warn "OmniVoice 服务启动超时 (60秒)"
+    print_warn "OmniVoice 服务启动超时 (${ov_max_wait}秒)"
     print_info "可能原因:"
     echo "  1. 模型加载时间较长 (OmniVoice 模型约 2.3GB)"
     echo "  2. 端口被占用: $OMNIVOICE_PORT"
@@ -1414,10 +1535,15 @@ do_start_cosyvoice() {
     print_step "等待服务启动 (PID: $new_pid)..."
     echo ""
 
-    # 等待服务启动
+    # 等待服务启动：超时按预加载配置取值，可通过环境变量覆盖
+    if [ "$PRELOAD_COSYVOICE" = "1" ]; then
+        local cv_max_wait=$START_WAIT_PRELOAD
+    else
+        local cv_max_wait=$START_WAIT_NO_PRELOAD
+    fi
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 120 ]; do
+    while [ $count -lt $cv_max_wait ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
             if curl -s "http://127.0.0.1:$COSYVOICE_PORT/health" >/dev/null 2>&1; then
                 echo ""
@@ -1449,12 +1575,12 @@ do_start_cosyvoice() {
         fi
         sleep 1
         count=$((count + 1))
-        printf "\r  %s  等待中... %d/120 秒" "${spin:$((count % 10)):1}" "$count"
+        printf "\r  %s  等待中... %d/%d 秒" "${spin:$((count % 10)):1}" "$count" "$cv_max_wait"
     done
 
     echo ""
     echo ""
-    print_warn "CosyVoice 服务启动超时 (120秒)"
+    print_warn "CosyVoice 服务启动超时 (${cv_max_wait}秒)"
     print_info "可能原因:"
     echo "  1. 模型加载时间较长 (CosyVoice 模型较大)"
     echo "  2. 端口被占用: $COSYVOICE_PORT"
@@ -1652,10 +1778,15 @@ do_start_pilottts() {
     print_step "等待服务启动 (PID: $new_pid)..."
     echo ""
 
-    # 等待服务启动
+    # 等待服务启动：超时按预加载配置取值，可通过环境变量覆盖
+    if [ "$PRELOAD_PILOTTS" = "1" ]; then
+        local pt_max_wait=$START_WAIT_PRELOAD
+    else
+        local pt_max_wait=$START_WAIT_NO_PRELOAD
+    fi
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 120 ]; do
+    while [ $count -lt $pt_max_wait ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
             if curl -s "http://127.0.0.1:$PILOTTS_PORT/health" >/dev/null 2>&1; then
                 echo ""
@@ -1687,12 +1818,12 @@ do_start_pilottts() {
         fi
         sleep 1
         count=$((count + 1))
-        printf "\r  %s  等待中... %d/120 秒" "${spin:$((count % 10)):1}" "$count"
+        printf "\r  %s  等待中... %d/%d 秒" "${spin:$((count % 10)):1}" "$count" "$pt_max_wait"
     done
 
     echo ""
     echo ""
-    print_warn "PilotTTS 服务启动超时 (120秒)"
+    print_warn "PilotTTS 服务启动超时 (${pt_max_wait}秒)"
     print_info "可能原因:"
     echo "  1. 模型加载时间较长 (PilotTTS 模型约 6GB)"
     echo "  2. 端口被占用: $PILOTTS_PORT"
@@ -1883,9 +2014,15 @@ do_start_gptsovits() {
     print_step "等待服务启动 (PID: $new_pid)..."
     echo ""
 
+    # 等待服务启动：超时按预加载配置取值，可通过环境变量覆盖
+    if [ "$PRELOAD_GPTSOVITS" = "1" ]; then
+        local gs_max_wait=$START_WAIT_PRELOAD
+    else
+        local gs_max_wait=$START_WAIT_NO_PRELOAD
+    fi
     local count=0
     local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    while [ $count -lt 120 ]; do
+    while [ $count -lt $gs_max_wait ]; do
         if kill -0 "$new_pid" 2>/dev/null; then
             if curl -s "http://127.0.0.1:$GPTSOVITS_PORT/health" >/dev/null 2>&1; then
                 echo ""
@@ -1912,15 +2049,16 @@ do_start_gptsovits() {
             print_error "GPT-SoVITS 服务启动失败 - 进程已退出"
             print_info "查看错误日志:"
             echo "  tail -n 50 $GPTSOVITS_LOG_FILE"
+            rm -f "$GPTSOVITS_PID_FILE"
             exit 1
         fi
         sleep 1
         count=$((count + 1))
-        printf "\r${spin:$((count % 10)):1} 等待中... (%ds)" "$count"
+        printf "\r  %s  等待中... %d/%d 秒" "${spin:$((count % 10)):1}" "$count" "$gs_max_wait"
     done
 
     echo ""
-    print_warn "服务启动超时 (120s)"
+    print_warn "GPT-SoVITS 服务启动超时 (${gs_max_wait}秒)"
     print_info "服务可能仍在初始化，请检查日志: tail -f $GPTSOVITS_LOG_FILE"
 }
 

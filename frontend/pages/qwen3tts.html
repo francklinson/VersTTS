@@ -419,7 +419,7 @@
 
                 if (data.success) {
                     document.getElementById('batchResultSection').style.display = 'none';
-                    VersTTS.showResult(data, { filename: `qwen3tts_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！');
                 } else {
                     throw new Error(data.message || '生成失败');
@@ -677,7 +677,8 @@
         // 添加到任务队列
         async function addToQueue() {
             const genText = document.getElementById('genText').value.trim();
-            const mode = document.querySelector('.mode-tab.active')?.dataset.mode || 'base';
+            // 复用 updateCurrentMode 维护的 currentMode，与批量提交保持一致
+            const mode = currentMode;
             const modelSize = document.querySelector('input[name="modelSize"]:checked')?.value || '1.7B';
 
             if (!genText) {
@@ -873,7 +874,7 @@
                 }
                 if (downloadLink) {
                     downloadLink.href = audioUrl;
-                    downloadLink.download = `qwen3tts_${taskData.task_id}.wav`;
+                    downloadLink.download = audioUrl.split('/').pop() || `qwen3tts_${taskData.task_id}.wav`;
                     downloadLink.style.display = 'inline-flex';
                 }
                 if (statusEl) {

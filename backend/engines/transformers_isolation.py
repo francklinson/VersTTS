@@ -8,7 +8,7 @@ transformers 版本隔离管理
 支持三种 transformers 环境：
   - default: 全局 pip 安装的 transformers（当前 4.57.3，供 Qwen3TTS/VoxCPM 等使用）
   - transformers4: lib/transformers4 (4.51.3，供 PilotTTS/CosyVoice 使用)
-  - transformers5: lib/transformers5 (5.14.1，供 OmniVoice 使用)
+  - transformers5: lib/transformers5 (5.6.2，供 OmniVoice 使用)
 """
 
 import sys

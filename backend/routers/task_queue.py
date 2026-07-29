@@ -71,6 +71,7 @@ class TaskInfo(BaseModel):
     completed_at: Optional[str] = None
     audio_url: Optional[str] = None
     error_message: Optional[str] = None
+    error_code: Optional[str] = None  # 失败类型码（AUDIO_VERIFY_FAILED 表示可重试的内容校验失败）
     progress: int
     batch_total: int = 0
     batch_completed: int = 0
@@ -79,6 +80,8 @@ class TaskInfo(BaseModel):
     batch_count: int = 1
     wait_time_seconds: int = 0  # 等待时长（秒）
     execution_time_seconds: Optional[int] = None  # 执行时长（秒）
+    is_mine: bool = False  # 是否为当前用户提交的任务（共享视图下用于区分可操作任务）
+    instruct_prompt: Optional[str] = None  # 指令文本（instruct_text/control_prompt/voice_design_prompt 取首个非空），供前端展示指令组合
 
 
 class TaskListResponse(BaseModel):
@@ -86,6 +89,10 @@ class TaskListResponse(BaseModel):
     success: bool
     tasks: List[TaskInfo]
     total: int
+    status_counts: Dict[str, int] = Field(
+        default_factory=dict,
+        description="各状态的全量任务计数（忽略分页与状态筛选，仅受 model 筛选影响），供统计栏稳定显示"
+    )
 
 
 class QueueStatusResponse(BaseModel):
@@ -112,6 +119,24 @@ def get_user_id(request: Request) -> str:
         # 使用客户端IP作为标识
         user_id = request.client.host if request.client else "anonymous"
     return user_id
+
+
+def _extract_instruct_prompt(params: Optional[Dict]) -> Optional[str]:
+    """从任务参数中提取指令文本，供前端展示指令组合。
+
+    指令类模式会把具体指令词存入 params，但字段名因模型/模式而异：
+    - Qwen3-TTS custom_voice: instruct_text
+    - CosyVoice instruct / VoxCPM clone / ultimate_clone: control_prompt
+    - VoxCPM / Qwen3-TTS / OmniVoice voice_design: voice_design_prompt
+    按上述优先级取首个非空值。
+    """
+    if not params:
+        return None
+    for key in ('instruct_text', 'control_prompt', 'voice_design_prompt'):
+        val = params.get(key)
+        if val and str(val).strip():
+            return str(val).strip()
+    return None
 
 
 # ============ API端点 ============
@@ -199,14 +224,22 @@ async def submit_task(
 async def list_tasks(
     request: Request,
     status: Optional[str] = Query(None, description="状态筛选: pending, processing, completed, failed, cancelled"),
-    limit: int = Query(50, ge=1, le=100, description="返回数量限制")
+    model: Optional[str] = Query(None, description="算法/模型筛选: chattts, cosyvoice, f5tts, qwen3tts, openvoice, gptsovits, voxcpm, omnivoice, pilottts, indextts, fireredtts"),
+    limit: int = Query(100, ge=1, le=500, description="返回数量限制"),
+    offset: int = Query(0, ge=0, description="偏移量（分页）")
 ):
     """
     获取当前用户的任务列表
     """
     try:
         user_id = get_user_id(request)
-        tasks = task_queue.get_user_tasks(user_id, status=status, limit=limit)
+        # 多用户共享视图：返回所有用户的任务，任务页展示全局看板。
+        # 取消/删除等写操作仍按 user_id 校验（仅本人可操作自己的任务）。
+        tasks = task_queue.get_all_tasks(status=status, limit=limit, offset=offset, model=model)
+        # total 为符合筛选条件的任务总数（分页前），前端据此翻页
+        total_count = task_queue.count_all_tasks(status=status, model=model)
+        # 各状态全量计数（忽略分页与状态筛选，仅受 model 筛选影响），供统计栏稳定显示
+        status_counts = task_queue.status_counts_all(model=model)
 
         task_infos = []
         from datetime import datetime as dt
@@ -227,6 +260,9 @@ async def list_tasks(
 
             # 获取批量数量
             batch_count = task.params.get('batch_count', 1) if task.params else 1
+
+            # 提取指令文本（供前端展示指令组合）
+            instruct_prompt = _extract_instruct_prompt(task.params)
 
             # 计算等待时长
             wait_time_seconds = 0
@@ -268,6 +304,7 @@ async def list_tasks(
                 completed_at=task.completed_at,
                 audio_url=task.audio_url,
                 error_message=task.error_message,
+                error_code=task.error_code,
                 progress=task.progress,
                 batch_total=task.batch_total,
                 batch_completed=task.batch_completed,
@@ -275,13 +312,16 @@ async def list_tasks(
                 speaker_name=speaker_name,
                 batch_count=batch_count,
                 wait_time_seconds=wait_time_seconds,
-                execution_time_seconds=execution_time_seconds
+                execution_time_seconds=execution_time_seconds,
+                is_mine=(task.user_id == user_id),
+                instruct_prompt=instruct_prompt
             ))
 
         return TaskListResponse(
             success=True,
             tasks=task_infos,
-            total=len(task_infos)
+            total=total_count,
+            status_counts=status_counts
         )
 
     except Exception as e:
@@ -306,14 +346,15 @@ async def get_queue_status():
 @router.delete("/cleanup")
 async def cleanup_old_tasks(days: int = Query(7, ge=1, le=30, description="保留天数")):
     """
-    清理旧任务记录（管理接口）
+    手动清理旧任务记录（管理接口），并联动删除其音频文件。
+    定时自动清理已关闭，此接口仅供手动调用。
     注意: 必须定义在 /{task_id} 路由之前
     """
     try:
         task_queue.cleanup_old_tasks(days)
         return {
             "success": True,
-            "message": f"已清理 {days} 天前的任务记录"
+            "message": f"已清理 {days} 天前的任务记录（含音频文件）"
         }
     except Exception as e:
         system_logger.error(f"【任务API】清理任务失败: {e}")
@@ -367,7 +408,9 @@ async def get_task_status(task_id: str, request: Request):
             "completed_at": task.completed_at,
             "audio_url": task.audio_url,
             "error_message": task.error_message,
-            "batch_results": task.batch_results
+            "error_code": task.error_code,
+            "batch_results": task.batch_results,
+            "instruct_prompt": _extract_instruct_prompt(task.params)
         }
         
     except HTTPException:
@@ -558,7 +601,8 @@ async def retry_task(task_id: str, request: Request):
 @router.delete("/{task_id}")
 async def delete_task(task_id: str, request: Request):
     """
-    删除任务记录（仅限已完成、失败、已取消的任务）
+    删除任务记录。
+    失败类终态（失败/已取消/已重试）任何人可删；其他状态（已完成/排队中/执行中）仅本人可删。
     """
     try:
         user_id = get_user_id(request)

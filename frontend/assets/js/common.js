@@ -150,7 +150,12 @@ const VersTTS = {
         const audioPlayer = document.getElementById(options.audioPlayerId || 'audioPlayer');
         const downloadLink = document.getElementById(options.downloadLinkId || 'downloadLink');
         const resultSection = document.getElementById(options.resultSectionId || 'resultSection');
-        const filename = options.filename || `result_${Date.now()}.wav`;
+        // 下载文件名优先用调用方显式传入；否则取服务器真实文件名（audio_url 的 basename，
+        // 已带指令词/文本摘要/短时间戳）；都没有才回退到默认名。
+        const audioUrl = data.audio_url || '';
+        const filename = options.filename
+            || (audioUrl && audioUrl.split('/').pop())
+            || `result_${Date.now()}.wav`;
 
         if (audioPlayer) {
             audioPlayer.src = data.audio_url || `${this.API_BASE}${data.audio_url}`;

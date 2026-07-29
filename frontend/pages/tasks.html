@@ -876,6 +876,18 @@
             align-items: center;
             gap: 6px;
         }
+
+        /* 内容校验失败的专属提示（区别于普通生成错误，提示可重试） */
+        .task-error-verify {
+            color: #e65100;
+            background: linear-gradient(135deg, #fff8e1 0%, #fff3cd 100%);
+            border-left: 3px solid #ff9800;
+        }
+        .task-error-verify .verify-hint {
+            margin-left: 4px;
+            font-weight: 600;
+            color: #e65100;
+        }
     </style>
 </head>
 <body class="tasks-theme">
@@ -1529,6 +1541,16 @@
             return '';
         }
 
+        // 构建错误提示 HTML：区分普通生成失败与内容校验失败（可重试）
+        function buildErrorHTML(task) {
+            if (!task.error_message) return '';
+            // 内容校验失败：特殊橙色提示 + 引导重试
+            if (task.error_code === 'AUDIO_VERIFY_FAILED') {
+                return `<div class="task-error task-error-verify">⚠️ ${escapeHtml(task.error_message)}<span class="verify-hint">→ 可点击下方“重试”重新生成</span></div>`;
+            }
+            return `<div class="task-error">❌ ${escapeHtml(task.error_message)}</div>`;
+        }
+
         // 构建单个任务卡片的 HTML
         function buildTaskCardHTML(task) {
             const status = statusMap[task.status] || { text: task.status, class: task.status };
@@ -1647,7 +1669,7 @@
                 actionsHtml += `<button class="btn-delete-task" onclick="deleteTask('${task.task_id}')">🗑️ 删除</button>`;
             }
 
-            const errorHtml = task.error_message ? `<div class="task-error" style="color: #f44336; font-size: 0.85rem; margin-top: 8px;">❌ ${escapeHtml(task.error_message)}</div>` : '';
+            const errorHtml = buildErrorHTML(task);
 
             // 构建额外信息标签（合并到 task-meta 同一行）
             let extraMetaHtml = '';
@@ -1894,14 +1916,18 @@
                 }
             }
 
-            // 7. 错误信息
+            // 7. 错误信息（区分普通失败与内容校验失败，二者样式/文案不同需按需重建）
+            const errorHtml = buildErrorHTML(task);
             const errorEl = card.querySelector('.task-error');
-            if (task.error_message) {
+            if (errorHtml) {
                 if (!errorEl) {
                     const content = card.querySelector('.task-content');
                     if (content) {
-                        content.insertAdjacentHTML('beforeend', `<div class="task-error">❌ ${escapeHtml(task.error_message)}</div>`);
+                        content.insertAdjacentHTML('beforeend', errorHtml);
                     }
+                } else if (errorEl.outerHTML !== errorHtml) {
+                    // 已存在但文案/类型变化（如普通失败 ↔ 校验失败），重建以更新样式
+                    errorEl.outerHTML = errorHtml;
                 }
             } else if (errorEl) {
                 errorEl.remove();

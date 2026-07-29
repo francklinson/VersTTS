@@ -251,7 +251,7 @@
                 const data = await VersTTS.postForm('/tts/fireredtts', formData);
 
                 if (data.success) {
-                    VersTTS.showResult(data, { filename: `fireredtts_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！');
                 } else {
                     throw new Error(data.message || '生成失败');

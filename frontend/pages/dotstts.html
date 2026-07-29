@@ -3,85 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PilotTTS - VersTTS</title>
+    <title>dots.tts - VersTTS</title>
     <link rel="icon" type="image/svg+xml" href="../assets/logo.svg">
     <link rel="stylesheet" href="../assets/css/common.css?v=7">
     <style>
-        .pilot-theme { --primary-color: #00bcd4; }
-        .btn-generate.pilottts { background: linear-gradient(135deg, #00bcd4 0%, #00838f 100%); }
-        .btn-generate.pilottts:hover { box-shadow: 0 8px 25px rgba(0, 188, 212, 0.4); }
-        .btn-batch { background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; border: none; }
-        .btn-batch:hover { box-shadow: 0 8px 25px rgba(255, 152, 0, 0.4); }
+        .dotstts-theme { --primary-color: #7c3aed; }
+        .btn-generate.dotstts { background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); }
+        .btn-generate.dotstts:hover { box-shadow: 0 8px 25px rgba(124, 58, 237, 0.4); }
+        .btn-batch { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; border: none; }
+        .btn-batch:hover { box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4); }
         .mode-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; flex-wrap: wrap; }
         .mode-tab { padding: 10px 20px; background: none; border: none; cursor: pointer; font-size: 0.95rem; color: #666; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.3s; }
-        .mode-tab.active { color: #00bcd4; border-bottom-color: #00bcd4; font-weight: 600; }
+        .mode-tab.active { color: #7c3aed; border-bottom-color: #7c3aed; font-weight: 600; }
         .mode-content { display: none; }
         .mode-content.active { display: block; }
         .info-box { padding: 12px 16px; margin-bottom: 20px; border-radius: 8px; font-size: 0.9rem; line-height: 1.6; }
-        .info-box.cyan { background: #e0f7fa; border-left: 4px solid #00bcd4; color: #006064; }
-        .info-box.orange { background: #fff3e0; border-left: 4px solid #ff9800; color: #e65100; }
-        .info-box.green { background: #e8f5e9; border-left: 4px solid #4caf50; color: #1b5e20; }
-        .speaker-section { margin-bottom: 20px; padding: 15px; background: #e0f7fa; border-radius: 8px; border-left: 4px solid #00bcd4; }
-        .speaker-section label { font-weight: 600; color: #006064; display: block; margin-bottom: 10px; }
+        .info-box.purple { background: #f3e8ff; border-left: 4px solid #7c3aed; color: #4c1d95; }
+        .info-box.amber { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+        .info-box.teal { background: #f0fdfa; border-left: 4px solid #14b8a6; color: #115e59; }
+        .speaker-section { margin-bottom: 20px; padding: 15px; background: #f3e8ff; border-radius: 8px; border-left: 4px solid #7c3aed; }
+        .speaker-section label { font-weight: 600; color: #4c1d95; display: block; margin-bottom: 10px; }
         .speaker-select-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
         .speaker-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; background: white; }
         .speaker-info-display { margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.85rem; color: #666; }
-        .emotion-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
-        .emotion-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
-        .emotion-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
-        @media (max-width: 768px) { .emotion-grid { grid-template-columns: repeat(3, 1fr); } }
-        .emotion-chip { padding: 8px 10px; background: #ffe0b2; border-radius: 8px; font-size: 0.82rem; color: #e65100; cursor: pointer; text-align: center; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
-        .emotion-chip:hover { background: #ffcc80; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-        .emotion-chip.selected { background: #ff9800; color: white; border-color: #e65100; box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2); }
-        .emotion-chip.no-emotion { background: #f5f5f5; color: #888; border: 2px dashed #ccc; }
-        .emotion-chip.no-emotion.selected { background: #9e9e9e; color: white; border-color: #616161; box-shadow: 0 0 0 3px rgba(158, 158, 158, 0.2); }
-        .dialect-section { margin-bottom: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50; }
-        .dialect-section label { font-weight: 600; color: #1b5e20; display: block; margin-bottom: 10px; }
-        .paralang-section { margin-bottom: 20px; padding: 15px; background: #ede7f6; border-radius: 8px; border-left: 4px solid #7c4dff; }
-        .paralang-section label { font-weight: 600; color: #311b92; display: block; margin-bottom: 10px; }
-        .paralang-section.inline { margin-top: 12px; }
-        .combined-section { margin-bottom: 20px; padding: 15px; background: linear-gradient(135deg, #fff3e0 0%, #ede7f6 100%); border-radius: 8px; border-left: 4px solid #ff9800; }
-        .tag-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-        .tag-chip { padding: 8px 16px; background: #d1c4e9; border-radius: 8px; font-size: 0.85rem; color: #4527a0; cursor: pointer; transition: all 0.2s; border: 2px solid transparent; font-weight: 500; }
-        .tag-chip:hover { background: #b39ddb; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-        .tag-chip:active { transform: scale(0.95); }
+        .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .params-grid { grid-template-columns: 1fr; } }
+        .param-card { padding: 15px; background: #faf5ff; border-radius: 8px; border: 1px solid #e9d5ff; }
+        .param-card label { font-weight: 600; color: #4c1d95; display: block; margin-bottom: 8px; font-size: 0.9rem; }
+        .param-card .param-value { color: #7c3aed; font-weight: 700; font-size: 1rem; margin-left: 8px; }
+        .param-card input[type="range"] { width: 100%; margin: 8px 0; accent-color: #7c3aed; }
+        .param-card .param-desc { font-size: 0.8rem; color: #888; margin-top: 4px; }
         .input-section { margin-bottom: 20px; }
         .input-section textarea { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; font-family: inherit; resize: vertical; min-height: 100px; box-sizing: border-box; }
-        .input-section textarea:focus { outline: none; border-color: #00bcd4; box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.1); }
-        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; }
-        .batch-count-section label { font-weight: 600; color: #e65100; display: block; margin-bottom: 10px; }
+        .input-section textarea:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
+        .batch-count-section { margin-bottom: 20px; padding: 15px; background: #fffbeb; border-radius: 8px; border-left: 4px solid #f59e0b; }
+        .batch-count-section label { font-weight: 600; color: #92400e; display: block; margin-bottom: 10px; }
         .batch-count-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
-        .batch-count-hint { font-size: 0.85rem; color: #888; margin-top: 8px; }
         .button-group { display: flex; gap: 15px; margin-bottom: 20px; }
         .button-group button { flex: 1; padding: 14px 24px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
         .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 15px 0; display: none; }
         .progress-bar.active { display: block; }
-        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #00bcd4, #4dd0e1); width: 0%; transition: width 0.3s ease; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #7c3aed, #a78bfa); width: 0%; transition: width 0.3s ease; }
         .progress-text { text-align: center; color: #666; font-size: 0.9rem; margin-top: 5px; display: none; }
         .progress-text.active { display: block; }
         .batch-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 20px; }
         .batch-result-item { background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent; transition: all 0.3s; }
-        .batch-result-item:hover { border-color: #00bcd4; box-shadow: 0 4px 15px rgba(0, 188, 212, 0.2); }
-        .batch-result-item.selected { border-color: #ff9800; background: #fff8e1; }
+        .batch-result-item:hover { border-color: #7c3aed; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.2); }
+        .batch-result-item.selected { border-color: #f59e0b; background: #fffbeb; }
         .batch-result-item .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .batch-result-item .result-number { font-weight: 700; color: #00bcd4; font-size: 1.1rem; }
+        .batch-result-item .result-number { font-weight: 700; color: #7c3aed; font-size: 1.1rem; }
         .batch-result-item .select-checkbox { width: 20px; height: 20px; cursor: pointer; }
         .batch-result-item audio { width: 100%; margin-bottom: 10px; }
         .batch-result-item .result-actions { display: flex; gap: 10px; }
         .batch-result-item .btn-small { flex: 1; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-align: center; }
-        .btn-download-small { background: #4caf50; color: white; }
-        .btn-download-small:hover { background: #45a049; }
+        .btn-download-small { background: #7c3aed; color: white; }
+        .btn-download-small:hover { background: #6d28d9; }
         .batch-actions { margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 10px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
         .batch-actions button { padding: 12px 24px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
-        .btn-select-all { background: #2196f3; color: white; }
-        .btn-select-all:hover { background: #1976d2; }
-        .btn-download-selected { background: #ff9800; color: white; }
-        .btn-download-selected:hover { background: #f57c00; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3); }
+        .btn-select-all { background: #7c3aed; color: white; }
+        .btn-select-all:hover { background: #6d28d9; }
+        .btn-download-selected { background: #f59e0b; color: white; }
+        .btn-download-selected:hover { background: #d97706; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3); }
         .selected-count { color: #666; font-size: 0.9rem; }
         .no-speaker-warning { color: #d97706; background: #fef3c7; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 0.9rem; }
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+        .feature-item { background: #faf5ff; border-radius: 8px; padding: 10px; text-align: center; font-size: 0.85rem; color: #4c1d95; border: 1px solid #e9d5ff; }
+        .feature-item .feature-icon { font-size: 1.2rem; display: block; margin-bottom: 4px; }
+        .feature-item .feature-label { font-weight: 500; }
     </style>
 </head>
-<body class="pilot-theme">
+<body class="dotstts-theme">
     <div class="sound-waves">
         <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
@@ -103,59 +94,73 @@
         <div class="container">
             <a href="../index.html" class="nav-back">← 返回模型列表</a>
             <header>
-                <h1>🎤 PilotTTS</h1>
-                <p>基于LLM的全开源TTS系统 | 零样本克隆 · 11种情感+副语言控制</p>
+                <h1>🔮 dots.tts</h1>
+                <p>连续自回归 + 流匹配TTS | 24种语言 · 48kHz · Apache-2.0</p>
             </header>
 
             <div class="main-interface">
-                <div class="model-badge"><span>🎤</span><span>PilotTTS</span></div>
+                <div class="model-badge"><span>🔮</span><span>dots.tts</span></div>
 
                 <div id="statusMessage" class="status-message"></div>
+
+                <!-- 模型信息 -->
+                <div class="info-box purple">
+                    <strong>💡 关于 dots.tts：</strong>完全连续的自回归TTS系统，结合自矫正对齐和CFG感知的MeanFlow蒸馏技术。
+                    支持 <strong>24种语言 + 粤语</strong>，输出 <strong>48kHz</strong> 高质量音频，采用 <strong>Apache-2.0</strong> 开源协议。
+                </div>
+
+                <!-- 特性展示 -->
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <span class="feature-icon">🌍</span>
+                        <span class="feature-label">24+1 语言</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🎵</span>
+                        <span class="feature-label">48kHz 输出</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">📜</span>
+                        <span class="feature-label">Apache-2.0</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🌊</span>
+                        <span class="feature-label">Flow-Matching</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🔄</span>
+                        <span class="feature-label">连续AR</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🎙️</span>
+                        <span class="feature-label">声音克隆</span>
+                    </div>
+                </div>
 
                 <!-- 模式选择标签页 -->
                 <div class="mode-tabs">
                     <button class="mode-tab active" onclick="switchMode('voice_clone')">🎙️ 声音克隆</button>
-                    <button class="mode-tab" onclick="switchMode('combined')">🎭 情感与副语言</button>
-                    <!-- 方言合成暂未开源，后续开放 -->
-                    <!-- <button class="mode-tab" onclick="switchMode('dialect')">🗣️ 方言合成</button> -->
+                    <button class="mode-tab" onclick="switchMode('instruct')">📝 指令TTS</button>
                 </div>
 
                 <!-- 模式说明 -->
                 <div id="mode-voice_clone" class="mode-content active">
-                    <div class="info-box cyan">
-                        <strong>💡 声音克隆模式：</strong>使用基础模型 (pilot_tts.pt)，提供参考音频即可零样本克隆任意说话人声音。适用于中文普通话。
+                    <div class="info-box teal">
+                        <strong>🎙️ 声音克隆模式：</strong>使用参考音频和文本进行零样本声音克隆。选择说话人即可使用其参考音频合成语音。
+                        适合需要保持特定说话人音色的场景。
                     </div>
                 </div>
 
-                <div id="mode-combined" class="mode-content">
-                    <div class="info-box orange">
-                        <strong>🎭 情感与副语言模式：</strong>使用指令模型 (pilot_tts_instruct.pt)，支持 <strong>11种情感控制</strong> 和 <strong>4种副语言</strong>（笑声/哭声/呼吸/咳嗽）。
-                        两者<strong>可同时使用</strong> — 选择情感后，在文本中插入副语言标签即可。
-                    </div>
-                </div>
-
-                <!-- 情感+副语言合并区域 (combined模式) -->
-                <div id="combinedSection" class="combined-section" style="display:none;">
-                    <!-- 情感选择 -->
-                    <div class="emotion-section" style="margin-bottom:0; padding:0; background:none; border:none;">
-                        <label>🎭 选择情感（可选，不选则为纯副语言模式）</label>
-                        <div class="emotion-grid" id="emotionGrid"></div>
-                    </div>
-                    <!-- 副语言标签 -->
-                    <div id="paralangSection" class="paralang-section inline" style="margin-bottom:0;">
-                        <label>💬 副语言标签（点击插入到文本中，可与情感同时使用）</label>
-                        <div class="tag-grid">
-                            <span class="tag-chip" onclick="insertTag('<|LAUGH|>')">😂 笑声 LAUGH</span>
-                            <span class="tag-chip" onclick="insertTag('<|CRY|>')">😢 哭声 CRY</span>
-                            <span class="tag-chip" onclick="insertTag('<|BREATH|>')">💨 呼吸 BREATH</span>
-                            <span class="tag-chip" onclick="insertTag('<|COUGH|>')">🤧 咳嗽 COUGH</span>
-                        </div>
+                <div id="mode-instruct" class="mode-content">
+                    <div class="info-box amber">
+                        <strong>📝 指令TTS模式：</strong>使用 instruction_tts 模板，通过自然语言指令控制语音风格和语调。
+                        无需参考音频，适合快速生成不同风格的语音。
                     </div>
                 </div>
 
                 <!-- 说话人选择 -->
                 <div class="speaker-section">
-                    <label>🎙️ 选择说话人（参考音频来源）</label>
+                    <label>🎙️ 选择说话人（声音克隆模式使用）</label>
                     <div class="speaker-select-wrapper">
                         <select id="speakerSelect" class="speaker-select" onchange="onSpeakerChange()">
                             <option value="">-- 请选择说话人 --</option>
@@ -170,13 +175,35 @@
                 <!-- 合成文本 -->
                 <div class="input-section">
                     <label for="textInput">合成文本</label>
-                    <textarea id="textInput" placeholder="请输入要合成的中文文本..."></textarea>
+                    <textarea id="textInput" placeholder="请输入要合成的文本（支持中文、英文等多语言）..."></textarea>
+                </div>
+
+                <!-- 参数调节 -->
+                <div class="params-grid">
+                    <div class="param-card">
+                        <label>🔄 推理步数 <span class="param-value" id="numStepsValue">16</span></label>
+                        <input type="range" id="numSteps" min="4" max="32" value="16" step="1"
+                               oninput="document.getElementById('numStepsValue').textContent = this.value">
+                        <div class="param-desc">步数越多质量越高但速度越慢 (4-32)</div>
+                    </div>
+                    <div class="param-card">
+                        <label>🎯 引导尺度 <span class="param-value" id="guidanceScaleValue">1.2</span></label>
+                        <input type="range" id="guidanceScale" min="1.0" max="5.0" value="1.2" step="0.1"
+                               oninput="document.getElementById('guidanceScaleValue').textContent = this.value">
+                        <div class="param-desc">CFG引导强度，越高越稳定 (1.0-5.0)</div>
+                    </div>
+                    <div class="param-card">
+                        <label>🗣️ 说话人尺度 <span class="param-value" id="speakerScaleValue">1.5</span></label>
+                        <input type="range" id="speakerScale" min="0.5" max="2.0" value="1.5" step="0.1"
+                               oninput="document.getElementById('speakerScaleValue').textContent = this.value">
+                        <div class="param-desc">说话人特征强度，越高音色越明显 (0.5-2.0)</div>
+                    </div>
                 </div>
 
                 <!-- 批量生成数量设置 -->
                 <div class="batch-count-section">
                     <label>🎲 批量生成数量</label>
-                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="5" max="100" onblur="validateBatchCount()">
+                    <input type="number" id="batchCount" class="batch-count-input" value="10" min="2" max="100" onblur="validateBatchCount()">
                     <p style="font-size: 0.85rem; color: #666; margin-top: 8px;">一次生成多个音频变体，可选择最佳结果（2-100个）</p>
                 </div>
 
@@ -188,8 +215,8 @@
 
                 <!-- 按钮组 -->
                 <div class="button-group">
-                    <button class="btn-generate pilottts" id="generateBtn" onclick="addToQueue()">
-                        <span id="btnText">🎙️ 生成语音</span>
+                    <button class="btn-generate dotstts" id="generateBtn" onclick="addToQueue()">
+                        <span id="btnText">🔮 生成语音</span>
                     </button>
                     <button class="btn-batch" id="batchGenerateBtn" onclick="batchGenerateTTS()">
                         <span id="batchBtnText">🎲 批量生成</span>
@@ -235,101 +262,55 @@
         window.addEventListener('beforeunload', stopPolling);
 
         let currentMode = 'voice_clone';
-        let selectedEmotion = '';
         let pollingInterval = null;
         let savedSpeakers = [];
         let selectedSpeakerId = null;
         let batchResults = [];
         let selectedFiles = new Set();
 
-        const emotions = [
-            {tag:'happy',label:'😊 开心'},{tag:'sad',label:'😢 悲伤'},{tag:'angry',label:'😠 愤怒'},
-            {tag:'surprise',label:'😲 惊讶'},{tag:'fear',label:'😨 恐惧'},{tag:'disgust',label:'🤢 厌恶'},
-            {tag:'serious',label:'😐 严肃'},{tag:'concern',label:'🤔 关切'},{tag:'blue',label:'😔 忧郁'},
-            {tag:'disdain',label:'😏 轻蔑'},{tag:'neutral',label:'😶 中性'},{tag:'psychology',label:'🧠 心理'},
-            {tag:'',label:'🚫 无情感',cls:'no-emotion'}
-        ];
-
         // ==================== 初始化 ====================
         document.addEventListener('DOMContentLoaded', () => {
-            buildEmotionGrid();
             loadSpeakers();
             VersTTS.checkHealth();
         });
 
-        function buildEmotionGrid() {
-            const grid = document.getElementById('emotionGrid');
-            grid.innerHTML = emotions.map(e => {
-                const cls = e.cls ? ` ${e.cls}` : '';
-                return `<div class="emotion-chip${cls}" data-emotion="${e.tag}" onclick="selectEmotion('${e.tag}', this)">
-                    ${e.label}
-                </div>`;
-            }).join('');
-        }
-
         // ==================== 模式切换 ====================
         function switchMode(mode) {
             currentMode = mode;
-            selectedEmotion = '';
 
             // 标签页切换
             document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.remove('active'));
-            const targetTab = document.querySelector(`.mode-tab[onclick*="${mode}"]`);
+            const targetTab = document.querySelector(`.mode-tab[onclick*="'${mode}'"]`);
             if (targetTab) targetTab.classList.add('active');
 
             // 内容区切换
             document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
             const content = document.getElementById(`mode-${mode}`);
             if (content) content.classList.add('active');
-
-            // 条件区域: combined模式显示情感+副语言，其他隐藏
-            const isCombined = (mode === 'combined');
-            document.getElementById('combinedSection').style.display = isCombined ? 'block' : 'none';
-
-            // 重置情感选中
-            document.querySelectorAll('.emotion-chip').forEach(e => e.classList.remove('selected'));
-            selectedEmotion = '';
-        }
-
-        function selectEmotion(tag, el) {
-            document.querySelectorAll('.emotion-chip').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
-            selectedEmotion = tag;
-        }
-
-        function insertTag(tag) {
-            const input = document.getElementById('textInput');
-            const start = input.selectionStart;
-            const end = input.selectionEnd;
-            const text = input.value;
-            input.value = text.substring(0, start) + tag + text.substring(end);
-            input.focus();
-            input.setSelectionRange(start + tag.length, start + tag.length);
         }
 
         // ==================== 说话人 ====================
         async function loadSpeakers() {
             const select = document.getElementById('speakerSelect');
             if (!select) {
-                console.error('[PilotTTS] 找不到 speakerSelect 元素');
+                console.error('[dots.tts] 找不到 speakerSelect 元素');
                 return;
             }
 
             try {
-                console.log('[PilotTTS] 加载说话人列表...');
+                console.log('[dots.tts] 加载说话人列表...');
                 const response = await fetch(`${VersTTS.API_BASE}/speakers`);
-                console.log('[PilotTTS] 说话人API响应:', response.status, response.statusText);
+                console.log('[dots.tts] 说话人API响应:', response.status, response.statusText);
 
                 if (!response.ok) {
-                    console.error('[PilotTTS] 说话人API请求失败: HTTP', response.status);
+                    console.error('[dots.tts] 说话人API请求失败: HTTP', response.status);
                     document.getElementById('noSpeakerWarning').style.display = 'block';
                     return;
                 }
 
                 const data = await response.json();
-                console.log('[PilotTTS] 说话人数据:', data);
+                console.log('[dots.tts] 说话人数据:', data);
 
-                // 保留当前选中值
                 const currentValue = select.value;
                 select.innerHTML = '<option value="">-- 请选择说话人 --</option>';
 
@@ -342,27 +323,25 @@
                         opt.textContent = s.name;
                         select.appendChild(opt);
                     });
-                    // 恢复之前选中的值（如果还存在）
                     if (currentValue && savedSpeakers.some(s => s.id === currentValue)) {
                         select.value = currentValue;
                     } else {
                         selectedSpeakerId = null;
                         document.getElementById('speakerInfo').style.display = 'none';
                     }
-                    console.log('[PilotTTS] 说话人列表加载完成，共', savedSpeakers.length, '个');
+                    console.log('[dots.tts] 说话人列表加载完成，共', savedSpeakers.length, '个');
                 } else {
                     document.getElementById('noSpeakerWarning').style.display = 'block';
                     selectedSpeakerId = null;
                     document.getElementById('speakerInfo').style.display = 'none';
-                    console.log('[PilotTTS] 说话人列表为空');
+                    console.log('[dots.tts] 说话人列表为空');
                 }
             } catch (e) {
-                console.error('[PilotTTS] 加载说话人失败:', e);
+                console.error('[dots.tts] 加载说话人失败:', e);
                 document.getElementById('noSpeakerWarning').style.display = 'block';
             }
         }
 
-        // 说话人选择变更
         function onSpeakerChange() {
             const select = document.getElementById('speakerSelect');
             const speakerInfo = document.getElementById('speakerInfo');
@@ -384,7 +363,6 @@
             }
         }
 
-        // 格式化日期（供说话人模块使用）
         function formatDate(isoString) {
             if (!isoString) return '';
             const date = new Date(isoString);
@@ -397,20 +375,18 @@
             const speakerId = document.getElementById('speakerSelect').value;
 
             if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
-            if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
 
             document.getElementById('audioPlayer').style.display = 'none';
             document.getElementById('downloadLink').style.display = 'none';
             document.getElementById('batchResultSection').style.display = 'none';
             stopPolling();
 
-            // 显示结果区域和初始状态
             const resultSection = document.getElementById('resultSection');
             const resultStatus = document.getElementById('resultStatus');
             resultSection.style.display = 'block';
             resultStatus.innerHTML = '⏳ 任务已提交到队列，正在等待执行...';
-            resultStatus.style.background = '#e3f2fd';
-            resultStatus.style.color = '#1565c0';
+            resultStatus.style.background = '#f3e8ff';
+            resultStatus.style.color = '#6d28d9';
             resultSection.scrollIntoView({ behavior: 'smooth' });
 
             try {
@@ -440,31 +416,22 @@
             const text = document.getElementById('textInput').value.trim();
             const speakerId = document.getElementById('speakerSelect').value;
 
-            // 验证数量
             validateBatchCount();
             const count = parseInt(document.getElementById('batchCount').value);
 
             if (!text) { VersTTS.showStatus('请输入合成文本', true); return; }
-            if (!speakerId) { VersTTS.showStatus('请选择说话人', true); return; }
 
             const btn = document.getElementById('batchGenerateBtn');
             const btnText = document.getElementById('batchBtnText');
             VersTTS.setButtonLoading(btn, btnText, true);
 
             try {
-                // 确定实际后端mode (combined → emotion或paralanguage)
-                const actualMode = (currentMode === 'combined')
-                    ? (selectedEmotion ? 'emotion' : 'paralanguage')
-                    : currentMode;
-
                 const formData = new FormData();
                 formData.append('text', text);
-                formData.append('model', 'pilottts');
-                formData.append('mode', actualMode);
+                formData.append('model', 'dotstts');
+                formData.append('mode', currentMode);
                 formData.append('count', count);
-                formData.append('speaker_id', speakerId);
-                if (actualMode === 'emotion') formData.append('emotion', selectedEmotion);
-                formData.append('language', 'zh');
+                if (speakerId) formData.append('speaker_id', speakerId);
 
                 const response = await fetch(`${VersTTS.API_BASE}/tts/batch/generate`, {
                     method: 'POST',
@@ -490,15 +457,12 @@
         function buildRequestFormData() {
             const formData = new FormData();
             formData.append('text', document.getElementById('textInput').value.trim());
-            formData.append('model', 'pilottts');
-            // combined模式: 有情感→emotion, 无情感→paralanguage
-            if (currentMode === 'combined') {
-                formData.append('mode', selectedEmotion ? 'emotion' : 'paralanguage');
-                if (selectedEmotion) formData.append('emotion', selectedEmotion);
-            } else {
-                formData.append('mode', currentMode);
-            }
-            formData.append('speaker_id', document.getElementById('speakerSelect').value);
+            formData.append('mode', currentMode);
+            formData.append('num_steps', document.getElementById('numSteps').value);
+            formData.append('guidance_scale', document.getElementById('guidanceScale').value);
+            formData.append('speaker_scale', document.getElementById('speakerScale').value);
+            const speakerId = document.getElementById('speakerSelect').value;
+            if (speakerId) formData.append('clone_speaker_id', speakerId);
             return formData;
         }
 
@@ -507,14 +471,12 @@
             const input = document.getElementById('batchCount');
             let value = parseInt(input.value);
 
-            // 如果不是有效数字，默认为10
             if (isNaN(value)) {
                 value = 10;
             }
 
-            // 限制范围在5-100之间
-            if (value < 5) {
-                value = 5;
+            if (value < 2) {
+                value = 2;
             } else if (value > 100) {
                 value = 100;
             }
@@ -547,15 +509,15 @@
                         document.getElementById('generateBtn').disabled = false;
                     } else if (data.status === 'processing') {
                         resultStatus.innerHTML = '🔧 正在生成音频，请稍候...';
-                        resultStatus.style.background = '#fff3e0';
-                        resultStatus.style.color = '#e65100';
+                        resultStatus.style.background = '#fffbeb';
+                        resultStatus.style.color = '#92400e';
                     }
 
                     if (attempts >= maxAttempts) {
                         stopPolling();
                         resultStatus.innerHTML = '⏰ 任务处理时间较长，请前往 <a href="tasks.html">任务列表</a> 查看结果';
-                        resultStatus.style.background = '#fff3e0';
-                        resultStatus.style.color = '#e65100';
+                        resultStatus.style.background = '#fffbeb';
+                        resultStatus.style.color = '#92400e';
                         document.getElementById('generateBtn').disabled = false;
                     }
                 } catch (e) {
@@ -588,7 +550,7 @@
 
                 const downloadLink = document.getElementById('downloadLink');
                 downloadLink.href = audioUrl;
-                downloadLink.download = audioUrl.split('/').pop() || `pilottts_${currentMode}_${Date.now()}.wav`;
+                downloadLink.download = `dotstts_${currentMode}_${Date.now()}.wav`;
                 downloadLink.style.display = 'inline-flex';
             }
 
@@ -643,7 +605,7 @@
             try {
                 const formData = new FormData();
                 Array.from(selectedFiles).forEach(f => formData.append('files', f));
-                formData.append('zip_name', `pilottts_batch_${Date.now()}.zip`);
+                formData.append('zip_name', `dotstts_batch_${Date.now()}.zip`);
 
                 const resp = await fetch(`${VersTTS.API_BASE}/tts/batch/download-zip`, { method: 'POST', body: formData });
                 if (resp.ok) {
@@ -651,7 +613,7 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `pilottts_batch_${Date.now()}.zip`;
+                    a.download = `dotstts_batch_${Date.now()}.zip`;
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);

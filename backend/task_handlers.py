@@ -8,20 +8,20 @@ import os
 import sys
 import asyncio
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from backend.task_queue import task_queue, TaskRecord
+from backend.task_queue import task_queue, TaskRecord, TaskStatus
 from backend.logger_config import system_logger
 from backend.config import OUTPUTS_DIR
-from backend.core.audio_utils import save_temp_audio
+from backend.core.audio_utils import save_temp_audio, verify_and_cleanup
 from backend.services import get_speaker_by_id
 
 
 def _pack_batch_results(audio_files: List[str], audio_urls: List[str], prefix: str) -> Dict[str, Any]:
     """将批量生成的音频打包成 ZIP 并返回结果"""
     import zipfile
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%H%M%S")
     zip_name = f"{prefix}_batch_{timestamp}.zip"
     zip_path = os.path.join(OUTPUTS_DIR, zip_name)
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -37,62 +37,38 @@ def _pack_batch_results(audio_files: List[str], audio_urls: List[str], prefix: s
     }
 
 
+def _extract_instruct(params: Dict[str, Any]) -> Optional[str]:
+    """从任务参数中提取指令文本，供文件命名使用。
+
+    字段名因模型/模式而异，按优先级取首个非空值：
+    instruct_text → control_prompt → voice_design_prompt
+    （与 backend.routers.task_queue._extract_instruct_prompt 保持一致）
+    """
+    if not params:
+        return None
+    for key in ('instruct_text', 'control_prompt', 'voice_design_prompt'):
+        val = params.get(key)
+        if val and str(val).strip():
+            return str(val).strip()
+    return None
+
+
 def _generate_meaningful_filename(model: str, mode: str, text: str, index: int = 0, batch_total: int = 1,
-                                   speaker_name: str = None, prefix: str = None) -> str:
+                                   speaker_name: str = None, prefix: str = None,
+                                   instruct_prompt: str = None) -> str:
     """
-    生成有意义的音频文件名
+    生成有意义的音频文件名（任务队列路径）。
 
-    格式: {prefix}_{model}_{mode}_{speaker}_{text摘要}_{timestamp}_{batch}.wav
+    薄封装：转发到 backend.core.audio_utils.build_meaningful_filename，
+    与即时生成路径（save_temp_audio）共用同一命名规则，避免两套逻辑漂移。
 
-    Args:
-        model: 模型名称
-        mode: 生成模式
-        text: 合成文本
-        index: 批量生成时的索引
-        batch_total: 批量生成总数
-        speaker_name: 说话人名称（可选）
-        prefix: 前缀（可选，用于区分不同来源）
+    格式: {prefix}_{model}_{mode}_{指令摘要}_{speaker}_{text摘要}_{HHMMSS}{_NNofMM}.wav
     """
-    import re
-
-    # 提取文本前8个字符作为摘要，去除特殊字符
-    text_summary = text[:8].strip()
-    # 移除文件名不友好字符，保留中文、英文、数字
-    text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
-    if not text_summary:
-        text_summary = "audio"
-
-    # 限制摘要长度
-    if len(text_summary) > 8:
-        text_summary = text_summary[:8]
-
-    # 处理说话人名称
-    speaker_part = ""
-    if speaker_name:
-        # 清理说话人名称
-        clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
-        if clean_name:
-            speaker_part = f"_{clean_name}"
-
-    # 生成时间戳（毫秒级）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # 构建文件名各部分
-    parts = []
-    if prefix:
-        parts.append(prefix)
-    parts.append(model)
-    parts.append(mode)
-    if speaker_part:
-        parts.append(speaker_part.lstrip('_'))
-    parts.append(text_summary)
-    parts.append(timestamp)
-
-    # 批量生成时添加序号
-    if batch_total > 1:
-        parts.append(f"{index+1:02d}of{batch_total:02d}")
-
-    return "_".join(parts) + ".wav"
+    from backend.core.audio_utils import build_meaningful_filename
+    return build_meaningful_filename(
+        model=model, mode=mode, text=text, index=index, batch_total=batch_total,
+        speaker_name=speaker_name, prefix=prefix, instruct_prompt=instruct_prompt
+    )
 
 
 async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
@@ -121,13 +97,21 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
                     task.task_id, completed, total
                 )
 
+            # 取消检查：超时/取消后 _execute_task 会把 task.status 改为
+            # FAILED/CANCELLED，批量同步线程据此主动跳出以释放 GPU
+            _terminal = {TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}
+
+            def _cancel_check():
+                return task.status in _terminal
+
             result = await loop.run_in_executor(
                 None, _batch_generate_voxcpm,
                 task.text, task.mode, batch_count,
                 params.get('speaker_id'),
                 params.get('voice_design_prompt'),
                 params.get('control_prompt'),
-                _progress_callback
+                _progress_callback,
+                _cancel_check
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])
@@ -172,12 +156,18 @@ async def handle_voxcpm_task(task: TaskRecord) -> Dict[str, Any]:
             _audio = _model.generate(**_generate_kwargs)
             _sample_rate = _model.tts_model.sample_rate
 
-            # 使用有意义的文件名，传入说话人名称
-            _filename = _generate_meaningful_filename("voxcpm", task.mode, task.text, speaker_name=_speaker_name)
+            # 使用有意义的文件名，传入说话人名称与指令文本
+            _filename = _generate_meaningful_filename("voxcpm", task.mode, task.text,
+                                                       speaker_name=_speaker_name,
+                                                       instruct_prompt=_extract_instruct(params))
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
             sf.write(_audio_path, _audio, _sample_rate)
+
+            # 内容校验（需求2）：不达标则删文件并抛 AudioVerifyError，
+            # 由任务队列 _execute_task 捕获标记为可重试失败。
+            verify_and_cleanup(_audio_path, task.text, model_tag="VoxCPM")
 
             return {
                 'audio_file': _audio_path,
@@ -219,12 +209,20 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
                     task.task_id, completed, total
                 )
 
+            # 取消检查：超时/取消后 _execute_task 会把 task.status 改为
+            # FAILED/CANCELLED，批量同步线程据此主动跳出以释放 GPU
+            _terminal = {TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}
+
+            def _cancel_check():
+                return task.status in _terminal
+
             result = await loop.run_in_executor(
                 None, _batch_generate_qwen3tts,
                 task.text, task.mode, batch_count,
                 params.get('speaker_id'),
                 params.get('voice_design_prompt'),
-                _progress_callback
+                _progress_callback,
+                _cancel_check
             )
             audio_files = result.get('audio_files', [])
             audio_urls = result.get('audio_urls', [])
@@ -364,12 +362,18 @@ async def handle_qwen3tts_task(task: TaskRecord) -> Dict[str, Any]:
                 )
                 _wav = _wavs[0] if isinstance(_wavs, list) else _wavs
 
-            # 使用有意义的文件名，传入说话人名称
-            _filename = _generate_meaningful_filename("qwen3tts", task.mode, task.text, speaker_name=_speaker_name)
+            # 使用有意义的文件名，传入说话人名称与指令文本
+            _filename = _generate_meaningful_filename("qwen3tts", task.mode, task.text,
+                                                       speaker_name=_speaker_name,
+                                                       instruct_prompt=_extract_instruct(params))
             _audio_path = os.path.join(OUTPUTS_DIR, _filename)
 
             import soundfile as sf
             sf.write(_audio_path, _wav, _sr)
+
+            # 内容校验（需求2）：不达标则删文件并抛 AudioVerifyError，
+            # 由任务队列 _execute_task 捕获标记为可重试失败。
+            verify_and_cleanup(_audio_path, task.text, model_tag="Qwen3-TTS")
 
             return {
                 'audio_file': _audio_path,
@@ -490,10 +494,14 @@ async def handle_omnivoice_task(task: TaskRecord) -> Dict[str, Any]:
                     raise Exception(f"OmniVoice返回的音频文件不存在: {audio_path}")
 
                 # 使用有意义的文件名并复制到 outputs 目录
-                filename = _generate_meaningful_filename("omnivoice", task.mode, task.text)
+                filename = _generate_meaningful_filename("omnivoice", task.mode, task.text,
+                                                         instruct_prompt=_extract_instruct(params))
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 import shutil
                 shutil.copy2(audio_path, dest_path)
+
+                # 内容校验（需求2）：不达标则删 outputs 文件并抛 AudioVerifyError。
+                verify_and_cleanup(dest_path, task.text, model_tag="OmniVoice")
 
                 return {
                     'audio_file': dest_path,
@@ -592,10 +600,14 @@ async def handle_cosyvoice_task(task: TaskRecord) -> Dict[str, Any]:
                     raise Exception(f"CosyVoice返回的音频文件不存在: {audio_path}")
 
                 # 使用有意义的文件名并复制到 outputs 目录
-                filename = _generate_meaningful_filename("cosyvoice", task.mode, task.text)
+                filename = _generate_meaningful_filename("cosyvoice", task.mode, task.text,
+                                                         instruct_prompt=_extract_instruct(params))
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 import shutil
                 shutil.copy2(audio_path, dest_path)
+
+                # 内容校验（需求2）：不达标则删 outputs 文件并抛 AudioVerifyError。
+                verify_and_cleanup(dest_path, task.text, model_tag="CosyVoice")
 
                 return {
                     'audio_file': dest_path,
@@ -688,12 +700,16 @@ async def handle_pilottts_task(task: TaskRecord) -> Dict[str, Any]:
                 if not audio_path or not os.path.exists(audio_path):
                     raise Exception(f"PilotTTS返回的音频文件不存在: {audio_path}")
 
-                # 使用有意义的文件名并复制到 outputs 目录
+                # 使用有意义的文件名并复制到 outputs 目录（emotion 视为情感指令）
                 filename = _generate_meaningful_filename("pilottts", task.mode, task.text,
-                                                         speaker_name=speaker_name)
+                                                         speaker_name=speaker_name,
+                                                         instruct_prompt=emotion)
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 import shutil
                 shutil.copy2(audio_path, dest_path)
+
+                # 内容校验（需求2）：不达标则删 outputs 文件并抛 AudioVerifyError。
+                verify_and_cleanup(dest_path, task.text, model_tag="PilotTTS")
 
                 return {
                     'audio_file': dest_path,
@@ -799,11 +815,15 @@ async def handle_gptsovits_task(task: TaskRecord) -> Dict[str, Any]:
                 dest_path = os.path.join(OUTPUTS_DIR, filename)
                 sf.write(dest_path, audio_data, sample_rate)
 
-                # 清理临时文件
+                # 清理子服务临时文件
                 try:
                     os.remove(audio_path)
                 except Exception:
                     pass
+
+                # 内容校验（需求2）：不达标则删 outputs 文件并抛 AudioVerifyError，
+                # 由任务队列 _execute_task 捕获标记为可重试失败。
+                verify_and_cleanup(dest_path, task.text, model_tag="GPT-SoVITS")
 
                 return {
                     'audio_file': dest_path,

@@ -11,6 +11,7 @@ import soundfile as sf
 from fastapi import APIRouter, Form, Request, HTTPException, UploadFile, File
 from typing import Optional
 
+from backend.config import OUTPUTS_DIR
 from backend.logger_config import OperationLogger, system_logger
 from backend.models import TTSResponse
 from backend.engines import get_openvoice_models
@@ -85,11 +86,11 @@ async def tts_openvoice(
 
         # 生成音频
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        src_path = f"outputs/openvoice_tmp_{timestamp}.wav"
+        src_path = os.path.join(OUTPUTS_DIR, f"openvoice_tmp_{timestamp}.wav")
         tts_model.tts(text, src_path, speaker=speaker, language='Chinese', speed=speed)
 
         # 音色转换
-        save_path = f"outputs/openvoice_{timestamp}.wav"
+        save_path = os.path.join(OUTPUTS_DIR, f"openvoice_{timestamp}.wav")
         encode_message = "@MyShell"
         converter.convert(
             audio_src_path=src_path,
@@ -114,7 +115,7 @@ async def tts_openvoice(
 
         # 读取生成的音频
         audio_data, sr = sf.read(save_path)
-        audio_path = save_temp_audio(audio_data, sr)
+        audio_path = save_temp_audio(audio_data, sr, prefix="openvoice", text=text)
 
         total_duration = time.time() - start_time
         OperationLogger.log_tts_request("OpenVoice", text, {

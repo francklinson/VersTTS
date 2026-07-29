@@ -84,7 +84,7 @@ _gpu_id = None  # 当前服务使用的 GPU ID
 _main_service_url = None  # 主服务地址，用于 OOM 驱逐
 
 # ========== 空闲超时配置 ==========
-IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "300"))  # 默认 5 分钟
+IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "900"))  # 默认 15 分钟
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))  # 心跳间隔秒
 _idle_check_task = None
 
@@ -231,7 +231,7 @@ def _register_to_main_service():
     """向主服务注册"""
     try:
         import requests
-        port = int(os.environ.get("PILOTTS_PORT", "8003"))
+        port = int(os.environ.get("PILOTTS_PORT", "8009"))
         host = os.environ.get("PILOTTS_HOST", "127.0.0.1")
         requests.post(
             f"{_main_service_url}/services/register",
@@ -282,7 +282,7 @@ def _heartbeat():
                 "last_used_time": last_used_time,
                 "gpu_id": _gpu_id,
                 "host": os.environ.get("PILOTTS_HOST", "127.0.0.1"),
-                "port": int(os.environ.get("PILOTTS_PORT", "8003")),
+                "port": int(os.environ.get("PILOTTS_PORT", "8009")),
             },
             timeout=5,
             verify=False,
@@ -333,7 +333,7 @@ async def lifespan(app: FastAPI):
     _gpu_id = os.environ.get("GPU_ID", "0")
     # 主服务地址
     main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
-    main_port = os.environ.get("MAIN_PORT", "8000")
+    main_port = os.environ.get("MAIN_PORT", "8006")
     main_scheme = os.environ.get("MAIN_SCHEME", "https")
     _main_service_url = f"{main_scheme}://{main_host}:{main_port}"
 
@@ -438,6 +438,8 @@ async def tts(
     - dialect: 方言合成（指令模型）
     - paralanguage: 副语言合成（指令模型）
     """
+    import time as _time
+    _t0 = _time.time()
     start_time = time.time()
     logger.info(f"【TTS请求】模式: {mode} | 文本: {text[:80]}... | 参考音频: {ref_path}")
 
@@ -455,8 +457,11 @@ async def tts(
         # 确定模型类型并加载
         model_type = _get_engine_for_mode(mode)
         logger.info(f"【TTS】加载引擎: {model_type}")
+        _t_load_start = _time.time()
         engine, config, device = _load_engine(model_type)
         _touch_last_used()
+        _t_after_load = _time.time()
+        _load_dur = _t_after_load - _t_load_start  # 模型加载耗时（已加载时应≈0）
 
         # 构建合成文本
         synth_text = text
@@ -471,7 +476,8 @@ async def tts(
         # 生成音频
         gen_start = time.time()
         codes, speech = engine.synthesize(ref_path, synth_text, language=language)
-        gen_duration = time.time() - gen_start
+        _t_gen_end = time.time()
+        gen_duration = _t_gen_end - gen_start
         logger.info(f"【TTS】生成完成 | 耗时: {gen_duration:.3f}s")
 
         # 获取采样率
@@ -481,6 +487,11 @@ async def tts(
         timestamp = int(time.time() * 1000)
         output_path = f"/tmp/pilottts_{timestamp}.wav"
         torchaudio.save(output_path, speech.cpu(), sample_rate=sample_rate)
+        _t_save_end = _time.time()
+        logger.info(
+            f"【音频保存】路径: {output_path} | 耗时分解: 加载={_load_dur:.2f}s 推理={gen_duration:.2f}s "
+            f"保存={(_t_save_end - _t_gen_end):.2f}s 总={(_t_save_end - _t0):.2f}s"
+        )
 
         # 清理显存
         del speech, codes
@@ -506,7 +517,7 @@ async def tts(
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PILOTTS_PORT", 8003))
+    port = int(os.environ.get("PILOTTS_PORT", 8009))
     host = os.environ.get("PILOTTS_HOST", "127.0.0.1")
     logger.info(f"【服务启动】地址: {host}:{port}")
     uvicorn.run(app, host=host, port=port)

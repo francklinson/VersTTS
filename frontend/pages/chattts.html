@@ -130,7 +130,7 @@
                 const data = await VersTTS.postForm('/tts/chattts', formData);
 
                 if (data.success) {
-                    VersTTS.showResult(data, { filename: `chattts_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！(随机音色)');
                 } else {
                     throw new Error(data.message || '生成失败');

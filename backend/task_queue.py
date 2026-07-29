@@ -97,6 +97,7 @@ class TaskRecord:
     audio_file: Optional[str] = None
     audio_url: Optional[str] = None
     error_message: Optional[str] = None
+    error_code: Optional[str] = None  # 失败类型码（如 AUDIO_VERIFY_FAILED），便于前端区分可重试失败
     progress: int = 0               # 进度百分比
     batch_total: int = 0            # 批量生成总数
     batch_completed: int = 0        # 批量生成已完成数
@@ -568,9 +569,12 @@ class TaskQueue:
             system_logger.info(f"【任务队列】当前并发任务数: {running_count}, 运行的模型: {running_models}")
 
         success = False
+        # 动态计算超时：进程内推理模型（含模型加载、串行批量）按 batch_count 放大；
+        # 子服务模型维持固定 180s 上限。
+        timeout = self._compute_task_timeout(task)
         try:
-            # 执行处理函数，180秒超时防止单个任务永久阻塞队列
-            result = await asyncio.wait_for(handler(task), timeout=180)
+            # 执行处理函数，超时防止单个任务永久阻塞队列（批量任务按条数放大）
+            result = await asyncio.wait_for(handler(task), timeout=timeout)
 
             # 更新成功状态
             task.status = TaskStatus.COMPLETED.value
@@ -585,19 +589,48 @@ class TaskQueue:
 
         except asyncio.TimeoutError:
             task.status = TaskStatus.FAILED.value
-            task.error_message = "任务执行超时（180秒）"
+            batch_count = (task.params or {}).get('batch_count', 1)
+            elapsed = time.time() - start_time
+            task.error_message = f"任务执行超时（{timeout}秒）"
             task.completed_at = datetime.now().isoformat()
-            system_logger.error(f"【任务队列】任务超时 {task.task_id}")
+            # 超时诊断：打印已执行时长、进度、启动时间，定位时间黑洞
+            batch_total = getattr(task, 'batch_total', 0) or 0
+            batch_completed = getattr(task, 'batch_completed', 0) or 0
+            system_logger.error(
+                f"【任务队列】任务超时 {task.task_id} | 模型={task.model} 模式={task.mode} "
+                f"批量={batch_count} 超时={timeout}s 已执行={elapsed:.1f}s "
+                f"进度={batch_completed}/{batch_total} started_at={task.started_at}"
+            )
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED.value
             task.error_message = "任务已被取消"
             task.completed_at = datetime.now().isoformat()
-            system_logger.info(f"【任务队列】任务被取消 {task.task_id}")
+            elapsed = time.time() - start_time
+            system_logger.info(
+                f"【任务队列】任务被取消 {task.task_id} | 已执行={elapsed:.1f}s"
+            )
         except Exception as e:
             task.status = TaskStatus.FAILED.value
-            task.error_message = str(e)
+            # 识别音频内容校验失败：写入 error_code 供前端区分可重试失败，
+            # 并用面向用户的 user_message 替代技术异常文本。
+            error_code = getattr(e, "error_code", None)
+            if error_code == "AUDIO_VERIFY_FAILED":
+                task.error_code = error_code
+                task.error_message = getattr(e, "user_message", str(e))
+            else:
+                task.error_message = str(e)
             task.completed_at = datetime.now().isoformat()
-            system_logger.error(f"【任务队列】任务失败 {task.task_id}: {e}")
+            elapsed = time.time() - start_time
+            batch_total = getattr(task, 'batch_total', 0) or 0
+            batch_completed = getattr(task, 'batch_completed', 0) or 0
+            # 失败诊断：异常类型 + 堆栈 + 已执行时长 + 进度
+            import traceback
+            system_logger.error(
+                f"【任务队列】任务失败 {task.task_id} | 模型={task.model} 模式={task.mode} "
+                f"异常={type(e).__name__}: {e} 已执行={elapsed:.1f}s "
+                f"进度={batch_completed}/{batch_total}"
+            )
+            system_logger.error(f"【任务队列】失败堆栈:\n{traceback.format_exc()}")
 
         finally:
             execution_time = time.time() - start_time
@@ -622,6 +655,38 @@ class TaskQueue:
             except Exception as e:
                 system_logger.warning(f"【任务队列】显存清理出错: {e}")
     
+    # 批量任务超时配置：所有模型均按 batch_count 动态放大。
+    # 公式: timeout = BASE + batch_count * PER_UNIT[model]
+    # - BASE: 基础预算，覆盖模型冷启动加载 / 子服务唤醒 / 单条固定开销
+    # - PER_UNIT: 每条批量生成的预算，按模型批量并发度折算
+    #   * 进程内串行（qwen3tts/voxcpm）与子服务串行（pilottts/gptsovits）并发=1，按 30s/条
+    #   * 子服务并发（omnivoice/cosyvoice）并发=2，按 15s/条（30s ÷ 并发度）
+    # 单条任务（batch_count=1）退化为 BASE + 单条预算，足够覆盖推理本身。
+    _TASK_TIMEOUT_BASE = 120
+    _TASK_TIMEOUT_PER_UNIT = {
+        "qwen3tts": 30,   # 进程内串行
+        "voxcpm": 30,     # 进程内串行
+        "pilottts": 30,   # 子服务串行（GPU，信号量并发=1）
+        "gptsovits": 30,  # 子服务串行（GPU，信号量并发=1）
+        "omnivoice": 15,  # 子服务并发=2 → 30/2
+        "cosyvoice": 15,  # 子服务并发=2 → 30/2
+    }
+    _TASK_TIMEOUT_DEFAULT_PER_UNIT = 30  # 未知模型的兜底
+
+    def _compute_task_timeout(self, task: TaskRecord) -> float:
+        """根据模型与批量条数计算任务超时（秒）。
+
+        所有模型统一公式 base + batch_count * per_unit，per_unit 按该模型
+        批量并发度折算（并发越高单条均摊越少）。固定超时会在批量较大时
+        误判失败，导致已生成的结果整批作废。
+        """
+        batch_count = int((task.params or {}).get('batch_count', 1) or 1)
+        if batch_count < 1:
+            batch_count = 1
+        per_unit = self._TASK_TIMEOUT_PER_UNIT.get(
+            task.model, self._TASK_TIMEOUT_DEFAULT_PER_UNIT)
+        return float(self._TASK_TIMEOUT_BASE + batch_count * per_unit)
+
     def get_task(self, task_id: str) -> Optional[TaskRecord]:
         """获取任务记录"""
         return self.tasks.get(task_id)
@@ -653,9 +718,61 @@ class TaskQueue:
         
         # 按创建时间倒序排列
         user_tasks.sort(key=lambda x: x.created_at, reverse=True)
-        
+
         return user_tasks[:limit]
-    
+
+    def get_all_tasks(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        model: Optional[str] = None
+    ) -> List[TaskRecord]:
+        """
+        获取所有用户的任务列表（多用户共享视图）。
+
+        用于任务列表页展示全局任务看板：所有用户都能看到彼此
+        执行中/等待中/已完成的任务。取消/删除等操作仍由调用方
+        按 user_id 校验权限（仅本人可操作自己的任务）。
+
+        Args:
+            status: 状态筛选（可选）
+            limit: 返回数量限制
+            offset: 偏移量（分页，从第 offset 条开始取 limit 条）
+            model: 算法/模型筛选（可选）
+        """
+        all_tasks = list(self.tasks.values())
+
+        if status:
+            all_tasks = [t for t in all_tasks if t.status == status]
+        if model:
+            all_tasks = [t for t in all_tasks if t.model == model]
+
+        # 按创建时间倒序排列
+        all_tasks.sort(key=lambda x: x.created_at, reverse=True)
+
+        return all_tasks[offset:offset + limit]
+
+    def count_all_tasks(self, status: Optional[str] = None, model: Optional[str] = None) -> int:
+        """返回符合筛选条件的任务总数（分页前），供前端翻页计算。"""
+        tasks = self.tasks.values()
+        if model:
+            tasks = [t for t in tasks if t.model == model]
+        if not status:
+            return len(list(tasks)) if model else len(self.tasks)
+        return sum(1 for t in tasks if t.status == status)
+
+    def status_counts_all(self, model: Optional[str] = None) -> Dict[str, int]:
+        """返回各状态的全量任务计数（忽略分页与状态筛选，仅受 model 筛选影响）。
+        供任务页统计栏显示稳定的各状态总数。"""
+        counts = {"queued": 0, "processing": 0, "completed": 0, "failed": 0, "cancelled": 0, "retried": 0}
+        for t in self.tasks.values():
+            if model and t.model != model:
+                continue
+            if t.status in counts:
+                counts[t.status] += 1
+        return counts
+
     def get_queue_status(self) -> Dict:
         """获取队列状态"""
         # 统计各模型排队中/等待中的任务数（不包含已完成/失败/取消）
@@ -727,19 +844,73 @@ class TaskQueue:
         system_logger.info(f"【任务队列】任务已取消: {task_id}")
         return True
     
+    def _delete_task_files(self, task: "TaskRecord"):
+        """删除任务关联的磁盘文件：任务记录 json + 音频文件（含批量结果的各段音频）。
+
+        供 delete_task（手动删单条）与 cleanup_old_tasks（手动批量清理接口）
+        共用，保证「删任务记录必连带删音频」的联动一致性，避免出现
+        「记录没了、音频留着」或「记录留着、音频没了」的撕裂。
+        """
+        task_id = task.task_id
+
+        # 1. 删除任务记录 json
+        filepath = os.path.join(self.storage_dir, f"{task_id}.json")
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception as e:
+                system_logger.warning(f"【任务队列】删除任务记录失败 {filepath}: {e}")
+
+        # 2. 收集要删除的音频文件
+        files_to_delete = []
+        if task.audio_file:
+            files_to_delete.append(task.audio_file)
+        # 批量任务：级联删除 batch_results 中的单个音频文件
+        if getattr(task, 'batch_results', None):
+            for item in task.batch_results:
+                if isinstance(item, dict):
+                    audio = item.get('audio_file') or item.get('audio_url')
+                    if audio:
+                        files_to_delete.append(audio)
+
+        # 3. 逐个删除音频文件
+        for fpath in files_to_delete:
+            try:
+                if os.path.exists(fpath):
+                    os.remove(fpath)
+                    system_logger.info(f"【任务队列】音频文件已删除: {fpath}")
+                else:
+                    system_logger.warning(f"【任务队列】音频文件不存在，跳过: {fpath}")
+            except Exception as e:
+                system_logger.warning(f"【任务队列】删除音频文件失败 {fpath}: {e}")
+
     async def delete_task(self, task_id: str, user_id: str) -> bool:
         """
         删除任务记录
-        
+
+        权限规则：
+        - 失败类终态（failed/cancelled/retried）：任何人可删（避免跨用户残留任务占位）
+        - 其他状态（queued/processing/completed）：仅本人可删
+
         Args:
             task_id: 任务ID
             user_id: 用户ID（用于权限验证）
-            
+
         Returns:
             bool: 是否成功删除
         """
         task = self.tasks.get(task_id)
-        if not task or task.user_id != user_id:
+        if not task:
+            return False
+
+        # 失败类终态：放开 user_id 校验，任何人可删
+        public_deletable = task.status in (
+            TaskStatus.FAILED.value,
+            TaskStatus.CANCELLED.value,
+            TaskStatus.RETRIED.value,
+        )
+        # 其他状态：仅本人可删
+        if not public_deletable and task.user_id != user_id:
             return False
         
         # 如果任务还在等待中，先从等待列表移除
@@ -753,48 +924,33 @@ class TaskQueue:
         # 如果任务正在执行，不能删除
         if task.status == TaskStatus.PROCESSING.value:
             return False
-        
-        # 删除存储文件
-        filepath = os.path.join(self.storage_dir, f"{task_id}.json")
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        
-        # 删除音频文件（如果存在且不是共享文件）
-        files_to_delete = []
-        if task.audio_file:
-            files_to_delete.append(task.audio_file)
 
-        # 批量任务：级联删除 batch_results 中的单个音频文件
-        if hasattr(task, 'batch_results') and task.batch_results:
-            for item in task.batch_results:
-                if isinstance(item, dict):
-                    audio = item.get('audio_file') or item.get('audio_url')
-                    if audio and os.path.exists(audio):
-                        files_to_delete.append(audio)
+        # 删除任务记录 json + 级联删除音频文件（联动）
+        self._delete_task_files(task)
 
-        for fpath in files_to_delete:
-            try:
-                if os.path.exists(fpath):
-                    os.remove(fpath)
-                    system_logger.info(f"【任务队列】音频文件已删除: {fpath}")
-                else:
-                    system_logger.warning(f"【任务队列】音频文件不存在，跳过: {fpath}")
-            except Exception as e:
-                system_logger.warning(f"【任务队列】删除音频文件失败 {fpath}: {e}")
-        
         # 从内存中移除
         del self.tasks[task_id]
-        
+
         system_logger.info(f"【任务队列】任务已删除: {task_id}")
         return True
     
     async def start_cleanup_scheduler(self, interval_hours: int = 24):
         """
-        启动定时清理任务
-        
+        启动定时清理任务（默认关闭）。
+
+        默认不自动清理任务记录/音频文件，避免「记录在、文件没了」的撕裂，
+        也避免误删用户想保留的历史。如需恢复每 24h 自动清理 7 天前任务记录，
+        将 ENABLE_TASK_CLEANUP 改为 True（注意：自动清理只删任务记录，
+        不联动删音频，可能产生孤儿音频文件）。
+
         Args:
             interval_hours: 清理间隔（小时）
         """
+        ENABLE_TASK_CLEANUP = False
+        if not ENABLE_TASK_CLEANUP:
+            system_logger.info("【任务队列】定时清理已禁用（保留所有任务记录与音频文件）")
+            return
+
         async def _cleanup_loop():
             while self._running:
                 try:
@@ -804,36 +960,38 @@ class TaskQueue:
                         system_logger.info("【任务队列】定时清理完成")
                 except Exception as e:
                     system_logger.error(f"【任务队列】定时清理出错: {e}")
-        
+
         self._cleanup_task = asyncio.create_task(_cleanup_loop())
         system_logger.info(f"【任务队列】定时清理已启动，间隔: {interval_hours}小时")
     
     def cleanup_old_tasks(self, days: int = 7):
         """
-        清理旧任务记录
-        
+        清理旧任务记录（手动触发：管理接口 /tasks/cleanup 或并发管理接口）。
+
+        删除指定天数前的任务记录，并联动删除其音频文件（含批量结果各段），
+        保证「删记录必删音频」，避免撕裂。默认定时调度已关闭（见
+        start_cleanup_scheduler 的 ENABLE_TASK_CLEANUP），此函数不再被自动调用。
+
         Args:
             days: 保留天数
         """
         cutoff = datetime.now().timestamp() - (days * 24 * 3600)
         removed_count = 0
-        
+
         for task_id, task in list(self.tasks.items()):
             try:
                 task_time = datetime.fromisoformat(task.created_at).timestamp()
                 if task_time < cutoff:
-                    # 删除文件
-                    filepath = os.path.join(self.storage_dir, f"{task_id}.json")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
+                    # 联动删除任务记录 json + 音频文件
+                    self._delete_task_files(task)
                     # 从内存中移除
                     del self.tasks[task_id]
                     removed_count += 1
             except Exception as e:
                 system_logger.warning(f"【任务队列】清理任务失败 {task_id}: {e}")
-        
+
         if removed_count > 0:
-            system_logger.info(f"【任务队列】清理了 {removed_count} 个旧任务")
+            system_logger.info(f"【任务队列】清理了 {removed_count} 个旧任务（含音频）")
 
 
 # 全局任务队列实例

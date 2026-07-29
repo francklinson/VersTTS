@@ -51,10 +51,80 @@ def normalize_audio_volume(audio_data: np.ndarray, target_db: float = -0.5) -> n
     return normalized_audio
 
 
+def build_meaningful_filename(model: str, mode: str, text: str, index: int = 0, batch_total: int = 1,
+                               speaker_name: str = None, prefix: str = None,
+                               instruct_prompt: str = None) -> str:
+    """
+    生成有意义的音频文件名 —— 全局命名规则单一来源。
+
+    格式: {prefix}_{model}_{mode}_{指令摘要}_{speaker}_{text摘要}_{HHMMSS}{_NNofMM}.wav
+
+    指令摘要紧跟 mode 之后（突出指令词），时间戳压缩为时分秒（HHMMSS）放到末尾兜底防重名。
+    被 save_temp_audio（即时生成路径）与 task_handlers._generate_meaningful_filename
+    （任务队列路径）共同复用，确保两条路径命名规则一致。
+
+    Args:
+        model: 模型名称（即时路径中由 prefix 充当）
+        mode: 生成模式
+        text: 合成文本
+        index: 批量生成时的索引
+        batch_total: 批量生成总数
+        speaker_name: 说话人名称（可选）
+        prefix: 前缀（可选，用于区分不同来源）
+        instruct_prompt: 指令文本（可选，instruct_text/control_prompt/voice_design_prompt）
+    """
+    import re
+
+    # 文件名清洗：保留中文、英文、数字、下划线，其余移除
+    def _clean(s: str, limit: int) -> str:
+        cleaned = re.sub(r'[^\w一-鿿]', '', s or '')
+        return cleaned[:limit]
+
+    # 文本摘要（前 8 字符）
+    text_summary = _clean(text[:8].strip(), 8) if text else ""
+    if not text_summary:
+        text_summary = "audio"
+
+    # 指令摘要（前 8 字符），无指令则跳过该段
+    instruct_summary = _clean(instruct_prompt[:8].strip(), 8) if instruct_prompt else ""
+
+    # 说话人名称（前 6 字符）
+    speaker_part = ""
+    if speaker_name:
+        clean_name = _clean(speaker_name, 6)
+        if clean_name:
+            speaker_part = clean_name
+
+    # 时间戳压缩为时分秒，放末尾兜底防重名
+    timestamp = datetime.now().strftime("%H%M%S")
+
+    # 构建文件名各部分（顺序：前缀 → 模型 → 模式 → 指令 → 说话人 → 文本 → 时间戳 → 批次）
+    parts = []
+    if prefix:
+        parts.append(prefix)
+    parts.append(model)
+    if mode:
+        parts.append(mode)
+    if instruct_summary:
+        parts.append(instruct_summary)
+    if speaker_part:
+        parts.append(speaker_part)
+    parts.append(text_summary)
+    parts.append(timestamp)
+
+    # 批量生成时添加序号
+    if batch_total > 1:
+        parts.append(f"{index+1:02d}of{batch_total:02d}")
+
+    return "_".join(parts) + ".wav"
+
+
 def save_temp_audio(audio_data: np.ndarray, sample_rate: int,
                     suffix: str = ".wav", normalize: bool = True,
                     prefix: str = "tts", mode: str = None,
-                    text: str = None, speaker_name: str = None) -> str:
+                    text: str = None, speaker_name: str = None,
+                    instruct_prompt: str = None,
+                    index: int = 0, batch_total: int = 1) -> str:
     """
     保存临时音频文件
 
@@ -63,35 +133,25 @@ def save_temp_audio(audio_data: np.ndarray, sample_rate: int,
         sample_rate: 采样率
         suffix: 文件后缀
         normalize: 是否进行音量归一化，默认True
-        prefix: 文件名前缀，默认"tts"
+        prefix: 文件名前缀，默认"tts"（即时路径中充当 model 角色）
         mode: 生成模式（可选，用于更有意义的文件名）
         text: 合成文本（可选，用于提取文本摘要到文件名）
         speaker_name: 说话人名称（可选）
+        instruct_prompt: 指令文本（可选，写入文件名指令段）
+        index: 批量生成时的索引
+        batch_total: 批量生成总数
     """
-    import re
     from backend.config import OUTPUTS_DIR
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # 生成有意义的文件名
-    if mode or text or speaker_name:
-        parts = [prefix]
-        if mode:
-            parts.append(mode)
-        if speaker_name:
-            clean_name = re.sub(r'[^\w一-鿿]', '', speaker_name)[:6]
-            if clean_name:
-                parts.append(clean_name)
-        if text:
-            text_summary = text[:8].strip()
-            text_summary = re.sub(r'[^\w一-鿿]', '', text_summary)
-            if text_summary:
-                parts.append(text_summary)
-        parts.append(timestamp)
-        filename = "_".join(parts) + suffix
-    else:
-        filename = f"{prefix}_{timestamp}{suffix}"
+    # 统一调用共用命名函数（指令前置、时间戳压缩为 HHMMSS）
+    filename = build_meaningful_filename(
+        model=prefix, mode=mode, text=text, index=index, batch_total=batch_total,
+        speaker_name=speaker_name, instruct_prompt=instruct_prompt
+    )
+    # 若调用方指定了非默认后缀（如 .flac），替换默认 .wav
+    if suffix and suffix != ".wav":
+        filename = filename[:-len(".wav")] + suffix if filename.endswith(".wav") else filename + suffix
 
     temp_path = os.path.join(OUTPUTS_DIR, filename)
 
@@ -104,6 +164,11 @@ def save_temp_audio(audio_data: np.ndarray, sample_rate: int,
     # 记录文件操作
     audio_size = os.path.getsize(temp_path)
     OperationLogger.log_file_operation("保存音频", temp_path, audio_size, "成功")
+
+    # 内容校验（需求2）：ASR 识别后与输入文本比对相似度，不达标则删除并抛 AudioVerifyError。
+    # 用 text 参数作为期望文本；校验关闭/无 text/ASR 异常时放行不阻断。
+    # 各即时路由的 except Exception 会将该异常透传为 HTTP 500。
+    verify_and_cleanup(temp_path, text, model_tag=prefix or "tts")
 
     return temp_path
 
@@ -187,3 +252,158 @@ def get_outputs_disk_usage() -> dict:
         system_logger.error(f"【磁盘】统计 outputs/ 目录出错: {e}")
 
     return result
+
+
+# ========== 音频内容校验（需求2）==========
+# 新生成音频写入后，用 wenet ASR 识别文本，与原始输入文本计算字符相似度，
+# 低于阈值则判定为生成不正确并删除文件。ASR 自身异常时放行不阻断，
+# 避免 wenet 故障导致所有 TTS 不可用。
+
+class AudioVerifyError(Exception):
+    """音频内容校验失败（ASR 识别文本与期望文本相似度低于阈值）。
+
+    带有 error_code 属性，供任务队列/前端识别为"可重试的内容校验失败"，
+    区别于普通生成错误：前端据此显示特殊提示与重试按钮，重试后清除原任务。
+    """
+
+    # 错误码：内容校验失败（可重试）
+    error_code = "AUDIO_VERIFY_FAILED"
+    # 面向用户的特殊提示
+    user_message = "音频内容校验未通过（生成的语音与输入文本不符），请重试"
+
+
+def _normalize_text_for_verify(text: str) -> str:
+    """文本归一化：去除标点、空白，保留中文与字母数字并转小写，统一用于相似度比对。"""
+    import re
+    if not text:
+        return ""
+    return re.sub(r"[^\w一-鿿]", "", text).lower()
+
+
+def _substr_similarity_inner(short: str, long: str) -> float:
+    """较短文本在较长文本中找最相似的等长子串，返回 [0,1]。
+
+    短文本作为子串精确出现 → 1.0；否则滑动等长窗口取最相似段，
+    用于容错 ASR 错字。避免短基准被长 ASR 文本稀释整体相似度。
+    """
+    s, l = _normalize_text_for_verify(short), _normalize_text_for_verify(long)
+    if not s or not l:
+        return 0.0
+    if s in l:
+        return 1.0
+    if len(s) > len(l):
+        import difflib
+        return difflib.SequenceMatcher(None, s, l).ratio()
+    import difflib
+    best = 0.0
+    for i in range(len(l) - len(s) + 1):
+        v = difflib.SequenceMatcher(None, s, l[i:i + len(s)]).ratio()
+        if v > best:
+            best = v
+            if best >= 1.0:
+                break
+    return best
+
+
+def text_similarity(asr_text: str, expected_text: str) -> float:
+    """计算 ASR 识别文本与期望文本的字符相似度（归一化后）。
+
+    返回 [0, 1]，1 表示完全一致。取"整体 SequenceMatcher 比值"与
+    "双向子串包含相似度"的较大值：
+        - 整体比值对长文本容错漏字/多字/错字；
+        - 子串相似度防止短输入文本被较长的 ASR 结果稀释（例如输入"救命"、
+          ASR 识别成"救命啊救命"，整体比值仅 0.57 会误判，子串匹配为 1.0）。
+    """
+    a = _normalize_text_for_verify(asr_text)
+    b = _normalize_text_for_verify(expected_text)
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    import difflib
+    overall = difflib.SequenceMatcher(None, a, b).ratio()
+    if len(b) <= len(a):
+        sub = _substr_similarity_inner(expected_text, asr_text)
+    else:
+        sub = _substr_similarity_inner(asr_text, expected_text)
+    return max(overall, sub)
+
+
+def verify_audio_content(audio_path: str, expected_text: str,
+                         threshold: float = None, enabled: bool = None) -> tuple:
+    """对已生成的音频做 ASR 校验，返回 (是否通过, 相似度, ASR文本, 原因)。
+
+    Args:
+        audio_path: 音频文件绝对路径
+        expected_text: 原始输入文本（期望内容）
+        threshold: 相似度阈值，低于此值判定失败；None 时读取 config 默认
+        enabled: 是否启用校验；None 时读取 config 默认。关闭时直接返回通过
+
+    Returns:
+        (passed: bool, similarity: float, asr_text: str, reason: str)
+        - 关闭校验：(True, -1.0, "", "disabled")
+        - ASR 异常：(True, -1.0, "", "asr_error:<msg>")  ← 放行不阻断
+        - 通过：(True, score, asr_text, "pass")
+        - 失败：(False, score, asr_text, "below_threshold")
+    """
+    from backend.config import AUDIO_VERIFY_ENABLED, AUDIO_VERIFY_THRESHOLD
+    if enabled is None:
+        enabled = AUDIO_VERIFY_ENABLED
+    if threshold is None:
+        threshold = AUDIO_VERIFY_THRESHOLD
+
+    if not enabled:
+        return True, -1.0, "", "disabled"
+    if not expected_text or not str(expected_text).strip():
+        # 无期望文本无法校验，放行
+        return True, -1.0, "", "no_expected_text"
+    if not os.path.exists(audio_path):
+        return False, -1.0, "", "audio_not_found"
+
+    try:
+        from backend.services.asr_service import transcribe
+        asr_text = transcribe(audio_path)
+    except Exception as e:
+        system_logger.warning(f"【校验】ASR 异常，放行不阻断: {e}")
+        return True, -1.0, "", f"asr_error:{type(e).__name__}"
+
+    similarity = text_similarity(asr_text, expected_text)
+    if similarity >= threshold:
+        return True, round(similarity, 3), asr_text, "pass"
+    return False, round(similarity, 3), asr_text, "below_threshold"
+
+
+def verify_and_cleanup(audio_path: str, expected_text: str,
+                       model_tag: str = "", threshold: float = None,
+                       enabled: bool = None) -> str:
+    """校验音频内容，失败则删除文件并抛出 AudioVerifyError；通过则原样返回路径。
+
+    供即时生成路径（save_temp_audio）与批量生成路径共用：
+        - 校验关闭 / 无期望文本 / ASR 异常 → 不删、不抛，原样返回路径
+        - 相似度达标 → 不删，原样返回路径
+        - 相似度不达标 → 删除文件，抛 AudioVerifyError（含 ASR 文本与相似度便于排查）
+    """
+    passed, similarity, asr_text, reason = verify_audio_content(
+        audio_path, expected_text, threshold=threshold, enabled=enabled
+    )
+    if passed:
+        if reason not in ("disabled", "no_expected_text", "asr_error") and similarity >= 0:
+            system_logger.info(
+                f"【校验】{model_tag} 通过 | 相似度={similarity:.2f} | "
+                f"ASR='{asr_text}' | 期望='{expected_text[:30]}'"
+            )
+        return audio_path
+
+    # 校验失败：删除文件
+    try:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+            system_logger.info(f"【校验】{model_tag} 已删除不合格音频: {audio_path}")
+    except OSError as e:
+        system_logger.warning(f"【校验】删除失败 {audio_path}: {e}")
+
+    raise AudioVerifyError(
+        f"{model_tag} 音频内容校验失败 | 相似度={similarity:.2f} < 阈值 | "
+        f"ASR='{asr_text}' | 期望='{expected_text[:50]}'"
+    )
+

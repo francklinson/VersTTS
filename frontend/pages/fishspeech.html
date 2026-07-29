@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish-Speech - Dual-AR 多语言TTS | VersTTS</title>
+    <link rel="stylesheet" href="../css/common.css">
+    <style>
+        :root {
+            --primary: #0891b2;
+            --primary-dark: #0e7490;
+            --primary-light: #22d3ee;
+            --primary-bg: rgba(8, 145, 178, 0.08);
+            --primary-border: rgba(8, 145, 178, 0.2);
+            --gradient-start: #0891b2;
+            --gradient-end: #06b6d4;
+        }
+
+        body.fishspeech-theme {
+            background: linear-gradient(135deg, #0c1929 0%, #0a1628 30%, #082f49 70%, #0c4a6e 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e2e8f0;
+        }
+
+        /* 声波动画背景 */
+        .soundwave-bg {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0; overflow: hidden;
+        }
+        .wave-bar {
+            position: absolute; bottom: 0;
+            width: 3px; background: linear-gradient(to top, var(--primary), transparent);
+            animation: waveAnim 3s ease-in-out infinite;
+            opacity: 0.15; border-radius: 2px;
+        }
+        @keyframes waveAnim {
+            0%, 100% { height: 20px; opacity: 0.1; }
+            50% { height: 80px; opacity: 0.25; }
+        }
+
+        .container {
+            max-width: 900px; margin: 0 auto; padding: 20px; position: relative; z-index: 1;
+        }
+
+        /* 返回按钮 */
+        .nav-back {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: #94a3b8; text-decoration: none; font-size: 14px;
+            padding: 8px 16px; border-radius: 8px; transition: all 0.3s;
+            margin-bottom: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+        }
+        .nav-back:hover { color: var(--primary-light); background: rgba(8,145,178,0.1); border-color: var(--primary-border); }
+
+        /* 头部 */
+        .model-header-section {
+            text-align: center; margin-bottom: 24px; padding: 32px 24px;
+            background: rgba(255,255,255,0.03); border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.06); backdrop-filter: blur(10px);
+        }
+        .model-icon-large { font-size: 48px; margin-bottom: 12px; }
+        .model-header-section h1 {
+            font-size: 28px; font-weight: 700; margin: 0 0 8px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .model-header-section .subtitle { color: #94a3b8; font-size: 14px; }
+        .model-badge {
+            display: inline-block; padding: 4px 12px; margin-top: 8px;
+            background: var(--primary-bg); border: 1px solid var(--primary-border);
+            border-radius: 20px; font-size: 12px; color: var(--primary-light);
+        }
+
+        /* 信息框 */
+        .info-box {
+            background: rgba(8,145,178,0.06); border: 1px solid var(--primary-border);
+            border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; font-size: 13px;
+            color: #94a3b8; line-height: 1.8;
+        }
+        .info-box strong { color: var(--primary-light); }
+        .license-notice {
+            background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.2);
+            border-radius: 8px; padding: 8px 12px; margin-top: 8px;
+            font-size: 12px; color: #fbbf24; text-align: center;
+        }
+
+        /* 卡片 */
+        .card {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px; padding: 24px; margin-bottom: 20px;
+            backdrop-filter: blur(10px); transition: all 0.3s;
+        }
+        .card:hover { border-color: var(--primary-border); }
+        .card-title {
+            font-size: 16px; font-weight: 600; margin-bottom: 16px;
+            color: var(--primary-light); display: flex; align-items: center; gap: 8px;
+        }
+
+        /* 模式标签 */
+        .mode-tabs {
+            display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .mode-tab {
+            padding: 10px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.02); color: #94a3b8; cursor: pointer;
+            transition: all 0.3s; font-size: 14px; font-weight: 500;
+        }
+        .mode-tab:hover { border-color: var(--primary-border); color: #e2e8f0; }
+        .mode-tab.active {
+            background: var(--primary-bg); border-color: var(--primary);
+            color: var(--primary-light); box-shadow: 0 0 20px rgba(8,145,178,0.15);
+        }
+
+        /* 表单 */
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block; font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;
+        }
+        select, textarea, input[type="text"], input[type="number"], input[type="range"] {
+            width: 100%; padding: 12px 16px; border-radius: 10px;
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; font-size: 14px; outline: none; transition: all 0.3s;
+            font-family: inherit; box-sizing: border-box;
+        }
+        select:focus, textarea:focus, input:focus {
+            border-color: var(--primary); box-shadow: 0 0 0 3px rgba(8,145,178,0.1);
+        }
+        textarea { min-height: 100px; resize: vertical; }
+        select option { background: #1a2332; color: #e2e8f0; }
+
+        /* 滑块 */
+        .range-group { display: flex; align-items: center; gap: 12px; }
+        .range-group input[type="range"] { flex: 1; }
+        .range-value {
+            min-width: 40px; text-align: center; font-weight: 600; color: var(--primary-light);
+            font-size: 14px;
+        }
+
+        /* 参数网格 */
+        .param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+
+        /* 按钮 */
+        .btn-generate {
+            width: 100%; padding: 14px; border: none; border-radius: 12px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white; font-size: 16px; font-weight: 600; cursor: pointer;
+            transition: all 0.3s; letter-spacing: 1px;
+        }
+        .btn-generate:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(8,145,178,0.3); }
+        .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-download {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 8px; border: 1px solid var(--primary-border);
+            background: var(--primary-bg); color: var(--primary-light);
+            text-decoration: none; font-size: 13px; transition: all 0.3s; cursor: pointer;
+        }
+        .btn-download:hover { background: rgba(8,145,178,0.15); }
+
+        /* 状态消息 */
+        .status-msg {
+            padding: 12px 16px; border-radius: 10px; margin-bottom: 16px;
+            font-size: 14px; display: none; text-align: center;
+        }
+        .status-success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #4ade80; }
+        .status-error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; }
+        .status-info { background: rgba(8,145,178,0.1); border: 1px solid var(--primary-border); color: var(--primary-light); }
+
+        /* 音频播放器 */
+        .audio-player {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .audio-player audio { flex: 1; min-width: 200px; }
+
+        /* 批量结果 */
+        .batch-results { margin-top: 16px; }
+        .batch-item {
+            display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+            background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 8px;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .batch-item audio { flex: 1; height: 32px; }
+
+        /* 情感标签建议 */
+        .tag-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .tag-chip {
+            padding: 4px 10px; border-radius: 14px; font-size: 11px;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            color: #94a3b8; cursor: pointer; transition: all 0.2s;
+        }
+        .tag-chip:hover { background: var(--primary-bg); border-color: var(--primary-border); color: var(--primary-light); }
+
+        /* 批量生成控件 */
+        .batch-control { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .batch-control input[type="number"] { width: 80px; }
+
+        @media (max-width: 600px) {
+            .container { padding: 12px; }
+            .model-header-section { padding: 20px 16px; }
+            .param-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body class="fishspeech-theme">
+    <!-- 声波动画 -->
+    <div class="soundwave-bg" id="soundwaveBg"></div>
+
+    <div class="container">
+        <!-- 返回按钮 -->
+        <a href="../index.html" class="nav-back">← 返回首页</a>
+
+        <!-- 头部 -->
+        <div class="model-header-section">
+            <div class="model-icon-large">🐟</div>
+            <h1>Fish-Speech</h1>
+            <p class="subtitle">Dual-AR 多语言TTS · 80+语言 · 44.1kHz · 内联情感控制</p>
+            <span class="model-badge">Fish Audio S2 Pro</span>
+        </div>
+
+        <!-- 信息框 -->
+        <div class="info-box">
+            <strong>🐟 模型架构：</strong>Dual-AR (Slow 4B + Fast 400M) 自回归架构，基于 Qwen3 骨干网络<br>
+            <strong>🌍 语言支持：</strong>80+种语言，含中文、英文、日文、韩文、粤语等<br>
+            <strong>🎛️ 独特功能：</strong>内联情感标签 (如 [laugh], [sad], [excited])<br>
+            <strong>🎵 输出：</strong>44.1kHz 高保真音频 · ModifiedDAC 编解码器<br>
+            <strong>🔊 声音设计：</strong>支持自然语言描述生成特定音色
+            <div class="license-notice">⚠️ 许可说明：Fish-Speech 仅限研究/非商业使用，商业用途需联系 Fish Audio</div>
+        </div>
+
+        <!-- 模式选择 -->
+        <div class="card">
+            <div class="card-title">🎯 生成模式</div>
+            <div class="mode-tabs">
+                <div class="mode-tab active" data-mode="voice_clone" onclick="switchMode('voice_clone')">
+                    🎙️ 语音克隆
+                </div>
+                <div class="mode-tab" data-mode="voice_design" onclick="switchMode('voice_design')">
+                    🎨 声音设计
+                </div>
+            </div>
+        </div>
+
+        <!-- 说话人选择（语音克隆模式） -->
+        <div class="card" id="speakerCard">
+            <div class="card-title">👤 选择说话人</div>
+            <div class="form-group">
+                <label class="form-label">说话人</label>
+                <select id="speakerSelect" onchange="onSpeakerChange()">
+                    <option value="">-- 选择说话人（可选） --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 声音设计描述（声音设计模式） -->
+        <div class="card" id="voiceDesignCard" style="display:none;">
+            <div class="card-title">🎨 音色描述</div>
+            <div class="form-group">
+                <label class="form-label">用自然语言描述您想要的音色（可选）</label>
+                <textarea id="voiceDesignPrompt" placeholder="例如：温柔的女声，略带沙哑，语速适中..."></textarea>
+            </div>
+        </div>
+
+        <!-- 文本输入 -->
+        <div class="card">
+            <div class="card-title">📝 合成文本</div>
+            <div class="form-group">
+                <textarea id="textInput" placeholder="请输入要合成语音的文本内容...&#10;&#10;支持内联情感标签，例如：[laugh]你好 [excited]今天天气真不错"></textarea>
+            </div>
+            <!-- 情感标签建议 -->
+            <div class="form-group">
+                <label class="form-label">💬 情感标签（可选，支持内联）</label>
+                <input type="text" id="emotionTags" placeholder="例如：[laugh] [sad] [excited] [angry] [whisper] [sigh]" style="font-size:13px;">
+                <div class="tag-suggestions">
+                    <span class="tag-chip" onclick="addTag('[laugh]')">😄 [laugh]</span>
+                    <span class="tag-chip" onclick="addTag('[sad]')">😢 [sad]</span>
+                    <span class="tag-chip" onclick="addTag('[excited]')">🎉 [excited]</span>
+                    <span class="tag-chip" onclick="addTag('[angry]')">😠 [angry]</span>
+                    <span class="tag-chip" onclick="addTag('[whisper]')">🤫 [whisper]</span>
+                    <span class="tag-chip" onclick="addTag('[sigh]')">😮‍💨 [sigh]</span>
+                    <span class="tag-chip" onclick="addTag('[surprised]')">😲 [surprised]</span>
+                    <span class="tag-chip" onclick="addTag('[crying]')">😭 [crying]</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 生成参数 -->
+        <div class="card">
+            <div class="card-title">⚙️ 生成参数</div>
+            <div class="param-grid">
+                <div class="form-group">
+                    <label class="form-label">Temperature: <span id="tempVal">0.8</span></label>
+                    <div class="range-group">
+                        <input type="range" id="temperature" min="0.1" max="1.5" step="0.05" value="0.8" oninput="document.getElementById('tempVal').textContent=this.value">
+                        <span class="range-value" id="tempVal">0.8</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Top-P: <span id="topPVal">0.8</span></label>
+                    <div class="range-group">
+                        <input type="range" id="top_p" min="0.5" max="1.0" step="0.05" value="0.8" oninput="document.getElementById('topPVal').textContent=this.value">
+                        <span class="range-value" id="topPVal">0.8</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">重复惩罚: <span id="repPenVal">1.1</span></label>
+                    <div class="range-group">
+                        <input type="range" id="repetition_penalty" min="1.0" max="1.5" step="0.05" value="1.1" oninput="document.getElementById('repPenVal').textContent=this.value">
+                        <span class="range-value" id="repPenVal">1.1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 生成按钮 -->
+        <div class="card">
+            <div style="display:flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                <button class="btn-generate" onclick="generateTTS()" id="generateBtn" style="flex:1; min-width:200px;">
+                    🐟 生成语音
+                </button>
+                <div class="batch-control">
+                    <label class="form-label" style="margin:0; white-space:nowrap;">批量数量:</label>
+                    <input type="number" id="batchCount" min="1" max="100" value="1">
+                </div>
+            </div>
+        </div>
+
+        <!-- 状态消息 -->
+        <div class="status-msg" id="statusMsg"></div>
+
+        <!-- 结果区域 -->
+        <div class="card" id="resultCard" style="display:none;">
+            <div class="card-title">🎧 生成结果</div>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script src="../js/common.js"></script>
+    <script>
+        let currentMode = 'voice_clone';
+        let pollingTimer = null;
+        let batchResults = [];
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            createSoundwave();
+            loadSpeakers();
+        });
+
+        // 创建声波动画
+        function createSoundwave() {
+            const bg = document.getElementById('soundwaveBg');
+            for (let i = 0; i < 40; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'wave-bar';
+                bar.style.left = (i * 2.5) + '%';
+                bar.style.animationDelay = (Math.random() * 3) + 's';
+                bar.style.animationDuration = (2 + Math.random() * 4) + 's';
+                bg.appendChild(bar);
+            }
+        }
+
+        // 加载说话人列表
+        async function loadSpeakers() {
+            try {
+                const resp = await fetch('/speakers');
+                const speakers = await resp.json();
+                const select = document.getElementById('speakerSelect');
+                speakers.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = `${s.name}${s.gender ? ' (' + s.gender + ')' : ''}`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('加载说话人失败:', e);
+            }
+        }
+
+        // 切换模式
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`[data-mode="${mode}"]`).classList.add('active');
+
+            document.getElementById('speakerCard').style.display = mode === 'voice_design' ? 'none' : 'block';
+            document.getElementById('voiceDesignCard').style.display = mode === 'voice_design' ? 'block' : 'none';
+        }
+
+        function onSpeakerChange() {
+            // 说话人变更回调
+        }
+
+        function addTag(tag) {
+            const input = document.getElementById('emotionTags');
+            const current = input.value.trim();
+            input.value = current ? current + ' ' + tag : tag;
+            input.focus();
+        }
+
+        // 生成语音
+        async function generateTTS() {
+            const text = document.getElementById('textInput').value.trim();
+            if (!text) {
+                showStatus('请输入合成文本', 'error');
+                return;
+            }
+
+            const batchCount = parseInt(document.getElementById('batchCount').value) || 1;
+            const speakerId = document.getElementById('speakerSelect').value;
+
+            if (currentMode === 'voice_clone' && !speakerId) {
+                showStatus('语音克隆模式需要选择说话人', 'error');
+                return;
+            }
+
+            stopPolling();
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.textContent = batchCount > 1 ? '⏳ 提交批量任务...' : '⏳ 提交任务...';
+
+            const params = {
+                model: 'fishspeech',
+                text: text,
+                mode: currentMode,
+                batch_count: batchCount,
+                temperature: parseFloat(document.getElementById('temperature').value),
+                top_p: parseFloat(document.getElementById('top_p').value),
+                repetition_penalty: parseFloat(document.getElementById('repetition_penalty').value),
+            };
+
+            if (speakerId) params.speaker_id = speakerId;
+
+            const emotionTags = document.getElementById('emotionTags').value.trim();
+            if (emotionTags) params.emotion_tags = emotionTags;
+
+            if (currentMode === 'voice_design') {
+                const vdPrompt = document.getElementById('voiceDesignPrompt').value.trim();
+                if (vdPrompt) params.voice_design_prompt = vdPrompt;
+            }
+
+            try {
+                const resp = await fetch('/tasks/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    showStatus(data.detail || '任务提交失败', 'error');
+                    btn.disabled = false;
+                    btn.textContent = '🐟 生成语音';
+                    return;
+                }
+
+                const taskId = data.task_id;
+                if (batchCount > 1) {
+                    showStatus(`✅ 已提交 ${batchCount} 个任务到队列，请前往<a href="tasks.html" style="color:var(--primary-light)">任务列表</a>查看进度`, 'success');
+                    btn.disabled = false;
+                    btn.textContent = '🐟 生成语音';
+                } else {
+                    showStatus('⏳ 任务已提交到队列，正在等待执行...', 'info');
+                    document.getElementById('resultCard').style.display = 'block';
+                    document.getElementById('resultContent').innerHTML = '<div style="text-align:center;color:#94a3b8;padding:20px;">⏳ 任务已提交到队列，正在等待执行...</div>';
+                    startPollingTask(taskId);
+                }
+            } catch (e) {
+                showStatus('请求失败: ' + e.message, 'error');
+                btn.disabled = false;
+                btn.textContent = '🐟 生成语音';
+            }
+        }
+
+        // 轮询任务状态
+        function startPollingTask(taskId) {
+            let attempts = 0;
+            const maxAttempts = 120; // 6分钟超时
+
+            pollingTimer = setInterval(async () => {
+                attempts++;
+                try {
+                    const resp = await fetch(`/tasks/${taskId}/status`);
+                    const data = await resp.json();
+
+                    if (data.status === 'completed') {
+                        stopPolling();
+                        displayTaskResult(data);
+                    } else if (data.status === 'failed') {
+                        stopPolling();
+                        showStatus('❌ 生成失败: ' + (data.error || '未知错误'), 'error');
+                        document.getElementById('generateBtn').disabled = false;
+                        document.getElementById('generateBtn').textContent = '🐟 生成语音';
+                    } else if (data.status === 'processing') {
+                        document.getElementById('resultContent').innerHTML = '<div style="text-align:center;color:var(--primary-light);padding:20px;">🔧 正在生成音频...</div>';
+                    } else if (attempts >= maxAttempts) {
+                        stopPolling();
+                        showStatus('⏰ 任务超时，请前往<a href="tasks.html" style="color:var(--primary-light)">任务列表</a>查看', 'error');
+                        document.getElementById('generateBtn').disabled = false;
+                        document.getElementById('generateBtn').textContent = '🐟 生成语音';
+                    }
+                } catch (e) {
+                    console.error('轮询失败:', e);
+                }
+            }, 3000);
+        }
+
+        function stopPolling() {
+            if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+        }
+
+        function displayTaskResult(data) {
+            document.getElementById('resultCard').style.display = 'block';
+            const audioUrl = data.audio_url || data.result?.audio_url || '';
+            const batchResultsData = data.result?.batch_results || [];
+
+            if (batchResultsData.length > 0) {
+                // 批量结果
+                let html = '<div class="batch-results">';
+                batchResultsData.forEach((r, i) => {
+                    html += `
+                        <div class="batch-item">
+                            <span style="color:#94a3b8;font-size:12px;min-width:40px;">#${i+1}</span>
+                            <audio controls src="${r.url}" style="flex:1;min-width:150px;"></audio>
+                            <a href="${r.url}" class="btn-download" download>⬇ 下载</a>
+                        </div>`;
+                });
+                html += '</div>';
+                if (data.audio_url && data.audio_url.endsWith('.zip')) {
+                    html += `<div style="text-align:center;margin-top:12px;"><a href="${data.audio_url}" class="btn-download">📦 批量下载ZIP</a></div>`;
+                }
+                document.getElementById('resultContent').innerHTML = html;
+            } else if (audioUrl) {
+                document.getElementById('resultContent').innerHTML = `
+                    <div class="audio-player">
+                        <span style="color:#4ade80;font-size:14px;">✅ 生成完成！</span>
+                        <audio controls src="${audioUrl}" style="flex:1;min-width:200px;"></audio>
+                        <a href="${audioUrl}" class="btn-download" download>⬇ 下载</a>
+                    </div>`;
+            }
+
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtn').textContent = '🐟 生成语音';
+            showStatus('✅ 生成完成！', 'success');
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById('statusMsg');
+            el.textContent = msg; // Allow HTML for links
+            if (msg.includes('<a')) el.innerHTML = msg;
+            el.className = 'status-msg status-' + type;
+            el.style.display = 'block';
+            if (type === 'success') setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+    </script>
+</body>
+</html>

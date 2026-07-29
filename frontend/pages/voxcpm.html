@@ -467,7 +467,7 @@
 
                 if (data.success) {
                     document.getElementById('batchResultSection').style.display = 'none';
-                    VersTTS.showResult(data, { filename: `voxcpm_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！');
                 } else {
                     throw new Error(data.message || '生成失败');
@@ -774,7 +774,10 @@
         // 添加到任务队列
         async function addToQueue() {
             const text = document.getElementById('textInput').value.trim();
-            const mode = document.querySelector('.mode-tab.active')?.dataset.mode || 'base';
+            // 复用 switchVoxCPMMode 维护的 currentMode（与批量提交保持一致）。
+            // 此前用 .mode-tab.active 的 dataset.mode 取值，但按钮未声明 data-mode 属性，
+            // 导致单条提交始终兜底为 base，与按 currentMode 收集的参数不匹配。
+            const mode = currentMode;
 
             if (!text) {
                 VersTTS.showStatus('请输入要生成的文本', true);
@@ -911,7 +914,7 @@
                 }
                 if (downloadLink) {
                     downloadLink.href = audioUrl;
-                    downloadLink.download = `voxcpm_${taskData.task_id}.wav`;
+                    downloadLink.download = audioUrl.split('/').pop() || `voxcpm_${taskData.task_id}.wav`;
                     downloadLink.style.display = 'inline-flex';
                 }
                 if (statusEl) {

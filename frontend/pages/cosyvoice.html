@@ -306,7 +306,7 @@
 
                 if (data.success) {
                     document.getElementById('batchResultSection').style.display = 'none';
-                    VersTTS.showResult(data, { filename: `cosyvoice_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！');
                 } else {
                     throw new Error(data.message || '生成失败');
@@ -714,7 +714,7 @@
                 }
                 if (downloadLink) {
                     downloadLink.href = audioUrl;
-                    downloadLink.download = `cosyvoice_${taskData.task_id}.wav`;
+                    downloadLink.download = audioUrl.split('/').pop() || `cosyvoice_${taskData.task_id}.wav`;
                     downloadLink.style.display = 'inline-flex';
                 }
                 if (statusEl) {

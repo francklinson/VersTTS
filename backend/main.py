@@ -63,7 +63,7 @@ except Exception as e:
 sys.path.insert(0, PROJECT_ROOT)
 
 # ========== 导入应用组件 ==========
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
@@ -109,6 +109,17 @@ app.add_middleware(
 # 并发控制中间件
 from backend.core.concurrency import concurrency_middleware
 app.middleware("http")(concurrency_middleware)
+
+# 前端页面防缓存中间件：对 /pages/ 下的 HTML 强制 no-cache，
+# 避免浏览器强缓存旧页面导致前端改动不生效（HTML 自身无版本号查询参数）。
+@app.middleware("http")
+async def no_cache_html_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/pages/") and request.url.path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # 注册 API 路由
 app.include_router(api_router)

@@ -16,6 +16,8 @@ from .indextts import router as indextts_router
 from .fireredtts import router as fireredtts_router
 from .omnivoice import router as omnivoice_router
 from .pilottts import router as pilottts_router
+from .dotstts import router as dotstts_router
+from .fishspeech import router as fishspeech_router
 
 # TTS 主路由
 router = APIRouter()
@@ -32,5 +34,7 @@ router.include_router(indextts_router, prefix="/indextts")
 router.include_router(fireredtts_router, prefix="/fireredtts")
 router.include_router(omnivoice_router, prefix="/omnivoice")
 router.include_router(pilottts_router, prefix="/pilottts")
+router.include_router(dotstts_router, prefix="/dotstts")
+router.include_router(fishspeech_router, prefix="/fishspeech")
 
 __all__ = ['router']

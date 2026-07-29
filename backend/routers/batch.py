@@ -22,6 +22,8 @@ from backend.logger_config import system_logger
 from backend.batch_processor import batch_processor, BatchJob
 from backend.models.schemas import BatchGenerateRequest, BatchGenerateResponse, BatchDownloadRequest
 from backend.config import OUTPUTS_DIR
+from backend.task_handlers import _generate_meaningful_filename
+from backend.core.audio_utils import verify_audio_content
 
 router = APIRouter()
 
@@ -37,6 +39,49 @@ omnivoice_semaphore = asyncio.Semaphore(OMNIVOICE_CONCURRENCY)
 cosyvoice_semaphore = asyncio.Semaphore(COSYVOICE_CONCURRENCY)
 pilottts_semaphore = asyncio.Semaphore(GPU_MODEL_CONCURRENCY)  # PilotTTS 是 GPU 模型，串行执行
 gptsovits_semaphore = asyncio.Semaphore(GPTSOVITS_CONCURRENCY)  # GPT-SoVITS 是 GPU 模型，串行执行
+
+
+def _verify_batch_audio(audio_path: str, expected_text: str, model_tag: str,
+                        index: int, count: int) -> bool:
+    """批量生成逐条内容校验（需求2）—— 同步实现。
+
+    与单条路径不同：批量不抛异常（避免中断整批），校验失败时删除该条音频并返回 False，
+    调用方据此不把该条计入 audio_urls/audio_files，使其自然被 zip 排除。
+    校验关闭/无期望文本/ASR 异常时放行返回 True。
+
+    适用于在 executor 线程中执行的批量（VoxCPM/Qwen3-TTS，本身已脱离事件循环）。
+    async 协程中的批量请改用 _verify_batch_audio_async，避免同步 ASR 阻塞事件循环。
+    """
+    passed, similarity, asr_text, reason = verify_audio_content(audio_path, expected_text)
+    if passed:
+        if reason not in ("disabled", "no_expected_text", "asr_error") and similarity >= 0:
+            system_logger.info(
+                f"【批量校验】{model_tag} 第 {index+1}/{count} 个通过 | 相似度={similarity:.2f} | ASR='{asr_text}'"
+            )
+        return True
+    # 校验失败：删除文件
+    try:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+    except OSError as e:
+        system_logger.warning(f"【批量校验】删除失败 {audio_path}: {e}")
+    system_logger.warning(
+        f"【批量校验】{model_tag} 第 {index+1}/{count} 个不合格已剔除 | "
+        f"相似度={similarity:.2f} | ASR='{asr_text}' | 期望='{expected_text[:30]}'"
+    )
+    return False
+
+
+async def _verify_batch_audio_async(audio_path: str, expected_text: str, model_tag: str,
+                                    index: int, count: int) -> bool:
+    """批量校验的 async 包装：把同步 ASR 推理放到线程池，避免阻塞事件循环。
+
+    供 async 协程中的批量生成（OmniVoice/CosyVoice/PilotTTS/GPT-SoVITS）调用。
+    wenet 单例的线程安全由 asr_service 内部的锁保证。
+    """
+    return await asyncio.to_thread(
+        _verify_batch_audio, audio_path, expected_text, model_tag, index, count
+    )
 
 
 class BatchTTSRequest(BaseModel):
@@ -214,13 +259,17 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
                            speaker_id: str = None,
                            voice_design_prompt: str = None,
                            control_prompt: str = None,
-                           progress_callback: Callable = None) -> Dict:
-    """批量生成VoxCPM音频"""
+                           progress_callback: Callable = None,
+                           cancel_check: Callable[[], bool] = None) -> Dict:
+    """批量生成VoxCPM音频
+
+    Args:
+        cancel_check: 可选的取消检查回调，返回 True 表示任务已被超时/取消，
+                      应在每条之间调用以尽快跳出并释放 GPU。
+    """
     import torch
     import soundfile as sf
     import numpy as np
-    import re
-    from datetime import datetime
     from backend.engines import get_voxcpm_model
     from backend.services import get_speaker_by_id
     from backend.core import cleanup_memory, log_gpu_memory_usage
@@ -253,6 +302,12 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
 
     # 批量生成
     for i in range(count):
+        # 每条之间检查任务是否已被超时/取消：同步推理线程无法被
+        # asyncio.wait_for 外部中断，必须主动跳出以释放 GPU
+        if cancel_check and cancel_check():
+            system_logger.warning(f"【批量生成】VoxCPM 任务已被取消/超时，在第 {i+1}/{count} 个处中止")
+            break
+
         try:
             # 报告进度
             if progress_callback:
@@ -295,26 +350,19 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
             # 生成音频
             audio_data = model.generate(**generate_kwargs)
 
-            # 保存音频（使用有意义的文件名）
+            # 保存音频（统一命名：指令前置、时间戳压缩到末尾）
             sr = 48000
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-            # 提取文本摘要
-            text_summary = text[:8].strip()
-            text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
-            if not text_summary:
-                text_summary = "audio"
-
-            # 构建文件名
-            speaker_part = ""
-            if speaker_name:
-                clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
-                if clean_name:
-                    speaker_part = f"_{clean_name}"
-
-            filename = f"voxcpm_{mode}{speaker_part}_{text_summary}_{timestamp}_{i+1:02d}of{count:02d}.wav"
+            filename = _generate_meaningful_filename(
+                "voxcpm", mode, text, index=i, batch_total=count,
+                speaker_name=speaker_name,
+                instruct_prompt=(control_prompt or voice_design_prompt)
+            )
             audio_path = os.path.join(OUTPUTS_DIR, filename)
             sf.write(audio_path, audio_data, sr)
+
+            # 内容校验（需求2）：不达标则删文件并跳过该条，不中断整批
+            if not _verify_batch_audio(audio_path, text, "VoxCPM", i, count):
+                continue
 
             audio_urls.append(f"/audio/{filename}")
             audio_files.append(filename)
@@ -339,12 +387,17 @@ def _batch_generate_voxcpm(text: str, mode: str, count: int,
 def _batch_generate_qwen3tts(text: str, mode: str, count: int,
                              speaker_id: str = None,
                              voice_design_prompt: str = None,
-                             progress_callback: Callable = None) -> Dict:
-    """批量生成Qwen3-TTS音频"""
+                             progress_callback: Callable = None,
+                             cancel_check: Callable[[], bool] = None) -> Dict:
+    """批量生成Qwen3-TTS音频
+
+    Args:
+        cancel_check: 可选的取消检查回调，返回 True 表示任务已被超时/取消，
+                     应在每条之间调用以尽快跳出并释放 GPU（同步线程无法被
+                      asyncio.wait_for 外部中断）。
+    """
     import torch
     import numpy as np
-    import re
-    from datetime import datetime
     import soundfile as sf
     from backend.engines import get_qwen3tts_model
     from backend.services import load_speakers_db
@@ -381,6 +434,12 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
 
     # 批量生成
     for i in range(count):
+        # 每条之间检查任务是否已被超时/取消：同步推理线程无法被
+        # asyncio.wait_for 外部中断，必须主动跳出以释放 GPU
+        if cancel_check and cancel_check():
+            system_logger.warning(f"【批量生成】Qwen3-TTS 任务已被取消/超时，在第 {i+1}/{count} 个处中止")
+            break
+
         try:
             # 报告进度
             if progress_callback:
@@ -473,25 +532,20 @@ def _batch_generate_qwen3tts(text: str, mode: str, count: int,
             else:
                 audio_data = wav
 
-            # 保存音频（使用有意义的文件名）
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-            # 提取文本摘要
-            text_summary = text[:8].strip()
-            text_summary = re.sub(r'[^\w\u4e00-\u9fff]', '', text_summary)
-            if not text_summary:
-                text_summary = "audio"
-
-            # 构建文件名
-            speaker_part = ""
-            if speaker_name:
-                clean_name = re.sub(r'[^\w\u4e00-\u9fff]', '', speaker_name)[:6]
-                if clean_name:
-                    speaker_part = f"_{clean_name}"
-
-            filename = f"qwen3tts_{mode}{speaker_part}_{text_summary}_{timestamp}_{i+1:02d}of{count:02d}.wav"
+            # 保存音频（统一命名：指令前置、时间戳压缩到末尾）
+            filename = _generate_meaningful_filename(
+                "qwen3tts", mode, text, index=i, batch_total=count,
+                speaker_name=speaker_name,
+                instruct_prompt=voice_design_prompt
+            )
             audio_path = os.path.join(OUTPUTS_DIR, filename)
             sf.write(audio_path, audio_data, sr)
+
+            # 内容校验（需求2）：不达标则删文件并跳过该条，不中断整批
+            if not _verify_batch_audio(audio_path, text, "Qwen3-TTS", i, count):
+                if torch.cuda.is_available():
+                    del audio_data, wav
+                continue
 
             audio_urls.append(f"/audio/{filename}")
             audio_files.append(filename)
@@ -526,12 +580,17 @@ async def _generate_single_omnivoice(
     speaker_ref_text: str = None,
     voice_design_prompt: str = None,
     omnivoice_url: str = "",
-    speed: float = 1.0
+    speed: float = 1.0,
+    count: int = 1
 ) -> Dict:
     """单个OmniVoice生成任务（受信号量控制）"""
     import soundfile as sf
-    
+    import time as _time
+
+    _t_enter = _time.time()
     async with omnivoice_semaphore:  # 限制并发数
+        _t_after_sem = _time.time()
+        _sem_wait = _t_after_sem - _t_enter  # 等待信号量的耗时（并发被卡时会长）
         try:
             # 构建请求数据
             data = {
@@ -546,52 +605,81 @@ async def _generate_single_omnivoice(
                     data["ref_text"] = speaker_ref_text
             elif mode == "voice_design" and voice_design_prompt:
                 data["voice_design_prompt"] = voice_design_prompt
-            
+
             # 异步HTTP请求（超时120秒）
             timeout = aiohttp.ClientTimeout(total=120)
+            _t_http_start = _time.time()
             async with session.post(omnivoice_url, data=data, timeout=timeout) as response:
+                _t_http_end = _time.time()
+                _http_dur = _t_http_end - _t_http_start  # 子服务处理单条的耗时
                 if response.status != 200:
                     error_text = await response.text()
-                    system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个失败: {error_text}")
+                    system_logger.error(
+                        f"【批量生成】OmniVoice 第 {index+1}/{count} 个失败(HTTP {response.status}) "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s: {error_text}"
+                    )
                     return {"success": False, "index": index}
-                
+
                 result = await response.json()
                 if not result.get("success"):
-                    system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个合成失败")
+                    system_logger.error(
+                        f"【批量生成】OmniVoice 第 {index+1}/{count} 个合成失败 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
-                
+
                 temp_audio_path = result.get("audio_path")
                 if not temp_audio_path or not os.path.exists(temp_audio_path):
-                    system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个音频文件未生成")
+                    system_logger.error(
+                        f"【批量生成】OmniVoice 第 {index+1}/{count} 个音频文件未生成 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
-                
-                # 保存音频到 outputs 目录（使用有意义的文件名）
-                import re
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-                output_path = os.path.join(OUTPUTS_DIR, f"omnivoice_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+
+                # 保存音频到 outputs 目录（统一命名：指令前置、时间戳压缩到末尾）
+                _filename = _generate_meaningful_filename(
+                    "omnivoice", mode, text, index=index, batch_total=count,
+                    instruct_prompt=voice_design_prompt
+                )
+                output_path = os.path.join(OUTPUTS_DIR, _filename)
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
-                
+
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
                 except Exception:
                     pass
-                
-                system_logger.info(f"【批量生成】OmniVoice 第 {index+1} 个完成")
+
+                # 内容校验（需求2）：不达标则删文件并剔除该条，不中断整批
+                if not await _verify_batch_audio_async(output_path, text, "OmniVoice", index, count):
+                    return {"success": False, "index": index, "error": "verify_failed"}
+
+                _total = _time.time() - _t_enter
+                system_logger.info(
+                    f"【批量生成】OmniVoice 第 {index+1}/{count} 个完成 "
+                    f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s)"
+                )
                 return {
                     "success": True,
                     "index": index,
                     "audio_url": f"/audio/{os.path.basename(output_path)}",
                     "audio_file": os.path.basename(output_path)
                 }
-                
+
         except asyncio.TimeoutError:
-            system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个超时")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】OmniVoice 第 {index+1}/{count} 个超时 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s)"
+            )
             return {"success": False, "index": index, "error": "timeout"}
         except Exception as e:
-            system_logger.error(f"【批量生成】OmniVoice 第 {index+1} 个失败: {e}")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】OmniVoice 第 {index+1}/{count} 个失败 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
+            )
             return {"success": False, "index": index, "error": str(e)}
 
 
@@ -694,6 +782,8 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
             speaker_ref_text = speaker.get("reference_text")
     
     system_logger.info(f"【批量生成】OmniVoice 开始并行生成 | 数量: {count} | 并发度: {OMNIVOICE_CONCURRENCY}")
+    import time as _time
+    _batch_start = _time.time()
     
     # 报告初始进度
     if progress_callback:
@@ -714,7 +804,8 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                 speaker_ref_text=speaker_ref_text,
                 voice_design_prompt=voice_design_prompt,
                 omnivoice_url=OMNIVOICE_SERVICE_URL,
-                speed=speed
+                speed=speed,
+                count=count
             )
             pending_tasks.append(task)
         
@@ -737,7 +828,11 @@ async def _batch_generate_omnivoice(text: str, mode: str, count: int,
                     progress_callback(completed, count)
     
     success_count = len(audio_urls)
-    system_logger.info(f"【批量生成】OmniVoice 完成 | 成功: {success_count}/{count}")
+    _batch_dur = _time.time() - _batch_start
+    system_logger.info(
+        f"【批量生成】OmniVoice 完成 | 成功: {success_count}/{count} 总耗时={_batch_dur:.1f}s "
+        f"平均={(_batch_dur/count):.1f}s/条 并发度={OMNIVOICE_CONCURRENCY}"
+    )
     
     # 报告最终进度
     if progress_callback:
@@ -779,7 +874,9 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
             prompt_text = speaker.get("reference_text")
     
     system_logger.info(f"【批量生成】CosyVoice 开始并行生成 | 数量: {count} | 并发度: {COSYVOICE_CONCURRENCY} | 模式: {mode}")
-    
+    import time as _time
+    _batch_start = _time.time()
+
     # 报告初始进度
     if progress_callback:
         progress_callback(0, count)
@@ -798,7 +895,8 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
                 ref_path=ref_path,
                 prompt_text=prompt_text,
                 instruct_text=control_prompt,
-                cosyvoice_url=COSYVOICE_SERVICE_URL
+                cosyvoice_url=COSYVOICE_SERVICE_URL,
+                count=count
             )
             pending_tasks.append(task)
         
@@ -821,12 +919,16 @@ async def _batch_generate_cosyvoice(text: str, mode: str, count: int,
                     progress_callback(completed, count)
     
     success_count = len(audio_urls)
-    system_logger.info(f"【批量生成】CosyVoice 完成 | 成功: {success_count}/{count}")
-    
+    _batch_dur = _time.time() - _batch_start
+    system_logger.info(
+        f"【批量生成】CosyVoice 完成 | 成功: {success_count}/{count} 总耗时={_batch_dur:.1f}s "
+        f"平均={(_batch_dur/count):.1f}s/条 并发度={COSYVOICE_CONCURRENCY}"
+    )
+
     # 报告最终进度
     if progress_callback:
         progress_callback(count, count)
-    
+
     return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 
@@ -838,12 +940,17 @@ async def _generate_single_cosyvoice(
     ref_path: str = None,
     prompt_text: str = None,
     instruct_text: str = None,
-    cosyvoice_url: str = ""
+    cosyvoice_url: str = "",
+    count: int = 1
 ) -> Dict:
     """单个CosyVoice生成任务（受信号量控制）"""
     import soundfile as sf
-    
+    import time as _time
+
+    _t_enter = _time.time()
     async with cosyvoice_semaphore:  # 限制并发数
+        _t_after_sem = _time.time()
+        _sem_wait = _t_after_sem - _t_enter  # 等待信号量的耗时（并发被卡时会长）
         try:
             # 构建请求数据
             data = {
@@ -851,7 +958,7 @@ async def _generate_single_cosyvoice(
                 "mode": mode,
                 "output_format": "url"
             }
-            
+
             if mode == "zero_shot":
                 if ref_path:
                     data["prompt_wav_path"] = ref_path
@@ -865,52 +972,81 @@ async def _generate_single_cosyvoice(
             elif mode == "cross_lingual":
                 if ref_path:
                     data["prompt_wav_path"] = ref_path
-            
+
             # 异步HTTP请求（超时120秒）
             timeout = aiohttp.ClientTimeout(total=120)
+            _t_http_start = _time.time()
             async with session.post(cosyvoice_url, data=data, timeout=timeout) as response:
+                _t_http_end = _time.time()
+                _http_dur = _t_http_end - _t_http_start  # 子服务处理单条的耗时
                 if response.status != 200:
                     error_text = await response.text()
-                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个失败: {error_text}")
+                    system_logger.error(
+                        f"【批量生成】CosyVoice 第 {index+1}/{count} 个失败(HTTP {response.status}) "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s: {error_text}"
+                    )
                     return {"success": False, "index": index}
-                
+
                 result = await response.json()
                 if not result.get("success"):
-                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个合成失败")
+                    system_logger.error(
+                        f"【批量生成】CosyVoice 第 {index+1}/{count} 个合成失败 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
-                
+
                 temp_audio_path = result.get("audio_path")
                 if not temp_audio_path or not os.path.exists(temp_audio_path):
-                    system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个音频文件未生成")
+                    system_logger.error(
+                        f"【批量生成】CosyVoice 第 {index+1}/{count} 个音频文件未生成 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
-                
-                # 保存音频到 outputs 目录（使用有意义的文件名）
-                import re
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-                output_path = os.path.join(OUTPUTS_DIR, f"cosyvoice_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+
+                # 保存音频到 outputs 目录（统一命名：指令前置、时间戳压缩到末尾）
+                _filename = _generate_meaningful_filename(
+                    "cosyvoice", mode, text, index=index, batch_total=count,
+                    instruct_prompt=instruct_text
+                )
+                output_path = os.path.join(OUTPUTS_DIR, _filename)
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
-                
+
                 # 清理临时文件
                 try:
                     os.remove(temp_audio_path)
                 except Exception:
                     pass
-                
-                system_logger.info(f"【批量生成】CosyVoice 第 {index+1} 个完成")
+
+                # 内容校验（需求2）：不达标则删文件并剔除该条，不中断整批
+                if not await _verify_batch_audio_async(output_path, text, "CosyVoice", index, count):
+                    return {"success": False, "index": index, "error": "verify_failed"}
+
+                _total = _time.time() - _t_enter
+                system_logger.info(
+                    f"【批量生成】CosyVoice 第 {index+1}/{count} 个完成 "
+                    f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s)"
+                )
                 return {
                     "success": True,
                     "index": index,
                     "audio_url": f"/audio/{os.path.basename(output_path)}",
                     "audio_file": os.path.basename(output_path)
                 }
-                
+
         except asyncio.TimeoutError:
-            system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个超时")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】CosyVoice 第 {index+1}/{count} 个超时 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s)"
+            )
             return {"success": False, "index": index, "error": "timeout"}
         except Exception as e:
-            system_logger.error(f"【批量生成】CosyVoice 第 {index+1} 个失败: {e}")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】CosyVoice 第 {index+1}/{count} 个失败 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
+            )
             return {"success": False, "index": index, "error": str(e)}
 
 
@@ -940,7 +1076,9 @@ async def _batch_generate_pilottts(text: str, mode: str, count: int,
         if speaker:
             ref_path = speaker.get("audio_path")
 
-    system_logger.info(f"【批量生成】PilotTTS 开始并行生成 | 数量: {count} | 模式: {mode}")
+    system_logger.info(f"【批量生成】PilotTTS 开始并行生成 | 数量: {count} | 模式: {mode} | 并发度: {GPU_MODEL_CONCURRENCY}")
+    import time as _time
+    _batch_start = _time.time()
 
     # 报告初始进度
     if progress_callback:
@@ -960,7 +1098,8 @@ async def _batch_generate_pilottts(text: str, mode: str, count: int,
                 ref_path=ref_path,
                 emotion=emotion,
                 language=language,
-                pilottts_url=PILOTTS_SERVICE_URL
+                pilottts_url=PILOTTS_SERVICE_URL,
+                count=count
             )
             pending_tasks.append(task)
 
@@ -982,7 +1121,11 @@ async def _batch_generate_pilottts(text: str, mode: str, count: int,
                     progress_callback(completed, count)
 
     success_count = len(audio_urls)
-    system_logger.info(f"【批量生成】PilotTTS 完成 | 成功: {success_count}/{count}")
+    _batch_dur = _time.time() - _batch_start
+    system_logger.info(
+        f"【批量生成】PilotTTS 完成 | 成功: {success_count}/{count} 总耗时={_batch_dur:.1f}s "
+        f"平均={(_batch_dur/count):.1f}s/条 并发度={GPU_MODEL_CONCURRENCY}"
+    )
 
     if progress_callback:
         progress_callback(count, count)
@@ -998,13 +1141,17 @@ async def _generate_single_pilottts(
     ref_path: str = None,
     emotion: str = None,
     language: str = "zh",
-    pilottts_url: str = ""
+    pilottts_url: str = "",
+    count: int = 1
 ) -> Dict:
     """单个PilotTTS生成任务（受信号量控制）"""
     import soundfile as sf
-    import re
+    import time as _time
 
-    async with pilottts_semaphore:
+    _t_enter = _time.time()
+    async with pilottts_semaphore:  # 限制并发数
+        _t_after_sem = _time.time()
+        _sem_wait = _t_after_sem - _t_enter  # 等待信号量的耗时（并发被卡时会长）
         try:
             # 构建请求数据
             data = {
@@ -1018,26 +1165,40 @@ async def _generate_single_pilottts(
 
             # 异步HTTP请求（超时300秒，PilotTTS生成较慢）
             timeout = aiohttp.ClientTimeout(total=300)
+            _t_http_start = _time.time()
             async with session.post(pilottts_url, data=data, timeout=timeout) as response:
+                _t_http_end = _time.time()
+                _http_dur = _t_http_end - _t_http_start  # 子服务处理单条的耗时
                 if response.status != 200:
                     error_text = await response.text()
-                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个失败: {error_text}")
+                    system_logger.error(
+                        f"【批量生成】PilotTTS 第 {index+1}/{count} 个失败(HTTP {response.status}) "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s: {error_text}"
+                    )
                     return {"success": False, "index": index}
 
                 result = await response.json()
                 if not result.get("success"):
-                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个合成失败")
+                    system_logger.error(
+                        f"【批量生成】PilotTTS 第 {index+1}/{count} 个合成失败 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
 
                 temp_audio_path = result.get("audio_path")
                 if not temp_audio_path or not os.path.exists(temp_audio_path):
-                    system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个音频文件未生成")
+                    system_logger.error(
+                        f"【批量生成】PilotTTS 第 {index+1}/{count} 个音频文件未生成 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
 
-                # 保存音频到 outputs 目录
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-                output_path = os.path.join(OUTPUTS_DIR, f"pilottts_{mode}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+                # 保存音频到 outputs 目录（统一命名：指令前置、时间戳压缩到末尾）
+                _filename = _generate_meaningful_filename(
+                    "pilottts", mode, text, index=index, batch_total=count,
+                    instruct_prompt=emotion
+                )
+                output_path = os.path.join(OUTPUTS_DIR, _filename)
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
 
@@ -1047,7 +1208,15 @@ async def _generate_single_pilottts(
                 except Exception:
                     pass
 
-                system_logger.info(f"【批量生成】PilotTTS 第 {index+1} 个完成")
+                # 内容校验（需求2）：不达标则删文件并剔除该条，不中断整批
+                if not await _verify_batch_audio_async(output_path, text, "PilotTTS", index, count):
+                    return {"success": False, "index": index, "error": "verify_failed"}
+
+                _total = _time.time() - _t_enter
+                system_logger.info(
+                    f"【批量生成】PilotTTS 第 {index+1}/{count} 个完成 "
+                    f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s)"
+                )
                 return {
                     "success": True,
                     "index": index,
@@ -1056,10 +1225,18 @@ async def _generate_single_pilottts(
                 }
 
         except asyncio.TimeoutError:
-            system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个超时")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】PilotTTS 第 {index+1}/{count} 个超时 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s)"
+            )
             return {"success": False, "index": index, "error": "timeout"}
         except Exception as e:
-            system_logger.error(f"【批量生成】PilotTTS 第 {index+1} 个失败: {e}")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】PilotTTS 第 {index+1}/{count} 个失败 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
+            )
             return {"success": False, "index": index, "error": str(e)}
 
 
@@ -1223,7 +1400,9 @@ async def _batch_generate_gptsovits(text: str, mode: str, count: int,
     if not ref_path or not prompt_text:
         raise ValueError("GPT-SoVITS 需要参考音频和参考文本，请选择有参考文本的说话人")
 
-    system_logger.info(f"【批量生成】GPT-SoVITS 开始串行生成 | 数量: {count} | 版本: {version}")
+    system_logger.info(f"【批量生成】GPT-SoVITS 开始串行生成 | 数量: {count} | 版本: {version} | 并发度: {GPTSOVITS_CONCURRENCY}")
+    import time as _time
+    _batch_start = _time.time()
 
     if progress_callback:
         progress_callback(0, count)
@@ -1240,7 +1419,8 @@ async def _batch_generate_gptsovits(text: str, mode: str, count: int,
                 ref_path=ref_path,
                 prompt_text=prompt_text,
                 version=version,
-                gptsovits_url=GPTSOVITS_SERVICE_URL
+                gptsovits_url=GPTSOVITS_SERVICE_URL,
+                count=count
             )
             pending_tasks.append(task)
 
@@ -1261,7 +1441,11 @@ async def _batch_generate_gptsovits(text: str, mode: str, count: int,
                     progress_callback(completed, count)
 
     success_count = len(audio_urls)
-    system_logger.info(f"【批量生成】GPT-SoVITS 完成 | 成功: {success_count}/{count}")
+    _batch_dur = _time.time() - _batch_start
+    system_logger.info(
+        f"【批量生成】GPT-SoVITS 完成 | 成功: {success_count}/{count} 总耗时={_batch_dur:.1f}s "
+        f"平均={(_batch_dur/count):.1f}s/条 并发度={GPTSOVITS_CONCURRENCY}"
+    )
 
     if progress_callback:
         progress_callback(count, count)
@@ -1277,12 +1461,17 @@ async def _generate_single_gptsovits(
     ref_path: str = None,
     prompt_text: str = None,
     version: str = "v2",
-    gptsovits_url: str = ""
+    gptsovits_url: str = "",
+    count: int = 1
 ) -> Dict:
     """单个 GPT-SoVITS 生成任务（受信号量控制）"""
     import soundfile as sf
+    import time as _time
 
-    async with gptsovits_semaphore:
+    _t_enter = _time.time()
+    async with gptsovits_semaphore:  # 限制并发数
+        _t_after_sem = _time.time()
+        _sem_wait = _t_after_sem - _t_enter  # 等待信号量的耗时（并发被卡时会长）
         try:
             data = {
                 "text": text,
@@ -1294,28 +1483,42 @@ async def _generate_single_gptsovits(
                 "output_format": "url",
             }
 
+            # 异步HTTP请求（超时120秒）
             timeout = aiohttp.ClientTimeout(total=120)
+            _t_http_start = _time.time()
             async with session.post(gptsovits_url, data=data, timeout=timeout) as response:
+                _t_http_end = _time.time()
+                _http_dur = _t_http_end - _t_http_start  # 子服务处理单条的耗时
                 if response.status != 200:
                     error_text = await response.text()
-                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个失败: {error_text}")
+                    system_logger.error(
+                        f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个失败(HTTP {response.status}) "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s: {error_text}"
+                    )
                     return {"success": False, "index": index}
 
                 result = await response.json()
                 if not result.get("success"):
-                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个合成失败")
+                    system_logger.error(
+                        f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个合成失败 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
 
                 temp_audio_path = result.get("audio_path")
                 if not temp_audio_path or not os.path.exists(temp_audio_path):
-                    system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个音频文件未生成")
+                    system_logger.error(
+                        f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个音频文件未生成 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
                     return {"success": False, "index": index}
 
-                # 保存音频到 outputs 目录
-                import re
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                text_summary = re.sub(r'[^\w一-鿿]', '', text[:8].strip()) or "audio"
-                output_path = os.path.join(OUTPUTS_DIR, f"gptsovits_{version}_{text_summary}_{timestamp}_{index+1:02d}.wav")
+                # 保存音频到 outputs 目录（统一命名：版本前缀、时间戳压缩到末尾）
+                _filename = _generate_meaningful_filename(
+                    "gptsovits", mode, text, index=index, batch_total=count,
+                    prefix=version
+                )
+                output_path = os.path.join(OUTPUTS_DIR, _filename)
                 audio_data, sample_rate = sf.read(temp_audio_path)
                 sf.write(output_path, audio_data, samplerate=sample_rate)
 
@@ -1325,7 +1528,15 @@ async def _generate_single_gptsovits(
                 except Exception:
                     pass
 
-                system_logger.info(f"【批量生成】GPT-SoVITS 第 {index+1} 个完成")
+                # 内容校验（需求2）：不达标则删文件并剔除该条，不中断整批
+                if not await _verify_batch_audio_async(output_path, text, "GPT-SoVITS", index, count):
+                    return {"success": False, "index": index, "error": "verify_failed"}
+
+                _total = _time.time() - _t_enter
+                system_logger.info(
+                    f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个完成 "
+                    f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s)"
+                )
                 return {
                     "success": True,
                     "index": index,
@@ -1334,8 +1545,16 @@ async def _generate_single_gptsovits(
                 }
 
         except asyncio.TimeoutError:
-            system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个超时")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个超时 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s)"
+            )
             return {"success": False, "index": index, "error": "timeout"}
         except Exception as e:
-            system_logger.error(f"【批量生成】GPT-SoVITS 第 {index+1} 个失败: {e}")
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】GPT-SoVITS 第 {index+1}/{count} 个失败 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
+            )
             return {"success": False, "index": index, "error": str(e)}

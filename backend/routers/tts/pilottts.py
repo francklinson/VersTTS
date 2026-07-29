@@ -176,7 +176,8 @@ async def tts_pilottts(
         system_logger.info(f"【PilotTTS】读取音频文件: {audio_path}")
         audio_data, sr = sf.read(audio_path)
         output_path = save_temp_audio(audio_data, sr, prefix="pilottts", mode=mode,
-                                      text=text, speaker_name=speaker_name)
+                                      text=text, speaker_name=speaker_name,
+                                      instruct_prompt=emotion)
         system_logger.info(f"【PilotTTS】音频保存完成: {output_path}")
 
         # 清理临时文件

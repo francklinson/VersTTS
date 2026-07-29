@@ -66,7 +66,7 @@ if not os.path.isabs(MODELS_DIR):
 MODEL_PATH = os.path.join(MODELS_DIR, "OmniVoice")
 
 # ========== 空闲超时配置 ==========
-IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "300"))  # 默认 5 分钟
+IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "900"))  # 默认 15 分钟
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))  # 心跳间隔秒
 
 
@@ -107,7 +107,7 @@ def _register_to_main_service():
     """向主服务注册"""
     try:
         import requests
-        port = int(os.environ.get("OMNIVOICE_PORT", "8001"))
+        port = int(os.environ.get("OMNIVOICE_PORT", "8007"))
         host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
         requests.post(
             f"{_main_service_url}/services/register",
@@ -158,7 +158,7 @@ def _heartbeat():
                 "last_used_time": last_used_time,
                 "gpu_id": _gpu_id,
                 "host": os.environ.get("OMNIVOICE_HOST", "127.0.0.1"),
-                "port": int(os.environ.get("OMNIVOICE_PORT", "8001")),
+                "port": int(os.environ.get("OMNIVOICE_PORT", "8007")),
             },
             timeout=5,
             verify=False,
@@ -200,7 +200,7 @@ async def lifespan(app: FastAPI):
     _gpu_id = os.environ.get("GPU_ID", "0")
     # 主服务地址
     main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
-    main_port = os.environ.get("MAIN_PORT", "8000")
+    main_port = os.environ.get("MAIN_PORT", "8006")
     main_scheme = os.environ.get("MAIN_SCHEME", "https")
     _main_service_url = f"{main_scheme}://{main_host}:{main_port}"
 
@@ -294,7 +294,11 @@ async def tts(
     speed: float = Form(1.0)
 ):
     """OmniVoice TTS 合成"""
+    import time as _time
+    _t0 = _time.time()
     load_model()
+    _t_after_load = _time.time()
+    _load_dur = _t_after_load - _t0  # 模型加载耗时（已加载时应≈0）
     _touch_last_used()
 
     try:
@@ -314,7 +318,10 @@ async def tts(
             logger.info(f"【自动音色】模式")
 
         logger.info(f"【生成参数】{kwargs}")
+        _t_gen_start = _time.time()
         audio_list = model.generate(**kwargs)
+        _t_gen_end = _time.time()
+        _gen_dur = _t_gen_end - _t_gen_start  # 推理耗时（核心耗时）
         audio_data = audio_list[0] if isinstance(audio_list, list) else audio_list
 
         logger.info(f"【音频生成】数据类型: {type(audio_data)}, 形状: {audio_data.shape if hasattr(audio_data, 'shape') else 'N/A'}")
@@ -323,8 +330,12 @@ async def tts(
         timestamp = int(time.time() * 1000)
         output_path = f"/tmp/omnivoice_{timestamp}.wav"
         sf.write(output_path, audio_data, samplerate=24000)
+        _t_save_end = _time.time()
 
-        logger.info(f"【音频保存】路径: {output_path}")
+        logger.info(
+            f"【音频保存】路径: {output_path} | 耗时分解: 加载={_load_dur:.2f}s 推理={_gen_dur:.2f}s "
+            f"保存={(_t_save_end - _t_gen_end):.2f}s 总={(_t_save_end - _t0):.2f}s"
+        )
 
         # 返回音频文件路径
         return {"success": True, "audio_path": output_path, "sample_rate": 24000}
@@ -385,7 +396,7 @@ async def model_status():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("OMNIVOICE_PORT", "8001"))
+    port = int(os.environ.get("OMNIVOICE_PORT", "8007"))
     host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
     print(f"【OmniVoice服务】启动服务，地址: {host}:{port}")
     uvicorn.run(app, host=host, port=port)

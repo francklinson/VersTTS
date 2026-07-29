@@ -95,7 +95,7 @@ async def tts_chattts(
 
         # 保存音频
         sr = 24000
-        audio_path = save_temp_audio(audio_data, sr, prefix="chattts")
+        audio_path = save_temp_audio(audio_data, sr, prefix="chattts", text=original_text)
 
         # 清理显存 - 防止内存泄漏
         if torch.cuda.is_available():

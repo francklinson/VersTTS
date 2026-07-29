@@ -225,7 +225,7 @@ async def tts_cosyvoice(
         sr = result.get("sample_rate", 22050)
         system_logger.info(f"【CosyVoice】读取音频文件: {audio_path} | 采样率: {sr}")
         audio_data, sample_rate = sf.read(audio_path)
-        output_path = save_temp_audio(audio_data, sr, prefix="cosyvoice")
+        output_path = save_temp_audio(audio_data, sr, prefix="cosyvoice", mode=mode, text=text, instruct_prompt=instruct_text)
         system_logger.info(f"【CosyVoice】音频保存完成: {output_path}")
 
         # 清理临时文件

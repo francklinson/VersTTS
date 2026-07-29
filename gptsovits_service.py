@@ -98,7 +98,7 @@ _gpu_id = None  # 当前服务使用的 GPU ID
 _main_service_url = None  # 主服务地址，用于 OOM 驱逐
 
 # ========== 空闲超时配置 ==========
-IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "300"))  # 默认 5 分钟
+IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "900"))  # 默认 15 分钟
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))  # 心跳间隔秒
 _idle_check_task = None
 
@@ -150,7 +150,7 @@ async def lifespan(app: FastAPI):
     _gpu_id = os.environ.get("GPU_ID", "0")
     # 主服务地址
     main_host = os.environ.get("MAIN_HOST", "127.0.0.1")
-    main_port = os.environ.get("MAIN_PORT", "8000")
+    main_port = os.environ.get("MAIN_PORT", "8006")
     main_scheme = os.environ.get("MAIN_SCHEME", "https")
     _main_service_url = f"{main_scheme}://{main_host}:{main_port}"
 
@@ -220,7 +220,7 @@ def _register_to_main_service():
     """向主服务注册，返回是否成功"""
     try:
         import requests
-        port = int(os.environ.get("GPTSOVITS_PORT", "8004"))
+        port = int(os.environ.get("GPTSOVITS_PORT", "8010"))
         host = os.environ.get("GPTSOVITS_HOST", "127.0.0.1")
         requests.post(
             f"{_main_service_url}/services/register",
@@ -272,7 +272,7 @@ def _heartbeat():
                 "last_used_time": last_used_time,
                 "gpu_id": _gpu_id,
                 "host": os.environ.get("GPTSOVITS_HOST", "127.0.0.1"),
-                "port": int(os.environ.get("GPTSOVITS_PORT", "8004")),
+                "port": int(os.environ.get("GPTSOVITS_PORT", "8010")),
             },
             timeout=5,
             verify=False,
@@ -757,12 +757,16 @@ async def tts(
     output_format: str = Form("url")
 ):
     """GPT-SoVITS TTS 合成"""
+    import time as _time
+    _t0 = _time.time()
     # 验证版本参数
     valid_versions = list(VERSION_MODEL_MAP.keys())
     if version not in valid_versions:
         raise HTTPException(status_code=400, detail=f"不支持的版本: {version}，支持: {valid_versions}")
 
     load_model(version=version)
+    _t_after_load = _time.time()
+    _load_dur = _t_after_load - _t0  # 模型加载耗时（已加载时应≈0）
     _touch_last_used()
 
     start_time = time.time()
@@ -800,8 +804,11 @@ async def tts(
             }
 
             # 执行推理
+            _t_gen_start = _time.time()
             tts_generator = pipeline.run(req)
             sr, audio_data = next(tts_generator)
+            _t_gen_end = _time.time()
+            _gen_dur = _t_gen_end - _t_gen_start  # 推理耗时（核心耗时）
 
         finally:
             os.chdir(original_cwd)
@@ -810,9 +817,14 @@ async def tts(
         timestamp = int(time.time() * 1000)
         output_path = f"/tmp/gptsovits_{timestamp}.wav"
         sf.write(output_path, audio_data, sr)
+        _t_save_end = _time.time()
 
         duration = time.time() - start_time
         audio_duration = len(audio_data) / sr if sr > 0 else 0
+        logger.info(
+            f"【音频保存】路径: {output_path} | 耗时分解: 加载={_load_dur:.2f}s 推理={_gen_dur:.2f}s "
+            f"保存={(_t_save_end - _t_gen_end):.2f}s 总={(_t_save_end - _t0):.2f}s"
+        )
         logger.info(f"【TTS完成】音频路径: {output_path} | 采样率: {sr} | 音频时长: {audio_duration:.1f}s | 耗时: {duration:.2f}s")
 
         # 清理显存
@@ -832,7 +844,7 @@ async def tts(
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("GPTSOVITS_PORT", 8004))
+    port = int(os.environ.get("GPTSOVITS_PORT", 8010))
     host = os.environ.get("GPTSOVITS_HOST", "127.0.0.1")
     logger.info(f"【服务启动】地址: {host}:{port}")
     uvicorn.run(app, host=host, port=port)

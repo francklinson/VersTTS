@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
 from backend.config import models, ALGORITHM_PATHS
+from backend.core.model_manager import model_manager
 
 
 def get_indextts_model():
@@ -35,16 +36,31 @@ def get_indextts_model():
             system_logger.info(f"【模型加载】IndexTTS2 从路径: {model_dir}")
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            # 按照GitHub示例初始化: use_fp16=False, use_cuda_kernel=False, use_deepspeed=False
-            models["indextts"] = IndexTTS2(
-                cfg_path=cfg_path,
-                model_dir=model_dir,
-                use_fp16=False,
-                device=device,
-                use_cuda_kernel=False,
-                use_deepspeed=False
-            )
 
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    # 按照GitHub示例初始化: use_fp16=False, use_cuda_kernel=False, use_deepspeed=False
+                    models["indextts"] = IndexTTS2(
+                        cfg_path=cfg_path,
+                        model_dir=model_dir,
+                        use_fp16=False,
+                        device=device,
+                        use_cuda_kernel=False,
+                        use_deepspeed=False
+                    )
+                    break
+                except RuntimeError as e:
+                    if "CUDA" in str(e) or "out of memory" in str(e).lower():
+                        system_logger.warning("【模型加载】IndexTTS2 OOM，尝试驱逐其他模型...")
+                        model_manager.request_eviction(needed_mb=2000, exclude_key="indextts")
+                        time.sleep(3)
+                        if attempt == max_retries - 1:
+                            raise
+                    else:
+                        raise
+
+            model_manager.touch("indextts")
             duration = time.time() - start_time
             gpu_mem = torch.cuda.memory_allocated() / 1024 ** 3 if torch.cuda.is_available() else 0
             OperationLogger.log_model_load("IndexTTS2", "成功", duration, f"GPU内存: {gpu_mem:.2f}GB")
@@ -54,4 +70,5 @@ def get_indextts_model():
             system_logger.error(f"【模型加载】IndexTTS2 失败: {e}")
             raise HTTPException(status_code=500, detail=f"IndexTTS2模型加载失败: {str(e)}")
 
+    model_manager.touch("indextts")
     return models["indextts"]

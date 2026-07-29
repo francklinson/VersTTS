@@ -469,7 +469,7 @@
 
                 if (data.success) {
                     document.getElementById('batchResultSection').style.display = 'none';
-                    VersTTS.showResult(data, { filename: `omnivoice_${Date.now()}.wav` });
+                    VersTTS.showResult(data);
                     VersTTS.showStatus('语音生成成功！');
                 } else {
                     throw new Error(data.message || '生成失败');
@@ -710,16 +710,27 @@
         // 添加到任务队列
         async function addToQueue() {
             const text = document.getElementById('textInput').value.trim();
-            const mode = document.querySelector('.mode-tab.active')?.dataset.mode || 'auto_voice';
+            // 复用 switchOmniVoiceMode 维护的 currentMode（与批量提交保持一致）。
+            // 此前用 .mode-tab.active 的 dataset.mode 取值，但按钮未声明 data-mode 属性，
+            // 导致单条提交始终兜底为 auto_voice（随机音色）。
+            const mode = currentMode;
 
             if (!text) {
                 VersTTS.showStatus('请输入要生成的文本', true);
                 return;
             }
 
+            // 各模式的必填校验（与批量一致）
+            if (mode === 'voice_clone') {
+                if (!selectedSpeakerId) { VersTTS.showStatus('请选择说话人', true); return; }
+            } else if (mode === 'voice_design') {
+                const prompt = document.getElementById('voiceDesignPrompt').value.trim();
+                if (!prompt) { VersTTS.showStatus('请输入声音属性描述', true); return; }
+            }
+
             // 收集参数
             const speakerId = document.getElementById('speakerSelect')?.value;
-            const voiceDesign = document.getElementById('voiceDesign')?.value;
+            const voiceDesign = document.getElementById('voiceDesignPrompt')?.value;
             const speed = document.getElementById('speed')?.value;
 
             try {
@@ -727,8 +738,8 @@
                 formData.append('model', 'omnivoice');
                 formData.append('mode', mode);
                 formData.append('text', text);
-                if (speakerId) formData.append('speaker_id', speakerId);
-                if (voiceDesign) formData.append('voice_design_prompt', voiceDesign);
+                if (mode === 'voice_clone' && speakerId) formData.append('speaker_id', speakerId);
+                if (mode === 'voice_design' && voiceDesign) formData.append('voice_design_prompt', voiceDesign);
                 if (speed) formData.append('speed', speed);
 
                 const response = await fetch(`${VersTTS.API_BASE}/tasks/submit`, {
@@ -841,7 +852,7 @@
                 }
                 if (downloadLink) {
                     downloadLink.href = audioUrl;
-                    downloadLink.download = `omnivoice_${taskData.task_id}.wav`;
+                    downloadLink.download = audioUrl.split('/').pop() || `omnivoice_${taskData.task_id}.wav`;
                     downloadLink.style.display = 'inline-flex';
                 }
                 if (statusEl) {

@@ -46,6 +46,7 @@ def _register_all_models():
     model_manager.register("qwen3tts_1.7B_CustomVoice", "Qwen3-TTS-1.7B-CustomVoice", 3000)
     model_manager.register("qwen3tts_1.7B_VoiceDesign", "Qwen3-TTS-1.7B-VoiceDesign", 3500)
     model_manager.register("voxcpm", "VoxCPM", 4000)
+    model_manager.register("dotstts", "dots.tts", 2500)
 
 
 @asynccontextmanager
@@ -153,20 +154,26 @@ async def lifespan(app: FastAPI):
     init_duration = time.time() - init_start_time
     OperationLogger.log_init_complete(init_duration, "成功")
 
-    # 启动 outputs/ 目录定时清理任务（每小时执行一次）
-    async def _outputs_cleanup_loop():
-        from backend.core.audio_utils import cleanup_old_outputs
-        while True:
-            try:
-                await asyncio.sleep(3600)  # 每小时
-                cleanup_old_outputs(max_age_hours=24)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                system_logger.warning(f"【清理】定时清理任务出错: {e}")
+    # outputs/ 目录定时清理：默认关闭，保留所有生成的音频文件。
+    # 如需恢复自动清理（每小时清理 24h 前文件），将 ENABLE_OUTPUTS_CLEANUP 改为 True。
+    ENABLE_OUTPUTS_CLEANUP = False
+    cleanup_task = None
+    if ENABLE_OUTPUTS_CLEANUP:
+        async def _outputs_cleanup_loop():
+            from backend.core.audio_utils import cleanup_old_outputs
+            while True:
+                try:
+                    await asyncio.sleep(3600)  # 每小时
+                    cleanup_old_outputs(max_age_hours=24)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    system_logger.warning(f"【清理】定时清理任务出错: {e}")
 
-    cleanup_task = asyncio.create_task(_outputs_cleanup_loop())
-    system_logger.info("【清理】outputs/ 定时清理已启动（每1小时，清理24h前文件）")
+        cleanup_task = asyncio.create_task(_outputs_cleanup_loop())
+        system_logger.info("【清理】outputs/ 定时清理已启动（每1小时，清理24h前文件）")
+    else:
+        system_logger.info("【清理】outputs/ 定时清理已禁用（保留所有音频文件）")
 
     yield
 
@@ -174,12 +181,13 @@ async def lifespan(app: FastAPI):
     system_logger.info("=" * 80)
     system_logger.info("【服务关闭】正在清理资源...")
 
-    # 停止 outputs 定时清理任务
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
+    # 停止 outputs 定时清理任务（仅在启用时）
+    if cleanup_task is not None:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
     # 停止模型管理后台任务
     await model_manager.stop()

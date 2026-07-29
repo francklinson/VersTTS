@@ -23,13 +23,14 @@ from backend.logger_config import system_logger
 logger = logging.getLogger(__name__)
 
 # ========== 配置 ==========
-IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "300"))  # 默认 5 分钟
+IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "900"))  # 默认 15 分钟
 HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", "60"))  # 心跳间隔秒
 GPU_ID = os.environ.get("GPU_ID", "0")  # 主服务使用的 GPU
 
-# 主服务地址（自身）
-MAIN_HOST = os.environ.get("HOST", "0.0.0.0")
-MAIN_PORT = os.environ.get("PORT", "8000")
+# 主服务回连地址（客户端连接用，必须用 loopback，不能用监听地址 0.0.0.0）
+# 与子服务一致，由 start_server.sh 导出 MAIN_HOST/MAIN_PORT
+MAIN_HOST = os.environ.get("MAIN_HOST", "127.0.0.1")
+MAIN_PORT = os.environ.get("MAIN_PORT", "8006")
 
 
 class ModelMeta:
@@ -191,7 +192,7 @@ class ModelManager:
         logger.info(f"【ModelManager】空闲检查已启动 (超时: {IDLE_TIMEOUT}s)")
 
     async def start_heartbeat(self):
-        """启动心跳上报后台任务（向自身 /api/services/heartbeat 注册主进程内的模型）"""
+        """启动心跳上报后台任务（向自身 /services/heartbeat 上报主进程内的模型状态）"""
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info(f"【ModelManager】心跳上报已启动 (间隔: {HEARTBEAT_INTERVAL}s)")
 
@@ -223,7 +224,7 @@ class ModelManager:
             self._report_heartbeat()
 
     def _report_heartbeat(self):
-        """向主服务 /api/services/heartbeat 上报主进程内各模型的状态"""
+        """向主服务 /services/heartbeat 上报主进程内各模型的状态"""
         try:
             import requests as http_requests
             from backend.config import models
@@ -233,7 +234,7 @@ class ModelManager:
                 loaded = key in models
                 vram_mb = meta.estimated_vram_mb if loaded else 0
                 http_requests.post(
-                    f"http://{MAIN_HOST}:{MAIN_PORT}/api/services/heartbeat",
+                    f"http://{MAIN_HOST}:{MAIN_PORT}/services/heartbeat",
                     json={
                         "service_id": f"main_{key}",
                         "model_loaded": loaded,
@@ -253,7 +254,7 @@ class ModelManager:
             import requests as http_requests
             for key, meta in self._registry.items():
                 http_requests.post(
-                    f"http://{MAIN_HOST}:{MAIN_PORT}/api/services/register",
+                    f"http://{MAIN_HOST}:{MAIN_PORT}/services/register",
                     json={
                         "service_id": f"main_{key}",
                         "host": MAIN_HOST,
@@ -272,7 +273,7 @@ class ModelManager:
             import requests as http_requests
             for key in self._registry.keys():
                 http_requests.post(
-                    f"http://{MAIN_HOST}:{MAIN_PORT}/api/services/unregister",
+                    f"http://{MAIN_HOST}:{MAIN_PORT}/services/unregister",
                     json={"service_id": f"main_{key}"},
                     timeout=5,
                 )
@@ -307,7 +308,7 @@ class ModelManager:
         try:
             import requests as http_requests
             resp = http_requests.post(
-                f"http://{MAIN_HOST}:{MAIN_PORT}/api/services/evict",
+                f"http://{MAIN_HOST}:{MAIN_PORT}/services/evict",
                 json={
                     "gpu_id": GPU_ID,
                     "exclude_service": "main",  # 不驱逐主进程内的模型（已自行处理）

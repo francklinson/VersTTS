@@ -93,7 +93,7 @@ async def tts_f5tts(
         )
 
         # 保存音频
-        audio_path = save_temp_audio(wav, sr, prefix="f5tts")
+        audio_path = save_temp_audio(wav, sr, prefix="f5tts", text=use_gen_text)
 
         # 清理临时参考音频
         if is_temp and os.path.exists(ref_path):

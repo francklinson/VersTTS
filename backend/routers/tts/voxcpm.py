@@ -226,7 +226,8 @@ async def tts_voxcpm(
         speaker_name_val = speaker.get('name') if speaker else None
         audio_path = save_temp_audio(
             audio_data, 48000, prefix="voxcpm", mode=mode,
-            text=text, speaker_name=speaker_name_val
+            text=text, speaker_name=speaker_name_val,
+            instruct_prompt=(control_prompt or voice_design_prompt)
         )
         save_duration = time.time() - save_start
         file_size = os.path.getsize(audio_path)

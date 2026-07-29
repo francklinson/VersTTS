@@ -303,7 +303,8 @@ async def tts_qwen3tts(
         else:
             audio_data = wav
 
-        audio_path = save_temp_audio(audio_data, sr, prefix="qwen3tts", mode=mode, text=text, speaker_name=speaker)
+        audio_path = save_temp_audio(audio_data, sr, prefix="qwen3tts", mode=mode, text=text, speaker_name=speaker,
+                                     instruct_prompt=(instruct_text or voice_design_prompt))
         save_duration = time.time() - save_start
         system_logger.info(f"【Qwen3-TTS】音频保存完成: {audio_path} | 耗时: {save_duration:.3f}s")
         

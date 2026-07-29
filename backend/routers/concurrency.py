@@ -132,26 +132,21 @@ def format_duration(seconds: float) -> str:
 @router.post("/queue/clear-completed")
 async def clear_completed_tasks():
     """
-    清理已完成/失败/已取消/已重试的任务记录（保留最近完成的任务）
+    手动清理 7 天前的任务记录，并联动删除其音频文件（含批量结果各段）。
+    不再有定时自动清理触发，此接口仅供手动调用。
     """
     try:
-        removable_statuses = [
-            task_queue.TaskStatus.COMPLETED.value,
-            task_queue.TaskStatus.FAILED.value,
-            task_queue.TaskStatus.CANCELLED.value,
-            task_queue.TaskStatus.RETRIED.value,
-        ]
-        old_time = None  # 使用内置的 cleanup_old_tasks
-        removed_count = 0
-
-        # 清理7天前的任务
+        before_count = len(task_queue.tasks)
+        # cleanup_old_tasks 内部已联动删除音频文件
         task_queue.cleanup_old_tasks(days=7)
+        after_count = len(task_queue.tasks)
 
-        system_logger.info(f"【并发管理】已完成的任务记录")
+        system_logger.info(f"【并发管理】手动清理完成: {before_count - after_count} 个旧任务（含音频）")
         return {
             "success": True,
-            "message": f"已触发清理",
-            "before_count": len(task_queue.tasks),
+            "message": f"已清理 {before_count - after_count} 个 7 天前的任务（含音频）",
+            "before_count": before_count,
+            "after_count": after_count,
         }
     except Exception as e:
         system_logger.error(f"【并发管理】清理任务记录失败: {e}")

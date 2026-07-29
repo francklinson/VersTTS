@@ -157,7 +157,7 @@ async def tts_gptsovits(
 
         # 读取并保存音频到 outputs 目录
         audio_data, sample_rate = sf.read(audio_path)
-        output_path = save_temp_audio(audio_data, sample_rate, prefix="gptsovits")
+        output_path = save_temp_audio(audio_data, sample_rate, prefix="gptsovits", text=text)
         system_logger.info(f"【GPT-SoVITS】音频保存完成: {output_path}")
 
         # 清理临时文件

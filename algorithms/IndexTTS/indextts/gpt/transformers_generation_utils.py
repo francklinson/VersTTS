@@ -30,13 +30,9 @@ from transformers.cache_utils import (
     DynamicCache,
     EncoderDecoderCache,
     OffloadedCache,
+    QuantizedCacheConfig,
     StaticCache,
 )
-# QuantizedCacheConfig may not be available in all transformers versions
-try:
-    from transformers.cache_utils import QuantizedCacheConfig
-except ImportError:
-    QuantizedCacheConfig = None
 from transformers.configuration_utils import PretrainedConfig
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
@@ -59,28 +55,16 @@ from transformers.generation.candidate_generator import (
     AssistedCandidateGeneratorDifferentTokenizers,
     CandidateGenerator,
     PromptLookupCandidateGenerator,
+    _crop_past_key_values,
     _prepare_attention_mask,
     _prepare_token_type_ids,
 )
-# _crop_past_key_values may not be available in all transformers versions
-try:
-    from transformers.generation.candidate_generator import _crop_past_key_values
-except ImportError:
-    _crop_past_key_values = None
 from transformers.generation.configuration_utils import (
+    NEED_SETUP_CACHE_CLASSES_MAPPING,
+    QUANT_BACKEND_CLASSES_MAPPING,
     GenerationConfig,
     GenerationMode,
 )
-# NEED_SETUP_CACHE_CLASSES_MAPPING may not be available in all transformers versions
-try:
-    from transformers.generation.configuration_utils import NEED_SETUP_CACHE_CLASSES_MAPPING
-except ImportError:
-    NEED_SETUP_CACHE_CLASSES_MAPPING = {}
-# QUANT_BACKEND_CLASSES_MAPPING may not be available
-try:
-    from transformers.generation.configuration_utils import QUANT_BACKEND_CLASSES_MAPPING
-except ImportError:
-    QUANT_BACKEND_CLASSES_MAPPING = {}
 from transformers.generation.logits_process import (
     EncoderNoRepeatNGramLogitsProcessor,
     EncoderRepetitionPenaltyLogitsProcessor,
@@ -1018,9 +1002,7 @@ class GenerationMixin:
                     device=device,
                 )
             )
-        # VersTTS fix: 兼容新版transformers，forced_decoder_ids属性可能不存在
-        forced_decoder_ids = getattr(generation_config, 'forced_decoder_ids', None)
-        if forced_decoder_ids is not None:
+        if generation_config.forced_decoder_ids is not None:
             # TODO (sanchit): move this exception to GenerationConfig.validate() when TF & FLAX are aligned with PT
             raise ValueError(
                 "You have explicitly specified `forced_decoder_ids`. Please remove the `forced_decoder_ids` argument "
@@ -1579,11 +1561,6 @@ class GenerationMixin:
 
         Returns the resulting cache object.
         """
-        if not NEED_SETUP_CACHE_CLASSES_MAPPING:
-            raise ValueError(
-                f"NEED_SETUP_CACHE_CLASSES_MAPPING is not available. "
-                f"Cache implementation '{cache_implementation}' is not supported."
-            )
         cache_cls: Cache = NEED_SETUP_CACHE_CLASSES_MAPPING[cache_implementation]
         requires_cross_attention_cache = (
             self.config.is_encoder_decoder or model_kwargs.get("encoder_outputs") is not None
@@ -1759,11 +1736,6 @@ class GenerationMixin:
                     model_kwargs=model_kwargs,
                 )
             elif generation_config.cache_implementation == "quantized":
-                if QuantizedCacheConfig is None:
-                    raise ImportError(
-                        "QuantizedCacheConfig is not available in your transformers version. "
-                        "Please upgrade transformers or avoid using quantized cache."
-                    )
                 if not self._supports_quantized_cache:
                     raise ValueError(
                         "This model does not support the quantized cache. If you want your model to support quantized "
@@ -4337,8 +4309,7 @@ class GenerationMixin:
 
             # 4.2. Discard past key values relative to unused assistant tokens
             new_cache_size = new_cur_len - 1
-            if _crop_past_key_values is not None:
-                outputs.past_key_values = _crop_past_key_values(self, outputs.past_key_values, new_cache_size)
+            outputs.past_key_values = _crop_past_key_values(self, outputs.past_key_values, new_cache_size)
 
             # 5. Update the candidate generation strategy if needed
             candidate_generator.update_candidate_strategy(input_ids, new_logits, n_matches)

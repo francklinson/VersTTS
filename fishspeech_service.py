@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fish-Speech 独立服务
-使用独立 transformers 环境 (lib/transformers_fish)，运行在独立端口 8005 上
+运行在独立端口 8005 上
 启动方式: nohup python fishspeech_service.py > logs/fishspeech_service.log 2>&1 &
 
 Fish-Speech 是基于 Dual-AR 架构的多语言 TTS 模型，支持 80+ 种语言。
@@ -11,15 +11,11 @@ Fish-Speech 是基于 Dual-AR 架构的多语言 TTS 模型，支持 80+ 种语�
 import sys
 import os
 
-# 在导入任何模块之前，设置独立的 transformers 路径
-TRANSFORMERS_FISH_PATH = os.path.join(os.path.dirname(__file__), "lib", "transformers_fish")
-if os.path.exists(TRANSFORMERS_FISH_PATH):
-    sys.path.insert(0, TRANSFORMERS_FISH_PATH)
-
 import time
 import traceback
 import asyncio
 import torch
+import numpy as np
 import soundfile as sf
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException
@@ -100,9 +96,10 @@ def load_fishspeech_model():
     logger.info(f"【Fish-Speech服务】GPU: {GPU_ID}")
 
     try:
-        # 尝试加载 Fish-Speech S2 模型
-        # Fish-Speech 使用 Dual-AR 架构: Slow AR (4B) + Fast AR (400M)
-        from fish_speech.models.text2semantic.inference import launch_thread_safe_queue
+        from fish_speech.models.text2semantic.inference import (
+            init_model,
+            load_codec_model,
+        )
 
         # 检查模型文件是否存在
         required_files = [
@@ -126,15 +123,44 @@ def load_fishspeech_model():
             return None
 
         logger.info(f"【Fish-Speech服务】模型文件检查通过")
-        logger.info(f"【Fish-Speech服务】注意: Fish-Speech S2 Pro 约需要 11GB 显存（INT8 约5.1GB）")
 
-        # 此处需要根据 Fish-Speech 的实际 API 进行推理
-        # 由于 Fish-Speech 架构复杂，推荐使用其内置 API server
-        # 或者通过 launch_thread_safe_queue 进行推理
+        # 设置设备和精度
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        precision = torch.bfloat16
+
+        logger.info(f"【Fish-Speech服务】加载 Dual-AR 文本→语义模型...")
+        t0 = time.time()
+        fs_model, decode_one_token = init_model(MODEL_PATH, device, precision)
+        logger.info(f"【Fish-Speech服务】Dual-AR 模型加载耗时: {time.time() - t0:.02f}s")
+
+        # 初始化 KV 缓存
+        logger.info(f"【Fish-Speech服务】初始化 KV 缓存...")
+        with torch.device(device):
+            fs_model.setup_caches(
+                max_batch_size=1,
+                max_seq_len=fs_model.config.max_seq_len,
+                dtype=next(fs_model.parameters()).dtype,
+            )
+
+        # 加载 DAC 编解码器
+        logger.info(f"【Fish-Speech服务】加载 DAC 编解码器...")
+        codec_path = os.path.join(MODEL_PATH, "codec.pth")
+        codec = load_codec_model(codec_path, device, precision)
+        logger.info(f"【Fish-Speech服务】DAC 编解码器加载完成, 采样率: {codec.sample_rate}")
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            mem_gb = torch.cuda.memory_allocated() / 1024**3
+            logger.info(f"【Fish-Speech服务】GPU 显存占用: {mem_gb:.02f} GB")
+
         model = {
-            "model_path": MODEL_PATH,
+            "model": fs_model,
+            "decode_one_token": decode_one_token,
+            "codec": codec,
+            "device": device,
+            "precision": precision,
+            "sample_rate": codec.sample_rate,
             "status": "loaded",
-            "sample_rate": 44100,
         }
 
         last_used_time = time.time()
@@ -188,6 +214,7 @@ async def heartbeat_to_main():
 
 def text_to_speech(text: str, ref_audio_path: str = None, ref_text: str = None,
                    temperature: float = 0.8, top_p: float = 0.8,
+                   top_k: int = 30,
                    repetition_penalty: float = 1.1, output_path: str = None) -> str:
     """
     使用 Fish-Speech 模型进行语音合成
@@ -198,6 +225,7 @@ def text_to_speech(text: str, ref_audio_path: str = None, ref_text: str = None,
         ref_text: 参考音频的对应文本
         temperature: 采样温度
         top_p: nucleus 采样
+        top_k: top-k 采样
         repetition_penalty: 重复惩罚
         output_path: 输出音频路径
 
@@ -209,37 +237,88 @@ def text_to_speech(text: str, ref_audio_path: str = None, ref_text: str = None,
     if model is None:
         raise RuntimeError("Fish-Speech 模型未加载")
 
+    fs_model = model["model"]
+    decode_one_token = model["decode_one_token"]
+    codec = model["codec"]
+    device = model["device"]
+    sample_rate = model["sample_rate"]
+
     if output_path is None:
         import tempfile
         output_path = tempfile.mktemp(suffix=".wav")
 
-    # Fish-Speech 的实际推理需要通过其内置 API
-    # 这里提供框架，实际部署时需要调用 Fish-Speech 的推理接口
     logger.info(f"【Fish-Speech服务】开始合成 | 文本: {text[:50]}...")
-    logger.info(f"【Fish-Speech服务】参数: temp={temperature}, top_p={top_p}, rep_penalty={repetition_penalty}")
+    logger.info(f"【Fish-Speech服务】参数: temp={temperature}, top_p={top_p}, top_k={top_k}, rep_penalty={repetition_penalty}")
 
-    # 使用 Fish-Speech 的 text2semantic 和 DAC 进行两步推理
     try:
-        from fish_speech.models.text2semantic.inference import launch_thread_safe_queue
+        from fish_speech.models.text2semantic.inference import (
+            generate_long,
+            encode_audio,
+            decode_to_audio,
+        )
 
-        # 构建生成参数
-        # 注意：此处需要根据 Fish-Speech 的实际 API 进行调整
-        logger.warning("【Fish-Speech服务】TODO: 需要实现完整的 Fish-Speech S2 推理逻辑")
-        logger.warning("【Fish-Speech服务】请参考 algorithms/Fish-Speech/inference.ipynb")
+        # 如果提供了参考音频，编码为 prompt_tokens
+        prompt_tokens = None
+        prompt_text = None
+        if ref_audio_path and os.path.exists(ref_audio_path):
+            logger.info(f"【Fish-Speech服务】编码参考音频: {ref_audio_path}")
+            prompt_tokens = encode_audio(ref_audio_path, codec, device)
+            prompt_text = ref_text if ref_text else ""
+            logger.info(f"【Fish-Speech服务】参考音频编码完成, shape: {prompt_tokens.shape}")
 
-        # 生成静默音频作为占位（实际部署时替换为真实推理）
-        sample_rate = 44100
-        duration = 2.0  # 2秒静默
-        import numpy as np
-        audio = np.zeros(int(sample_rate * duration), dtype=np.float32)
-        sf.write(output_path, audio, sample_rate)
+        # 调用 generate_long 进行 Dual-AR 生成
+        logger.info(f"【Fish-Speech服务】开始 Dual-AR 生成...")
+        t0 = time.time()
+
+        generator = generate_long(
+            model=fs_model,
+            device=device,
+            decode_one_token=decode_one_token,
+            text=text,
+            num_samples=1,
+            max_new_tokens=0,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            temperature=temperature,
+            iterative_prompt=True,
+            chunk_length=512,
+            prompt_text=prompt_text,
+            prompt_tokens=prompt_tokens.cpu() if prompt_tokens is not None else None,
+        )
+
+        # 收集所有 sample 响应的 codes
+        all_codes = []
+        for response in generator:
+            if response.action == "sample" and response.codes is not None:
+                all_codes.append(response.codes)
+                logger.info(f"【Fish-Speech服务】收到片段, codes shape: {response.codes.shape}, 文本: {response.text[:30] if response.text else 'N/A'}...")
+            elif response.action == "next":
+                break
+
+        if not all_codes:
+            raise RuntimeError("Fish-Speech 生成失败：未产生任何音频 tokens")
+
+        # 合并所有片段的 codes
+        merged_codes = torch.cat(all_codes, dim=1)
+        logger.info(f"【Fish-Speech服务】生成完成, 总 codes shape: {merged_codes.shape}, 耗时: {time.time() - t0:.02f}s")
+
+        # 通过 DAC 解码为音频波形
+        logger.info(f"【Fish-Speech服务】DAC 解码音频...")
+        audio = decode_to_audio(merged_codes.to(device), codec)
+        audio_np = audio.cpu().float().numpy()
+
+        # 保存音频文件
+        sf.write(output_path, audio_np, sample_rate)
 
         last_used_time = time.time()
-        logger.info(f"【Fish-Speech服务】合成完成: {output_path}")
+        duration = len(audio_np) / sample_rate
+        logger.info(f"【Fish-Speech服务】合成完成: {output_path}, 时长: {duration:.2f}s")
         return output_path
 
     except Exception as e:
         logger.error(f"【Fish-Speech服务】合成失败: {e}")
+        logger.error(traceback.format_exc())
         raise
 
 
@@ -346,7 +425,7 @@ async def tts(
             "success": True,
             "audio_path": output_path,
             "audio_url": f"/audio/{os.path.basename(output_path)}",
-            "sample_rate": 44100,
+            "sample_rate": model["sample_rate"] if model else 44100,
             "mode": mode,
         }
 

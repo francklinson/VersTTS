@@ -39,6 +39,7 @@ omnivoice_semaphore = asyncio.Semaphore(OMNIVOICE_CONCURRENCY)
 cosyvoice_semaphore = asyncio.Semaphore(COSYVOICE_CONCURRENCY)
 pilottts_semaphore = asyncio.Semaphore(GPU_MODEL_CONCURRENCY)  # PilotTTS 是 GPU 模型，串行执行
 gptsovits_semaphore = asyncio.Semaphore(GPTSOVITS_CONCURRENCY)  # GPT-SoVITS 是 GPU 模型，串行执行
+fishspeech_semaphore = asyncio.Semaphore(GPU_MODEL_CONCURRENCY)  # Fish-Speech 是 GPU 模型，串行执行
 
 
 def _verify_batch_audio(audio_path: str, expected_text: str, model_tag: str,
@@ -1238,6 +1239,419 @@ async def _generate_single_pilottts(
                 f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
             )
             return {"success": False, "index": index, "error": str(e)}
+
+
+def _batch_generate_dotstts(text: str, mode: str, count: int,
+                             speaker_id: str = None,
+                             num_steps: int = 16,
+                             guidance_scale: float = 1.2,
+                             speaker_scale: float = 1.5,
+                             language: str = None,
+                             progress_callback: Callable = None,
+                             cancel_check: Callable[[], bool] = None) -> Dict:
+    """批量生成dots.tts音频
+
+    Args:
+        cancel_check: 可选的取消检查回调，返回 True 表示任务已被超时/取消，
+                      应在每条之间调用以尽快跳出并释放 GPU。
+    """
+    import torch
+    import numpy as np
+    import soundfile as sf
+    from backend.engines import get_dotstts_model
+    from backend.services import get_speaker_by_id
+    from backend.core import cleanup_memory, log_gpu_memory_usage
+
+    audio_urls = []
+    audio_files = []
+
+    # 获取说话人信息（如果需要）
+    ref_path = None
+    prompt_text = None
+    speaker_name = None
+    if speaker_id:
+        speaker = get_speaker_by_id(speaker_id)
+        if speaker:
+            ref_path = speaker.get("audio_path")
+            prompt_text = speaker.get("reference_text")
+            speaker_name = speaker.get("name")
+
+    # 获取模型
+    model = get_dotstts_model()
+
+    # 模板映射
+    template_map = {
+        "voice_clone": "tts",
+        "instruct": "instruction_tts",
+    }
+    template_name = template_map.get(mode, "tts")
+
+    # 批量生成
+    for i in range(count):
+        if cancel_check and cancel_check():
+            system_logger.warning(f"【批量生成】dots.tts 任务已被取消/超时，在第 {i+1}/{count} 个处中止")
+            break
+
+        try:
+            # 报告进度
+            if progress_callback:
+                progress_callback(i, count)
+
+            # 构建生成参数
+            generate_kwargs = {
+                "text": text,
+                "num_steps": num_steps,
+                "guidance_scale": guidance_scale,
+                "speaker_scale": speaker_scale,
+                "template_name": template_name,
+            }
+
+            if language:
+                generate_kwargs["language"] = language
+
+            if mode == "voice_clone" and ref_path:
+                generate_kwargs["prompt_audio_path"] = ref_path
+                if prompt_text:
+                    generate_kwargs["prompt_text"] = prompt_text
+            elif mode == "voice_clone" and not ref_path:
+                generate_kwargs["template_name"] = "tts"
+
+            # 生成音频
+            result = model.generate(**generate_kwargs)
+
+            # 提取音频数据
+            audio = result["audio"]
+            sample_rate = result["sample_rate"]
+
+            if torch.is_tensor(audio):
+                audio_np = audio.cpu().numpy().squeeze()
+            elif isinstance(audio, np.ndarray):
+                audio_np = audio.squeeze()
+            else:
+                audio_np = np.array(audio).squeeze()
+
+            # 保存音频
+            filename = _generate_meaningful_filename(
+                "dotstts", mode, text, index=i, batch_total=count,
+                speaker_name=speaker_name
+            )
+            audio_path = os.path.join(OUTPUTS_DIR, filename)
+            sf.write(audio_path, audio_np, sample_rate)
+
+            # 内容校验
+            if not _verify_batch_audio(audio_path, text, "dots.tts", i, count):
+                continue
+
+            audio_urls.append(f"/audio/{filename}")
+            audio_files.append(filename)
+
+            system_logger.info(f"【批量生成】dots.tts 第 {i+1}/{count} 个完成")
+
+        except Exception as e:
+            system_logger.error(f"【批量生成】dots.tts 第 {i+1} 个失败: {e}")
+
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
+
+    # 清理显存
+    if torch.cuda.is_available():
+        cleanup_memory()
+        log_gpu_memory_usage("dots.tts-Batch")
+
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _batch_generate_fishspeech(text: str, mode: str, count: int,
+                                      clone_speaker_id: str = None,
+                                      reference_text: str = None,
+                                      temperature: float = 0.8,
+                                      top_p: float = 0.8,
+                                      repetition_penalty: float = 1.1,
+                                      progress_callback: Callable = None) -> Dict:
+    """
+    批量生成 Fish-Speech 音频（串行版本）
+
+    Fish-Speech 是独立 GPU 服务，串行执行避免爆显存
+    """
+    from backend.services import get_speaker_by_id
+    from backend.config import FISHSPEECH_HOST, FISHSPEECH_PORT
+
+    audio_urls = []
+    audio_files = []
+
+    FISHSPEECH_SERVICE_URL = f"http://{FISHSPEECH_HOST}:{FISHSPEECH_PORT}/tts"
+
+    # 获取说话人信息
+    speaker_name = None
+    if clone_speaker_id:
+        speaker = get_speaker_by_id(clone_speaker_id)
+        if speaker:
+            speaker_name = speaker.get("name")
+            if not reference_text:
+                reference_text = speaker.get("reference_text")
+
+    system_logger.info(f"【批量生成】Fish-Speech 开始串行生成 | 数量: {count} | 并发度: 1")
+    import time as _time
+    _batch_start = _time.time()
+
+    if progress_callback:
+        progress_callback(0, count)
+
+    timeout = aiohttp.ClientTimeout(total=180)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        pending_tasks = []
+        for i in range(count):
+            task = _generate_single_fishspeech(
+                session=session,
+                text=text,
+                mode=mode,
+                index=i,
+                clone_speaker_id=clone_speaker_id,
+                reference_text=reference_text,
+                temperature=temperature,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+                fishspeech_url=FISHSPEECH_SERVICE_URL,
+                count=count
+            )
+            pending_tasks.append(task)
+
+        completed = 0
+        for coro in asyncio.as_completed(pending_tasks):
+            try:
+                result = await coro
+                if result.get("success"):
+                    audio_urls.append(result["audio_url"])
+                    audio_files.append(result["audio_file"])
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+            except Exception as e:
+                system_logger.error(f"【批量生成】Fish-Speech 任务异常: {e}")
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, count)
+
+    success_count = len(audio_urls)
+    _batch_dur = _time.time() - _batch_start
+    system_logger.info(
+        f"【批量生成】Fish-Speech 完成 | 成功: {success_count}/{count} 总耗时={_batch_dur:.1f}s "
+        f"平均={(_batch_dur/count):.1f}s/条 并发度=1"
+    )
+
+    if progress_callback:
+        progress_callback(count, count)
+
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
+
+
+async def _generate_single_fishspeech(
+    session: aiohttp.ClientSession,
+    text: str,
+    mode: str,
+    index: int,
+    clone_speaker_id: str = None,
+    reference_text: str = None,
+    temperature: float = 0.8,
+    top_p: float = 0.8,
+    repetition_penalty: float = 1.1,
+    fishspeech_url: str = "",
+    count: int = 1
+) -> Dict:
+    """单个 Fish-Speech 生成任务（受信号量控制）"""
+    import soundfile as sf
+    import time as _time
+
+    _t_enter = _time.time()
+    async with fishspeech_semaphore:  # 限制并发数
+        _t_after_sem = _time.time()
+        _sem_wait = _t_after_sem - _t_enter
+        try:
+            # 构建请求数据
+            data = {
+                "text": text,
+                "mode": mode,
+                "temperature": str(temperature),
+                "top_p": str(top_p),
+                "repetition_penalty": str(repetition_penalty),
+            }
+            if clone_speaker_id:
+                data["clone_speaker_id"] = clone_speaker_id
+            if reference_text:
+                data["reference_text"] = reference_text
+
+            # 异步HTTP请求（超时180秒）
+            timeout = aiohttp.ClientTimeout(total=180)
+            _t_http_start = _time.time()
+            async with session.post(fishspeech_url, data=data, timeout=timeout) as response:
+                _t_http_end = _time.time()
+                _http_dur = _t_http_end - _t_http_start
+                if response.status not in (200, 201):
+                    error_text = await response.text()
+                    system_logger.error(
+                        f"【批量生成】Fish-Speech 第 {index+1}/{count} 个失败(HTTP {response.status}) "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s: {error_text}"
+                    )
+                    return {"success": False, "index": index}
+
+                result = await response.json()
+
+                temp_audio_path = result.get("audio_path")
+                if not temp_audio_path or not os.path.exists(temp_audio_path):
+                    system_logger.error(
+                        f"【批量生成】Fish-Speech 第 {index+1}/{count} 个音频文件未生成 "
+                        f"信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s"
+                    )
+                    return {"success": False, "index": index}
+
+                # 保存音频到 outputs 目录
+                from backend.services import get_speaker_by_id
+                _speaker_name = None
+                if clone_speaker_id:
+                    _speaker = get_speaker_by_id(clone_speaker_id)
+                    if _speaker:
+                        _speaker_name = _speaker.get("name")
+
+                _filename = _generate_meaningful_filename(
+                    "fishspeech", mode, text, index=index, batch_total=count,
+                    speaker_name=_speaker_name
+                )
+                output_path = os.path.join(OUTPUTS_DIR, _filename)
+                audio_data, sample_rate = sf.read(temp_audio_path)
+                sf.write(output_path, audio_data, samplerate=sample_rate)
+
+                # 清理临时文件
+                try:
+                    os.remove(temp_audio_path)
+                except Exception:
+                    pass
+
+                # 内容校验
+                if not await _verify_batch_audio_async(output_path, text, "Fish-Speech", index, count):
+                    return {"success": False, "index": index, "error": "verify_failed"}
+
+                _total = _time.time() - _t_enter
+                system_logger.info(
+                    f"【批量生成】Fish-Speech 第 {index+1}/{count} 个完成 "
+                    f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s HTTP={_http_dur:.1f}s)"
+                )
+                return {
+                    "success": True,
+                    "index": index,
+                    "audio_url": f"/audio/{os.path.basename(output_path)}",
+                    "audio_file": os.path.basename(output_path)
+                }
+
+        except asyncio.TimeoutError:
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】Fish-Speech 第 {index+1}/{count} 个超时 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s)"
+            )
+            return {"success": False, "index": index, "error": "timeout"}
+        except Exception as e:
+            _total = _time.time() - _t_enter
+            system_logger.error(
+                f"【批量生成】Fish-Speech 第 {index+1}/{count} 个失败 "
+                f"总耗时={_total:.1f}s (信号量等待={_sem_wait:.1f}s): {type(e).__name__}: {e}"
+            )
+            return {"success": False, "index": index, "error": str(e)}
+
+
+def _batch_generate_indextts(text: str, mode: str, count: int,
+                              speaker_id: str = None,
+                              emotion_text: str = None,
+                              progress_callback: Callable = None,
+                              cancel_check: Callable[[], bool] = None) -> Dict:
+    """批量生成IndexTTS音频
+
+    Args:
+        cancel_check: 可选的取消检查回调，返回 True 表示任务已被超时/取消，
+                      应在每条之间调用以尽快跳出并释放 GPU。
+    """
+    import torch
+    import soundfile as sf
+    from backend.engines import get_indextts_model
+    from backend.services import get_speaker_by_id
+    from backend.core import cleanup_memory, log_gpu_memory_usage
+
+    audio_urls = []
+    audio_files = []
+
+    # 获取说话人信息
+    ref_path = None
+    speaker_name = None
+    if speaker_id:
+        speaker = get_speaker_by_id(speaker_id)
+        if speaker:
+            ref_path = speaker.get("audio_path")
+            speaker_name = speaker.get("name")
+
+    if not ref_path:
+        raise ValueError("IndexTTS需要提供参考音频（speaker_id）")
+
+    # 获取模型
+    model = get_indextts_model()
+
+    # 批量生成
+    for i in range(count):
+        if cancel_check and cancel_check():
+            system_logger.warning(f"【批量生成】IndexTTS 任务已被取消/超时，在第 {i+1}/{count} 个处中止")
+            break
+
+        try:
+            # 报告进度
+            if progress_callback:
+                progress_callback(i, count)
+
+            # 生成音频路径
+            filename = _generate_meaningful_filename(
+                "indextts", mode, text, index=i, batch_total=count,
+                speaker_name=speaker_name,
+                instruct_prompt=emotion_text
+            )
+            audio_path = os.path.join(OUTPUTS_DIR, filename)
+
+            # 准备 infer 参数
+            infer_kwargs = {
+                "spk_audio_prompt": ref_path,
+                "text": text,
+                "output_path": audio_path,
+                "verbose": True
+            }
+
+            # 情感描述支持
+            if emotion_text and emotion_text.strip():
+                infer_kwargs["use_emo_text"] = True
+                infer_kwargs["emo_text"] = emotion_text.strip()
+                infer_kwargs["emo_alpha"] = 0.6
+
+            # 调用模型推理
+            model.infer(**infer_kwargs)
+
+            # 内容校验
+            if not _verify_batch_audio(audio_path, text, "IndexTTS", i, count):
+                continue
+
+            audio_urls.append(f"/audio/{filename}")
+            audio_files.append(filename)
+
+            system_logger.info(f"【批量生成】IndexTTS 第 {i+1}/{count} 个完成")
+
+        except Exception as e:
+            system_logger.error(f"【批量生成】IndexTTS 第 {i+1} 个失败: {e}")
+
+    # 报告最终进度
+    if progress_callback:
+        progress_callback(count, count)
+
+    # 清理显存
+    if torch.cuda.is_available():
+        cleanup_memory()
+        log_gpu_memory_usage("IndexTTS-Batch")
+
+    return {"audio_urls": audio_urls, "audio_files": audio_files}
 
 
 @router.post("/download-zip")

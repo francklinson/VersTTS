@@ -21,15 +21,17 @@ PORT="8006"
 # GPU 配置（使用 CUDA_VISIBLE_DEVICES 分配不同显卡）
 # 格式: "0", "1", "0,1" 等，空字符串表示使用所有可用GPU
 # 主服务 GPU 配置
-MAIN_GPU="${MAIN_GPU:-2}"
+MAIN_GPU="${MAIN_GPU:-0}"
 # OmniVoice 独立服务 GPU 配置
-OMNIVOICE_GPU="${OMNIVOICE_GPU:-2}"
+OMNIVOICE_GPU="${OMNIVOICE_GPU:-0}"
 # CosyVoice 独立服务 GPU 配置
-COSYVOICE_GPU="${COSYVOICE_GPU:-2}"
+COSYVOICE_GPU="${COSYVOICE_GPU:-0}"
 # PilotTTS 独立服务 GPU 配置
-PILOTTS_GPU="${PILOTTS_GPU:-2}"
+PILOTTS_GPU="${PILOTTS_GPU:-0}"
 # GPT-SoVITS 独立服务 GPU 配置
-GPTSOVITS_GPU="${GPTSOVITS_GPU:-2}"
+GPTSOVITS_GPU="${GPTSOVITS_GPU:-0}"
+# Fish-Speech 独立服务 GPU 配置
+FISHSPEECH_GPU="${FISHSPEECH_GPU:-0}"
 
 # 任务队列并发配置
 # 基于实际测试，双模型并行时速度下降50-100%，因此默认采用单模型串行
@@ -64,6 +66,13 @@ GPTSOVITS_PID_FILE="$SCRIPT_DIR/.gptsovits.pid"
 GPTSOVITS_LOG_FILE="$SCRIPT_DIR/logs/gptsovits_service.log"
 GPTSOVITS_SCRIPT="$SCRIPT_DIR/gptsovits_service.py"
 
+# Fish-Speech 独立服务配置
+FISHSPEECH_HOST="127.0.0.1"
+FISHSPEECH_PORT="${FISHSPEECH_PORT:-8005}"
+FISHSPEECH_PID_FILE="$SCRIPT_DIR/logs/fishspeech_service.pid"
+FISHSPEECH_LOG_FILE="$SCRIPT_DIR/logs/fishspeech_service.log"
+FISHSPEECH_SCRIPT="$SCRIPT_DIR/fishspeech_service.py"
+
 # HTTPS 配置（留空则使用 HTTP）
 # 生成自签名证书: openssl req -x509 -newkey rsa:2048 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -nodes
 SSL_CERT="ssl/cert.pem"  # SSL 证书路径，如 "ssl/cert.pem"
@@ -94,6 +103,7 @@ PRELOAD_OMNIVOICE="${PRELOAD_OMNIVOICE:-0}"   # 1=启动时加载, 0=按需加�
 PRELOAD_COSYVOICE="${PRELOAD_COSYVOICE:-0}"   # 1=启动时加载, 0=按需加载
 PRELOAD_PILOTTS="${PRELOAD_PILOTTS:-0}"       # 1=启动时加载, 0=按需加载
 PRELOAD_GPTSOVITS="${PRELOAD_GPTSOVITS:-0}"   # 1=启动时加载, 0=按需加载
+PRELOAD_FISHSPEECH="${PRELOAD_FISHSPEECH:-0}"   # 1=启动时加载, 0=按需加载
 
 # ========== 启动等待超时配置（秒）==========
 # 子服务首次启动需加载大量依赖（torch/transformers 等），导入阶段即可达 20-30s，
@@ -175,6 +185,12 @@ usage() {
     echo "  stop-gptsovits      停止 GPT-SoVITS 独立服务"
     echo "  restart-gptsovits   重启 GPT-SoVITS 独立服务"
     echo "  status-gptsovits    查看 GPT-SoVITS 服务状态"
+    echo ""
+    echo "Fish-Speech 独立服务命令:"
+    echo "  start-fishspeech    启动 Fish-Speech 独立服务"
+    echo "  stop-fishspeech     停止 Fish-Speech 独立服务"
+    echo "  restart-fishspeech  重启 Fish-Speech 独立服务"
+    echo "  status-fishspeech   查看 Fish-Speech 服务状态"
     echo ""
     echo "选项 (仅 start/restart 有效):"
     echo "  -h, --help       显示帮助信息"
@@ -372,6 +388,8 @@ do_start() {
     export PILOTTS_PORT
     export GPTSOVITS_HOST
     export GPTSOVITS_PORT
+    export FISHSPEECH_HOST
+    export FISHSPEECH_PORT
     export MODELS_DIR
     export OUTPUTS_DIR
     export LOGS_DIR
@@ -386,6 +404,7 @@ do_start() {
     export PRELOAD_COSYVOICE
     export PRELOAD_PILOTTS
     export PRELOAD_GPTSOVITS
+    export PRELOAD_FISHSPEECH
     export IDLE_TIMEOUT
     export HEARTBEAT_INTERVAL
 
@@ -744,6 +763,62 @@ else:
                     fi
                 fi
 
+                # 自动启动 Fish-Speech 独立服务
+                echo "----------------------------------------"
+                print_step "正在检查 Fish-Speech 独立服务..."
+
+                if is_fishspeech_running; then
+                    local fs_pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+                    print_success "Fish-Speech 已在运行 (PID: $fs_pid)"
+                else
+                    if [ ! -f "$FISHSPEECH_SCRIPT" ]; then
+                        print_warn "Fish-Speech 服务脚本不存在，跳过"
+                    else
+                        print_step "正在启动 Fish-Speech 独立服务 (端口: $FISHSPEECH_PORT, GPU: $FISHSPEECH_GPU, 预加载: $PRELOAD_FISHSPEECH)..."
+
+                        cd "$SCRIPT_DIR"
+                        CUDA_VISIBLE_DEVICES="$FISHSPEECH_GPU" GPU_ID="$FISHSPEECH_GPU" nohup python "$FISHSPEECH_SCRIPT" >> "$FISHSPEECH_LOG_FILE" 2>&1 &
+                        local fs_pid=$!
+                        echo "$fs_pid" > "$FISHSPEECH_PID_FILE"
+
+                        if [ "$PRELOAD_FISHSPEECH" = "1" ]; then
+                            local fs_max_wait=$START_WAIT_PRELOAD
+                        else
+                            local fs_max_wait=$START_WAIT_NO_PRELOAD
+                        fi
+
+                        local fs_count=0
+                        local fs_spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+                        local fs_ready=0
+                        while [ $fs_count -lt $fs_max_wait ]; do
+                            if kill -0 "$fs_pid" 2>/dev/null; then
+                                if curl -s "http://127.0.0.1:$FISHSPEECH_PORT/health" >/dev/null 2>&1; then
+                                    print_success "Fish-Speech 已启动 (PID: $fs_pid, 端口: $FISHSPEECH_PORT)"
+                                    fs_ready=1
+                                    break
+                                fi
+                            else
+                                print_warn "Fish-Speech 启动失败，请检查日志: $FISHSPEECH_LOG_FILE"
+                                rm -f "$FISHSPEECH_PID_FILE"
+                                break
+                            fi
+                            sleep 1
+                            fs_count=$((fs_count + 1))
+                            printf "\r  %s  Fish-Speech 启动中... %d/%d 秒" "${fs_spin:$((fs_count % 10)):1}" "$fs_count" "$fs_max_wait"
+                        done
+                        if [ "$fs_ready" = "0" ] && kill -0 "$fs_pid" 2>/dev/null; then
+                            echo ""
+                            print_warn "Fish-Speech ${fs_max_wait}s 内未就绪，进程仍在后台启动中"
+                            print_info "稍后用 '$0 status' 确认；若长期未就绪请检查日志: $FISHSPEECH_LOG_FILE"
+                            FISHSPEECH_START_OK=0
+                        elif [ "$fs_ready" = "0" ]; then
+                            FISHSPEECH_START_OK=0
+                        else
+                            FISHSPEECH_START_OK=1
+                        fi
+                    fi
+                fi
+
                 # 自动启动 CosyVoice 独立服务
                 echo "----------------------------------------"
                 print_step "正在检查 CosyVoice 独立服务..."
@@ -808,7 +883,7 @@ else:
                 # 汇总各服务实际就绪状态（健康检查通过=1，超时/失败=0）
                 # 任意子服务未就绪时，明确提示而非打印「全部成功」误导
                 local _all_ok=1
-                for _v in OMNIVOICE_START_OK COSYVOICE_START_OK PILOTTS_START_OK GPTSOVITS_START_OK; do
+                for _v in OMNIVOICE_START_OK COSYVOICE_START_OK PILOTTS_START_OK GPTSOVITS_START_OK FISHSPEECH_START_OK; do
                     eval "_val=\${$_v:-1}"
                     [ "$_val" = "0" ] && _all_ok=0
                 done
@@ -841,6 +916,11 @@ else:
                     print_info "GPT-SoVITS 服务: 运行中 (PID: $gs_pid, 端口: $GPTSOVITS_PORT, GPU: $GPTSOVITS_GPU)"
                 else
                     print_error "GPT-SoVITS 服务: 未就绪（启动超时或失败，见上方提示）"
+                fi
+                if [ "${FISHSPEECH_START_OK:-1}" = "1" ]; then
+                    print_info "Fish-Speech 服务: 运行中 (PID: $fs_pid, 端口: $FISHSPEECH_PORT, GPU: $FISHSPEECH_GPU)"
+                else
+                    print_error "Fish-Speech 服务: 未就绪（启动超时或失败，见上方提示）"
                 fi
                 print_info "前端页面: ${protocol}://$HOST:$PORT"
                 print_info "API文档:  ${protocol}://$HOST:$PORT/docs"
@@ -965,6 +1045,10 @@ do_stop() {
     echo ""
     # 停止 CosyVoice 独立服务
     do_stop_cosyvoice
+
+    echo ""
+    # 停止 Fish-Speech 独立服务
+    do_stop_fishspeech
 }
 
 # 重启服务
@@ -978,7 +1062,7 @@ do_restart() {
     local pid
     pid=$(get_pid)
 
-    echo "【阶段 1/6】停止主服务"
+    echo "【阶段 1/7】停止主服务"
     echo "----------------------------------------"
 
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -1021,31 +1105,36 @@ do_restart() {
     echo ""
 
     # 阶段1.5: 停止 OmniVoice
-    echo "【阶段 2/6】停止 OmniVoice 服务"
+    echo "【阶段 2/7】停止 OmniVoice 服务"
     echo "----------------------------------------"
     do_stop_omnivoice
 
     # 阶段1.6: 停止 PilotTTS
-    echo "【阶段 3/6】停止 PilotTTS 服务"
+    echo "【阶段 3/7】停止 PilotTTS 服务"
     echo "----------------------------------------"
     do_stop_pilottts
 
     # 阶段1.7: 停止 CosyVoice
-    echo "【阶段 4/6】停止 CosyVoice 服务"
+    echo "【阶段 4/7】停止 CosyVoice 服务"
     echo "----------------------------------------"
     do_stop_cosyvoice
 
     # 阶段1.8: 停止 GPT-SoVITS
-    echo "【阶段 5/6】停止 GPT-SoVITS 服务"
+    echo "【阶段 5/7】停止 GPT-SoVITS 服务"
     echo "----------------------------------------"
     do_stop_gptsovits
+
+    # 阶段1.9: 停止 Fish-Speech
+    echo "【阶段 6/7】停止 Fish-Speech 服务"
+    echo "----------------------------------------"
+    do_stop_fishspeech
 
     echo ""
     print_success "全部服务停止完成"
     echo ""
 
-    # 阶段2: 启动服务（会自动启动 OmniVoice、PilotTTS、CosyVoice 和 GPT-SoVITS）
-    echo "【阶段 6/6】启动全部服务"
+    # 阶段2: 启动服务（会自动启动 OmniVoice、PilotTTS、CosyVoice、GPT-SoVITS 和 Fish-Speech）
+    echo "【阶段 7/7】启动全部服务"
     echo "----------------------------------------"
     do_start
 }
@@ -1200,6 +1289,27 @@ do_status() {
         print_info "GPT-SoVITS 日志: $GPTSOVITS_LOG_FILE"
     else
         print_warn "GPT-SoVITS 未运行"
+    fi
+
+    # 检查 Fish-Speech 服务状态
+    echo "----------------------------------------"
+    print_step "Fish-Speech 独立服务状态:"
+    echo "----------------------------------------"
+    if is_fishspeech_running; then
+        local fs_pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+        print_success "Fish-Speech 运行中 (PID: $fs_pid, 端口: $FISHSPEECH_PORT)"
+
+        local fs_health
+        fs_health=$(curl -s "http://127.0.0.1:$FISHSPEECH_PORT/health" 2>/dev/null || echo "")
+        if [ -n "$fs_health" ]; then
+            print_success "Fish-Speech 健康检查通过"
+            echo "$fs_health" | python -m json.tool 2>/dev/null || echo "$fs_health"
+        else
+            print_error "Fish-Speech 健康检查失败"
+        fi
+        print_info "Fish-Speech 日志: $FISHSPEECH_LOG_FILE"
+    else
+        print_warn "Fish-Speech 未运行"
     fi
 }
 
@@ -2153,6 +2263,221 @@ do_status_gptsovits() {
     print_info "查看日志: tail -f $GPTSOVITS_LOG_FILE"
 }
 
+# ============ Fish-Speech 独立服务管理 ============
+
+# 检查 Fish-Speech 服务是否在运行
+is_fishspeech_running() {
+    if [ -f "$FISHSPEECH_PID_FILE" ]; then
+        local pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 启动 Fish-Speech 独立服务
+do_start_fishspeech() {
+    echo ""
+    echo "========================================"
+    echo "      Fish-Speech 独立服务启动"
+    echo "========================================"
+    echo ""
+
+    if is_fishspeech_running; then
+        local current_pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+        print_warn "Fish-Speech 服务已在运行中"
+        print_info "当前PID: $current_pid"
+        print_info "服务端口: $FISHSPEECH_PORT"
+        print_info "健康检查: http://127.0.0.1:$FISHSPEECH_PORT/health"
+        exit 0
+    fi
+
+    if [ ! -f "$FISHSPEECH_SCRIPT" ]; then
+        print_error "Fish-Speech 服务脚本不存在: $FISHSPEECH_SCRIPT"
+        exit 1
+    fi
+
+    print_step "激活虚拟环境..."
+    source "$VENV_PATH/bin/activate"
+    print_success "虚拟环境已激活"
+
+    if [ "$OFFLINE_MODE" = true ] && [ -f "$ENV_FILE" ]; then
+        print_step "加载离线模式环境变量..."
+        source "$ENV_FILE"
+        print_success "离线模式已启用"
+    fi
+
+    export FISHSPEECH_HOST
+    export FISHSPEECH_PORT
+    export TRANSFORMERS_OFFLINE
+    export HF_HUB_OFFLINE
+    export HF_HOME
+    export HUGGINGFACE_HUB_CACHE
+    export TRANSFORMERS_CACHE
+    export PRELOAD_FISHSPEECH
+    export IDLE_TIMEOUT
+    export HEARTBEAT_INTERVAL
+    export MAIN_HOST="127.0.0.1"
+    export MAIN_PORT="$PORT"
+
+    mkdir -p "$SCRIPT_DIR/logs"
+
+    print_info "Python 版本: $(python --version 2>&1)"
+    echo ""
+    print_step "启动 Fish-Speech 独立服务..."
+    print_info "服务端口: $FISHSPEECH_PORT"
+    print_info "GPU设备: $FISHSPEECH_GPU"
+    print_info "日志文件: $FISHSPEECH_LOG_FILE"
+    echo ""
+
+    cd "$SCRIPT_DIR"
+    CUDA_VISIBLE_DEVICES="$FISHSPEECH_GPU" GPU_ID="$FISHSPEECH_GPU" nohup python "$FISHSPEECH_SCRIPT" >> "$FISHSPEECH_LOG_FILE" 2>&1 &
+    local new_pid=$!
+    echo "$new_pid" > "$FISHSPEECH_PID_FILE"
+
+    print_step "等待服务启动 (PID: $new_pid)..."
+    echo ""
+
+    # 等待服务启动：超时按预加载配置取值，可通过环境变量覆盖
+    if [ "$PRELOAD_FISHSPEECH" = "1" ]; then
+        local fs_max_wait=$START_WAIT_PRELOAD
+    else
+        local fs_max_wait=$START_WAIT_NO_PRELOAD
+    fi
+    local count=0
+    local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while [ $count -lt $fs_max_wait ]; do
+        if kill -0 "$new_pid" 2>/dev/null; then
+            if curl -s "http://127.0.0.1:$FISHSPEECH_PORT/health" >/dev/null 2>&1; then
+                echo ""
+                echo ""
+                echo "========================================"
+                echo "      Fish-Speech 服务启动成功"
+                echo "========================================"
+                print_success "服务状态: 运行中"
+                print_info "进程PID:  $new_pid"
+                print_info "服务端口: $FISHSPEECH_PORT"
+                print_info "健康检查: http://127.0.0.1:$FISHSPEECH_PORT/health"
+                print_info "日志文件: $FISHSPEECH_LOG_FILE"
+                echo ""
+                print_info "常用命令:"
+                echo "  查看状态: $0 status-fishspeech"
+                echo "  查看日志: tail -f $FISHSPEECH_LOG_FILE"
+                echo "  停止服务: $0 stop-fishspeech"
+                echo "========================================"
+                exit 0
+            fi
+        else
+            echo ""
+            echo ""
+            print_error "Fish-Speech 服务启动失败 - 进程已退出"
+            print_info "查看错误日志:"
+            echo "  tail -n 50 $FISHSPEECH_LOG_FILE"
+            rm -f "$FISHSPEECH_PID_FILE"
+            exit 1
+        fi
+        sleep 1
+        count=$((count + 1))
+        printf "\r  %s  等待中... %d/%d 秒" "${spin:$((count % 10)):1}" "$count" "$fs_max_wait"
+    done
+
+    echo ""
+    print_warn "Fish-Speech 服务启动超时 (${fs_max_wait}秒)"
+    print_info "服务可能仍在初始化，请检查日志: tail -f $FISHSPEECH_LOG_FILE"
+}
+
+# 停止 Fish-Speech 独立服务
+do_stop_fishspeech() {
+    echo "----------------------------------------"
+    echo "      Fish-Speech 独立服务停止"
+    echo "----------------------------------------"
+
+    local pid=""
+
+    if is_fishspeech_running; then
+        pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+        print_info "发现运行中的 Fish-Speech 服务 (PID: $pid)"
+    else
+        pid=$(pgrep -f "python.*fishspeech_service.py" 2>/dev/null | head -1)
+        if [ -n "$pid" ]; then
+            print_warn "PID 文件不存在，但找到运行中的 Fish-Speech 进程 (PID: $pid)"
+        else
+            print_info "Fish-Speech 服务未运行"
+            if [ -f "$FISHSPEECH_PID_FILE" ]; then
+                rm -f "$FISHSPEECH_PID_FILE"
+            fi
+            return 0
+        fi
+    fi
+
+    print_step "正在停止服务..."
+    kill "$pid" 2>/dev/null || true
+
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo ""
+            print_success "Fish-Speech 服务已停止"
+            rm -f "$FISHSPEECH_PID_FILE"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+        echo -n "."
+    done
+
+    echo ""
+    print_warn "优雅终止超时，执行强制停止..."
+    kill -9 "$pid" 2>/dev/null || true
+    sleep 1
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        print_success "Fish-Speech 服务已强制停止"
+        rm -f "$FISHSPEECH_PID_FILE"
+    else
+        print_error "无法停止 Fish-Speech 服务 (PID: $pid)"
+    fi
+}
+
+# 查看 Fish-Speech 服务状态
+do_status_fishspeech() {
+    echo ""
+    echo "========================================"
+    echo "      Fish-Speech 独立服务状态"
+    echo "========================================"
+    echo ""
+
+    if ! is_fishspeech_running; then
+        print_warn "Fish-Speech 服务未运行"
+        if [ -f "$FISHSPEECH_PID_FILE" ]; then
+            rm -f "$FISHSPEECH_PID_FILE"
+        fi
+        echo ""
+        print_info "启动服务:"
+        echo "  $0 start-fishspeech"
+        exit 0
+    fi
+
+    local pid=$(cat "$FISHSPEECH_PID_FILE" 2>/dev/null)
+    print_success "Fish-Speech 服务运行中"
+    print_info "进程PID:  $pid"
+    print_info "服务端口: $FISHSPEECH_PORT"
+    echo ""
+
+    local health=$(curl -s "http://127.0.0.1:$FISHSPEECH_PORT/health" 2>/dev/null)
+    if [ -n "$health" ]; then
+        print_success "健康检查通过"
+        echo ""
+        echo "$health" | python -m json.tool 2>/dev/null || echo "$health"
+    else
+        print_error "健康检查失败"
+    fi
+    echo ""
+    print_info "日志文件: $FISHSPEECH_LOG_FILE"
+    print_info "查看日志: tail -f $FISHSPEECH_LOG_FILE"
+}
+
 # ============ 主逻辑 ============
 
 # 解析命令
@@ -2266,6 +2591,20 @@ case "$COMMAND" in
         ;;
     status-gptsovits)
         do_status_gptsovits
+        ;;
+    start-fishspeech)
+        do_start_fishspeech
+        ;;
+    stop-fishspeech)
+        do_stop_fishspeech
+        ;;
+    restart-fishspeech)
+        do_stop_fishspeech
+        sleep 2
+        do_start_fishspeech
+        ;;
+    status-fishspeech)
+        do_status_fishspeech
         ;;
     *)
         print_error "未知命令: $COMMAND"

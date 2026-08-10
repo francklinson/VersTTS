@@ -30,9 +30,13 @@ from transformers.cache_utils import (
     DynamicCache,
     EncoderDecoderCache,
     OffloadedCache,
-    QuantizedCacheConfig,
     StaticCache,
 )
+try:
+    from transformers.cache_utils import QuantizedCacheConfig
+except ImportError:
+    # transformers >= 4.55 移除了 QuantizedCacheConfig，Cache 类直接初始化
+    QuantizedCacheConfig = None
 from transformers.configuration_utils import PretrainedConfig
 from transformers.integrations.deepspeed import is_deepspeed_zero3_enabled
 from transformers.integrations.fsdp import is_fsdp_managed_module
@@ -55,10 +59,20 @@ from transformers.generation.candidate_generator import (
     AssistedCandidateGeneratorDifferentTokenizers,
     CandidateGenerator,
     PromptLookupCandidateGenerator,
-    _crop_past_key_values,
     _prepare_attention_mask,
     _prepare_token_type_ids,
 )
+try:
+    from transformers.generation.candidate_generator import _crop_past_key_values
+except ImportError:
+    # transformers >= 4.55 移除了内部函数，提供兼容实现
+    def _crop_past_key_values(self, past_key_values, maximum_length):
+        """裁剪 KV cache 到指定长度（兼容旧版 transformers 内部函数）"""
+        if past_key_values is None:
+            return past_key_values
+        if hasattr(past_key_values, 'crop'):
+            return past_key_values.crop(maximum_length)
+        return past_key_values
 from transformers.generation.configuration_utils import (
     NEED_SETUP_CACHE_CLASSES_MAPPING,
     QUANT_BACKEND_CLASSES_MAPPING,
@@ -1745,7 +1759,7 @@ class GenerationMixin:
                 cache_config = (
                     generation_config.cache_config
                     if generation_config.cache_config is not None
-                    else QuantizedCacheConfig()
+                    else (QuantizedCacheConfig() if QuantizedCacheConfig is not None else None)
                 )
                 cache_class = QUANT_BACKEND_CLASSES_MAPPING[cache_config.backend]
 

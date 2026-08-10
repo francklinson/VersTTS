@@ -26,7 +26,7 @@ def get_dotstts_model():
         OperationLogger.log_model_load(display_name, "开始加载")
 
         # 添加 dots.tts 源码路径
-        dotstts_src = ALGORITHM_PATHS.get('dotstts') or os.path.join(ALGORITHMS_DIR, 'dotstts', 'src')
+        dotstts_src = ALGORITHM_PATHS.get('dotstts_src') or os.path.join(ALGORITHMS_DIR, 'dotstts', 'src')
         if dotstts_src not in sys.path:
             sys.path.insert(0, dotstts_src)
 
@@ -56,9 +56,8 @@ def get_dotstts_model():
                 models[key] = DotsTtsRuntime.from_pretrained(
                     model_path,
                     precision="bfloat16",
-                    optimize=True,
+                    optimize=False,
                     max_generate_length=500,
-                    warmup_on_optimize=True,
                 )
                 break  # 加载成功，跳出循环
             except RuntimeError as e:

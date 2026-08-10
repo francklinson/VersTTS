@@ -835,6 +835,342 @@ async def handle_gptsovits_task(task: TaskRecord) -> Dict[str, Any]:
         raise
 
 
+async def handle_dotstts_task(task: TaskRecord) -> Dict[str, Any]:
+    """处理dots.tts任务"""
+    try:
+        from backend.engines import get_dotstts_model
+        from backend.task_queue import task_queue, progress_updater
+
+        params = task.params or {}
+        batch_count = params.get('batch_count', 1)
+
+        if batch_count > 1:
+            import asyncio
+            from backend.routers.batch import _batch_generate_dotstts
+            loop = asyncio.get_running_loop()
+
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
+            # 取消检查
+            _terminal = {TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}
+
+            def _cancel_check():
+                return task.status in _terminal
+
+            result = await loop.run_in_executor(
+                None, _batch_generate_dotstts,
+                task.text, task.mode, batch_count,
+                params.get('speaker_id'),
+                params.get('num_steps', 16),
+                params.get('guidance_scale', 1.2),
+                params.get('speaker_scale', 1.5),
+                params.get('language'),
+                _progress_callback,
+                _cancel_check
+            )
+            audio_files = result.get('audio_files', [])
+            audio_urls = result.get('audio_urls', [])
+            if not audio_files:
+                raise Exception("批量生成未产生任何音频")
+            return _pack_batch_results(audio_files, audio_urls, "dotstts")
+
+        def _sync_generate():
+            import numpy as np
+            import torch
+
+            _speaker_id = params.get('speaker_id')
+            _num_steps = params.get('num_steps', 16)
+            _guidance_scale = params.get('guidance_scale', 1.2)
+            _speaker_scale = params.get('speaker_scale', 1.5)
+            _language = params.get('language')
+
+            _ref_path = None
+            _prompt_text = None
+            _speaker_name = None
+            if _speaker_id:
+                _speaker = get_speaker_by_id(_speaker_id)
+                if _speaker:
+                    _ref_path = _speaker.get("audio_path")
+                    _prompt_text = _speaker.get("reference_text")
+                    _speaker_name = _speaker.get("name")
+
+            _model = get_dotstts_model()
+
+            # 模板映射
+            _template_map = {
+                "voice_clone": "tts",
+                "instruct": "instruction_tts",
+            }
+            _template_name = _template_map.get(task.mode, "tts")
+
+            _generate_kwargs = {
+                "text": task.text,
+                "num_steps": _num_steps,
+                "guidance_scale": _guidance_scale,
+                "speaker_scale": _speaker_scale,
+                "template_name": _template_name,
+            }
+
+            if _language:
+                _generate_kwargs["language"] = _language
+
+            if task.mode == "voice_clone" and _ref_path:
+                _generate_kwargs["prompt_audio_path"] = _ref_path
+                if _prompt_text:
+                    _generate_kwargs["prompt_text"] = _prompt_text
+            elif task.mode == "voice_clone" and not _ref_path:
+                _generate_kwargs["template_name"] = "tts"
+
+            _result = _model.generate(**_generate_kwargs)
+
+            # 提取音频数据
+            _audio = _result["audio"]
+            _sample_rate = _result["sample_rate"]
+
+            if torch.is_tensor(_audio):
+                _audio_np = _audio.cpu().numpy().squeeze()
+            elif isinstance(_audio, np.ndarray):
+                _audio_np = _audio.squeeze()
+            else:
+                _audio_np = np.array(_audio).squeeze()
+
+            # 保存音频
+            _audio_path = save_temp_audio(
+                _audio_np, _sample_rate, prefix="dotstts", mode=task.mode,
+                text=task.text, speaker_name=_speaker_name
+            )
+
+            verify_and_cleanup(_audio_path, task.text, model_tag="dots.tts")
+
+            return {
+                'audio_file': _audio_path,
+                'audio_url': f"/audio/{os.path.basename(_audio_path)}"
+            }
+
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync_generate)
+
+    except Exception as e:
+        system_logger.error(f"【任务处理器】dots.tts任务失败: {e}")
+        raise
+
+
+async def handle_fishspeech_task(task: TaskRecord) -> Dict[str, Any]:
+    """处理Fish-Speech任务 — 通过独立服务调用"""
+    try:
+        import aiohttp
+        from backend.config import FISHSPEECH_HOST, FISHSPEECH_PORT
+
+        await _check_subservice_health(
+            FISHSPEECH_HOST, FISHSPEECH_PORT,
+            "Fish-Speech", "./start_server.sh start-fishspeech"
+        )
+
+        params = task.params or {}
+        batch_count = params.get('batch_count', 1)
+
+        if batch_count > 1:
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
+            from backend.routers.batch import _batch_generate_fishspeech
+
+            def _progress_callback(completed: int, total: int):
+                task_queue.update_batch_progress(task.task_id, completed, total)
+
+            result = await _batch_generate_fishspeech(
+                text=task.text,
+                mode=task.mode,
+                count=batch_count,
+                clone_speaker_id=params.get('speaker_id'),
+                reference_text=params.get('reference_text'),
+                temperature=params.get('temperature', 0.8),
+                top_p=params.get('top_p', 0.8),
+                repetition_penalty=params.get('repetition_penalty', 1.1),
+                progress_callback=_progress_callback
+            )
+            audio_files = result.get('audio_files', [])
+            audio_urls = result.get('audio_urls', [])
+            if not audio_files:
+                raise Exception("批量生成未产生任何音频")
+            return _pack_batch_results(audio_files, audio_urls, "fishspeech")
+
+        # 单次生成
+        clone_speaker_id = params.get('speaker_id')
+        speaker_name = None
+        speaker_ref_text = None
+        if clone_speaker_id:
+            speaker = get_speaker_by_id(clone_speaker_id)
+            if speaker:
+                speaker_name = speaker.get("name")
+                speaker_ref_text = speaker.get("reference_text")
+
+        # 构建请求数据
+        form_data = aiohttp.FormData()
+        form_data.add_field('text', task.text)
+        form_data.add_field('mode', task.mode)
+        form_data.add_field('temperature', str(params.get('temperature', 0.8)))
+        form_data.add_field('top_p', str(params.get('top_p', 0.8)))
+        form_data.add_field('repetition_penalty', str(params.get('repetition_penalty', 1.1)))
+
+        if clone_speaker_id:
+            form_data.add_field('clone_speaker_id', clone_speaker_id)
+        if speaker_ref_text:
+            form_data.add_field('reference_text', speaker_ref_text)
+
+        # 调用 Fish-Speech 独立服务
+        url = f"http://{FISHSPEECH_HOST}:{FISHSPEECH_PORT}/tts"
+
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180)) as session:
+            async with session.post(url, data=form_data) as response:
+                if response.status not in (200, 201):
+                    error_text = await response.text()
+                    raise Exception(f"Fish-Speech服务错误: {error_text}")
+
+                result = await response.json()
+
+                audio_path = result.get('audio_path')
+                if not audio_path or not os.path.exists(audio_path):
+                    raise Exception(f"Fish-Speech返回的音频文件不存在: {audio_path}")
+
+                sample_rate = result.get('sample_rate', 44100)
+
+                # 使用有意义的文件名并复制到 outputs 目录
+                filename = _generate_meaningful_filename("fishspeech", task.mode, task.text,
+                                                         speaker_name=speaker_name)
+                dest_path = os.path.join(OUTPUTS_DIR, filename)
+                import shutil
+                shutil.copy2(audio_path, dest_path)
+
+                # 内容校验
+                verify_and_cleanup(dest_path, task.text, model_tag="Fish-Speech")
+
+                return {
+                    'audio_file': dest_path,
+                    'audio_url': f"/audio/{filename}"
+                }
+
+    except Exception as e:
+        system_logger.error(f"【任务处理器】Fish-Speech任务失败: {e}")
+        raise
+
+
+async def handle_indextts_task(task: TaskRecord) -> Dict[str, Any]:
+    """处理IndexTTS任务"""
+    try:
+        from backend.engines import get_indextts_model
+        from backend.task_queue import task_queue, progress_updater
+
+        params = task.params or {}
+        batch_count = params.get('batch_count', 1)
+
+        if batch_count > 1:
+            import asyncio
+            from backend.routers.batch import _batch_generate_indextts
+            loop = asyncio.get_running_loop()
+
+            # 设置批量任务总数
+            task.batch_total = batch_count
+            task.batch_completed = 0
+            task_queue._save_task(task)
+
+            # 定义进度回调函数
+            def _progress_callback(completed: int, total: int):
+                progress_updater.update_progress(
+                    task_queue.update_batch_progress,
+                    task.task_id, completed, total
+                )
+
+            # 取消检查
+            _terminal = {TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}
+
+            def _cancel_check():
+                return task.status in _terminal
+
+            result = await loop.run_in_executor(
+                None, _batch_generate_indextts,
+                task.text, task.mode, batch_count,
+                params.get('speaker_id'),
+                params.get('emotion_text'),
+                _progress_callback,
+                _cancel_check
+            )
+            audio_files = result.get('audio_files', [])
+            audio_urls = result.get('audio_urls', [])
+            if not audio_files:
+                raise Exception("批量生成未产生任何音频")
+            return _pack_batch_results(audio_files, audio_urls, "indextts")
+
+        def _sync_generate():
+            _speaker_id = params.get('speaker_id')
+            _emotion_text = params.get('emotion_text')
+
+            _ref_path = None
+            _speaker_name = None
+            if _speaker_id:
+                _speaker = get_speaker_by_id(_speaker_id)
+                if _speaker:
+                    _ref_path = _speaker.get("audio_path")
+                    _speaker_name = _speaker.get("name")
+                if not _ref_path or not os.path.exists(_ref_path):
+                    raise ValueError(f"参考音频不存在: {_ref_path}")
+
+            if not _ref_path:
+                raise ValueError("IndexTTS需要提供参考音频（speaker_id）")
+
+            _model = get_indextts_model()
+
+            # 生成音频路径
+            _filename = _generate_meaningful_filename("indextts", task.mode, task.text,
+                                                       speaker_name=_speaker_name,
+                                                       instruct_prompt=_emotion_text)
+            _audio_path = os.path.join(OUTPUTS_DIR, _filename)
+
+            # 准备 infer 参数
+            _infer_kwargs = {
+                "spk_audio_prompt": _ref_path,
+                "text": task.text,
+                "output_path": _audio_path,
+                "verbose": True
+            }
+
+            # 情感描述支持
+            if _emotion_text and _emotion_text.strip():
+                _infer_kwargs["use_emo_text"] = True
+                _infer_kwargs["emo_text"] = _emotion_text.strip()
+                _infer_kwargs["emo_alpha"] = 0.6
+
+            _model.infer(**_infer_kwargs)
+
+            verify_and_cleanup(_audio_path, task.text, model_tag="IndexTTS")
+
+            return {
+                'audio_file': _audio_path,
+                'audio_url': f"/audio/{_filename}"
+            }
+
+        import asyncio
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync_generate)
+
+    except Exception as e:
+        system_logger.error(f"【任务处理器】IndexTTS任务失败: {e}")
+        raise
+
+
 def register_all_handlers():
     """注册所有任务处理器"""
     task_queue.register_handler("voxcpm", handle_voxcpm_task)
@@ -843,6 +1179,9 @@ def register_all_handlers():
     task_queue.register_handler("cosyvoice", handle_cosyvoice_task)
     task_queue.register_handler("pilottts", handle_pilottts_task)
     task_queue.register_handler("gptsovits", handle_gptsovits_task)
+    task_queue.register_handler("dotstts", handle_dotstts_task)
+    task_queue.register_handler("fishspeech", handle_fishspeech_task)
+    task_queue.register_handler("indextts", handle_indextts_task)
 
     system_logger.info("【任务处理器】所有处理器已注册")
 

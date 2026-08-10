@@ -107,7 +107,7 @@ MODEL_DOWNLOAD_CONFIG = {
     "IndexTTS": {
         "source": "modelscope",
         "model_id": "IndexTeam/IndexTTS-2",
-        "local_dir": "algorithms/IndexTTS/checkpoints",
+        "local_dir": "models/IndexTTS",
         "description": "IndexTTS 2.0 模型 (~6GB)",
         "required": True
     },

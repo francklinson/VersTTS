@@ -11,7 +11,7 @@ import torch
 from fastapi import HTTPException
 
 from backend.logger_config import OperationLogger, system_logger
-from backend.config import models, ALGORITHM_PATHS
+from backend.config import models, ALGORITHM_PATHS, MODEL_PATHS
 from backend.core.model_manager import model_manager
 
 
@@ -30,7 +30,7 @@ def get_indextts_model():
             # 使用IndexTTS2 (infer_v2) - 按照GitHub README示例
             from indextts.infer_v2 import IndexTTS2
 
-            model_dir = os.path.join(ALGORITHM_PATHS['indextts'], "checkpoints")
+            model_dir = MODEL_PATHS['indextts']
             cfg_path = os.path.join(model_dir, "config.yaml")
 
             system_logger.info(f"【模型加载】IndexTTS2 从路径: {model_dir}")

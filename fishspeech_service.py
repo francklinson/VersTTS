@@ -11,6 +11,9 @@ Fish-Speech 是基于 Dual-AR 架构的多语言 TTS 模型，支持 80+ 种语�
 import sys
 import os
 
+# 优化CUDA显存分配，减少碎片
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import time
 import traceback
 import asyncio

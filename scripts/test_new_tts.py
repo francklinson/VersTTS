@@ -167,7 +167,7 @@ def check_models():
             PROJECT_ROOT / "algorithms/VoxCPM/models/VoxCPM2/model.safetensors"
         ],
         "IndexTTS-2": [
-            PROJECT_ROOT / "algorithms/IndexTTS/checkpoints/config.yaml"
+            PROJECT_ROOT / "models/IndexTTS/config.yaml"
         ],
         "FireRedTTS2": [
             PROJECT_ROOT / "algorithms/FireRedTTS2/pretrained_models/FireRedTTS2/config_codec.json",

@@ -74,11 +74,24 @@ except ImportError:
             return past_key_values.crop(maximum_length)
         return past_key_values
 from transformers.generation.configuration_utils import (
-    NEED_SETUP_CACHE_CLASSES_MAPPING,
-    QUANT_BACKEND_CLASSES_MAPPING,
     GenerationConfig,
     GenerationMode,
 )
+try:
+    from transformers.generation.configuration_utils import NEED_SETUP_CACHE_CLASSES_MAPPING
+except ImportError:
+    # transformers >= 4.55 移除了此常量，提供兼容映射
+    from transformers.cache_utils import DynamicCache, OffloadedCache, QuantizedCache, StaticCache, SinkCache
+    NEED_SETUP_CACHE_CLASSES_MAPPING = {
+        "offloaded": OffloadedCache,
+        "quantized": QuantizedCache,
+        "static": StaticCache,
+        "sink": SinkCache,
+    }
+try:
+    from transformers.generation.configuration_utils import QUANT_BACKEND_CLASSES_MAPPING
+except ImportError:
+    QUANT_BACKEND_CLASSES_MAPPING = {}
 from transformers.generation.logits_process import (
     EncoderNoRepeatNGramLogitsProcessor,
     EncoderRepetitionPenaltyLogitsProcessor,
@@ -1016,7 +1029,7 @@ class GenerationMixin:
                     device=device,
                 )
             )
-        if generation_config.forced_decoder_ids is not None:
+        if getattr(generation_config, 'forced_decoder_ids', None) is not None:
             # TODO (sanchit): move this exception to GenerationConfig.validate() when TF & FLAX are aligned with PT
             raise ValueError(
                 "You have explicitly specified `forced_decoder_ids`. Please remove the `forced_decoder_ids` argument "

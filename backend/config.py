@@ -94,7 +94,7 @@ MODEL_PATHS = {
     'pilottts': os.path.join(MODELS_DIR, 'PilotTTS'),
     'dotstts': os.path.join(MODELS_DIR, 'dotstts'),
     'fishspeech': os.path.join(MODELS_DIR, 'Fish-Speech'),
-    'indextts': os.path.join(ALGORITHMS_DIR, 'IndexTTS', 'checkpoints'),
+    'indextts': os.path.join(MODELS_DIR, 'IndexTTS'),
 }
 
 # ========== 算法路径配置 ==========

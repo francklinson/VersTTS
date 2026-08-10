@@ -81,7 +81,7 @@ MODEL_PATHS = {
         "description": "VoxCPM2 TTS模型"
     },
     "IndexTTS": {
-        "path": "algorithms/IndexTTS/checkpoints",
+        "path": "models/IndexTTS",
         "required_files": ["*.pth", "*.pt", "*.yaml"],
         "min_size_gb": 4.0,
         "description": "IndexTTS GPT模型"
